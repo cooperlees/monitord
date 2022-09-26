@@ -198,7 +198,7 @@ MDNS=no
     }
 
     #[test]
-    fn test_interface_stats_json() {
+    fn test_parse_interface_stats_json() {
         let expected_interface_state_json = r###"{"admin_state":4,"network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###;
         let stats = parse_interface_stats(MOCK_INTERFACE_STATE.to_string()).unwrap();
         let stats_json = serde_json::to_string(&stats).unwrap();
