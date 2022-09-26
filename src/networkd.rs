@@ -86,7 +86,7 @@ pub struct InterfaceState {
     required_for_online: BoolState,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
 pub struct NetworkdState {
     interfaces_state: Vec<InterfaceState>,
     managed_interfaces: u32,
@@ -207,17 +207,34 @@ MDNS=no
 
     #[test]
     fn test_parse_interface_state_files() -> Result<()> {
+        let expected_files = NetworkdState {
+            interfaces_state: vec![return_expected_interface_state()],
+            managed_interfaces: 1,
+        };
+
         let temp_dir = tempdir()?;
         let file_path = temp_dir.path().join("69");
         let mut state_file = File::create(file_path)?;
         writeln!(state_file, "{}", MOCK_INTERFACE_STATE)?;
 
-        let expected_files = NetworkdState {
-            interfaces_state: vec![return_expected_interface_state()],
-            managed_interfaces: 1,
-        };
         let path = PathBuf::from(temp_dir.path());
         assert_eq!(expected_files, parse_interface_state_files(path).unwrap());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_interface_state_files_json() -> Result<()> {
+        let expected_interface_state_json = r###"{"interfaces_state":[{"admin_state":4,"network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###;
+
+        let temp_dir = tempdir()?;
+        let file_path = temp_dir.path().join("69");
+        let mut state_file = File::create(file_path)?;
+        writeln!(state_file, "{}", MOCK_INTERFACE_STATE)?;
+
+        let path = PathBuf::from(temp_dir.path());
+        let interface_stats = parse_interface_state_files(path).unwrap();
+        let interface_stats_json = serde_json::to_string(&interface_stats).unwrap();
+        assert_eq!(expected_interface_state_json.to_string(), interface_stats_json);
         Ok(())
     }
 }
