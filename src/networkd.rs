@@ -146,10 +146,10 @@ MDNS=no
     // TODO: Change enum values into ints
     #[test]
     fn test_interface_stats_json() {
-        let expected_json = "{\"admin_state\":\"configured\",\"network_file\":\"/etc/systemd/network/69-eno4.network\",\"oper_state\":\"routable\"}".to_string();
+        let expected_interface_state_json= r###"{"admin_state":"configured","network_file":"/etc/systemd/network/69-eno4.network","oper_state":"routable"}"###;
         let stats = parse_interface_stats(MOCK_INTERFACE_STATE.to_string()).unwrap();
         let stats_json = serde_json::to_string(&stats).unwrap();
-        assert_eq!(expected_json, stats_json);
+        assert_eq!(expected_interface_state_json.to_string(), stats_json);
     }
 
     #[test]
