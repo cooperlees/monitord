@@ -9,7 +9,7 @@ use log::info;
 // extern crate strum;
 extern crate strum_macros;
 
-mod networkd;
+pub mod networkd;
 
 const LONG_ABOUT: &str = "monitord: Know how happy your systemd is! 😊";
 

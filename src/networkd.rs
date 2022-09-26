@@ -1,20 +1,17 @@
-#![allow(dead_code)]
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use anyhow::Result;
 use strum_macros::EnumString;
 
-const NETWORKD_STATE_FILES: &str = "/run/systemd/netif/links";
-
 #[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum AddressState {
     unknown,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq, EnumString)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum AdminState {
     unknown,
     pending,
@@ -25,27 +22,29 @@ pub enum AdminState {
     linger,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum BoolState {
+    #[strum(serialize = "false", serialize = "False")]
     False,
+    #[strum(serialize = "true", serialize = "True")]
     True,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum CarrierState {
     unknown,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum OnlineState {
     unknown,
     online,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum OperState {
     unknown,
     missing,
@@ -59,10 +58,11 @@ pub enum OperState {
     routable,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
 pub struct InterfaceState {
     admin_state: AdminState,
     network_file: String,
+    oper_state: OperState,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -70,11 +70,14 @@ pub struct NetworkdState {
     interface_states: Vec<InterfaceState>,
 }
 
+pub const NETWORKD_STATE_FILES: &str = "/run/systemd/netif/links";
+
 /// Parse a networkd state file
 pub fn parse_interface_stats(interface_state_str: String) -> Result<InterfaceState, String> {
     let mut interface_state = InterfaceState {
         admin_state: AdminState::unknown,
         network_file: "".to_string(),
+        oper_state: OperState::unknown,
     };
 
     for line in interface_state_str.lines() {
@@ -88,6 +91,7 @@ pub fn parse_interface_stats(interface_state_str: String) -> Result<InterfaceSta
         match key {
             "ADMIN_STATE" => interface_state.admin_state = AdminState::from_str(value).unwrap(),
             "NETWORK_FILE" => interface_state.network_file = value.to_string(),
+            "OPER_STATE" => interface_state.oper_state = OperState::from_str(value).unwrap(),
             _ => continue,
         };
     }
@@ -96,7 +100,7 @@ pub fn parse_interface_stats(interface_state_str: String) -> Result<InterfaceSta
 }
 
 /// Parse interface state files in directory supplied
-pub fn get_interface_state_files(_states_path_path: PathBuf) -> Result<(), String> {
+pub fn parse_interface_state_files(_states_path_path: PathBuf) -> Result<(), String> {
     println!("TBA");
     Ok(())
 }
@@ -105,9 +109,7 @@ pub fn get_interface_state_files(_states_path_path: PathBuf) -> Result<(), Strin
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_get_interface_stats() {
-        let interface_state = r###"# This is private data. Do not parse.
+    const MOCK_INTERFACE_STATE: &str = r###"# This is private data. Do not parse.
 ADMIN_STATE=configured
 OPER_STATE=routable
 CARRIER_STATE=carrier
@@ -129,12 +131,30 @@ LLMNR=yes
 MDNS=no
 "###;
 
+    #[test]
+    fn test_parse_interface_stats() {
         assert_eq!(
-            parse_interface_stats(interface_state.to_string()).unwrap(),
             InterfaceState {
                 admin_state: AdminState::configured,
-                network_file: "/etc/systemd/network/69-eno4.network".to_string()
+                network_file: "/etc/systemd/network/69-eno4.network".to_string(),
+                oper_state: OperState::routable,
             },
+            parse_interface_stats(MOCK_INTERFACE_STATE.to_string()).unwrap(),
         );
+    }
+
+    // TODO: Change enum values into ints
+    #[test]
+    fn test_interface_stats_json() {
+        let expected_json = "{\"admin_state\":\"configured\",\"network_file\":\"/etc/systemd/network/69-eno4.network\",\"oper_state\":\"routable\"}".to_string();
+        let stats = parse_interface_stats(MOCK_INTERFACE_STATE.to_string()).unwrap();
+        let stats_json = serde_json::to_string(&stats).unwrap();
+        assert_eq!(expected_json, stats_json);
+    }
+
+    #[test]
+    fn test_parse_interface_state_files() {
+        let path = PathBuf::from(NETWORKD_STATE_FILES);
+        assert_eq!(Ok(()), parse_interface_state_files(path),)
     }
 }
