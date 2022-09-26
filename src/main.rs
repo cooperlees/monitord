@@ -84,8 +84,8 @@ fn main() -> Result<(), String> {
         .filter_level(args.verbose.log_level_filter())
         .init();
 
-    info!("{} CLI Args: {:?}", LONG_ABOUT, args);
-
+    info!("{}", LONG_ABOUT);
+    debug!("CLI Args: {:?}", args);
     debug!("Loading {} config", args.config);
     let mut config = Ini::new();
     let _config_map = config.load(args.config)?;
