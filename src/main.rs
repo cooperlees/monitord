@@ -33,6 +33,20 @@ pub struct MonitordStats {
     networkd: networkd::NetworkdState,
 }
 
+fn print_stats(config: Ini, stats: &MonitordStats) {
+    let output_format = config
+        .get("monitord", "output_format")
+        .unwrap_or("json".to_lowercase());
+    match output_format.as_str() {
+        "json" => println!("{}", serde_json::to_string(&stats).unwrap()),
+        "json-pretty" => println!("{}", serde_json::to_string_pretty(&stats).unwrap()),
+        err => error!(
+            "Unable to print output in {} format ... fix config ...",
+            err
+        ),
+    }
+}
+
 fn stat_collector(config: Ini) -> Result<(), String> {
     let daemon_mode = config.getbool("monitord", "daemon").unwrap().unwrap();
     let collect_interval_ms: u128 = <u64 as Into<u128>>::into(
@@ -66,7 +80,7 @@ fn stat_collector(config: Ini) -> Result<(), String> {
 
         let elapsed_runtime = collect_start_time.elapsed().as_millis();
         info!("stat collection run took {}ms", elapsed_runtime);
-        println!("{}", serde_json::to_string(&monitord_stats).unwrap());
+        print_stats(config.clone(), &monitord_stats);
         if !daemon_mode {
             break;
         }

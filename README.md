@@ -31,7 +31,7 @@ to match systemd unit files.
 [monitord]
 debug=false
 # onetime run (cron/systemd timer) output format
-# Supported: json - TODO: implement if we get another format
+# Supported: json, json-pretty
 output_format=json
 # Run as a daemon or now
 # Time to refresh systemd stats in seconds
