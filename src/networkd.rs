@@ -7,19 +7,19 @@ use strum_macros::EnumString;
 #[allow(non_camel_case_types)]
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum AddressState {
-    unknown,
+    unknown = 0,
 }
 
 #[allow(non_camel_case_types)]
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum AdminState {
-    unknown,
-    pending,
-    failed,
-    configuring,
-    configured,
-    unmanaged,
-    linger,
+    unknown = 0,
+    pending = 1,
+    failed = 2,
+    configuring = 3,
+    configured = 4,
+    unmanaged = 5,
+    linger = 6,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
@@ -33,29 +33,31 @@ pub enum BoolState {
 #[allow(non_camel_case_types)]
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum CarrierState {
-    unknown,
+    unknown = 0,
 }
 
 #[allow(non_camel_case_types)]
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum OnlineState {
-    unknown,
-    online,
+    unknown = 0,
+    online = 1,
 }
 
 #[allow(non_camel_case_types)]
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
 pub enum OperState {
-    unknown,
-    missing,
-    off,
-    no_carrier,
-    dormant,
-    degraded_carrier,
-    carrier,
-    degraded,
-    enslaved,
-    routable,
+    unknown = 0,
+    missing = 1,
+    off = 2,
+    #[strum(serialize = "no-carrier", serialize = "no_carrier")]
+    no_carrier = 3,
+    dormant = 4,
+    #[strum(serialize = "degraded-carrier", serialize = "degraded_carrier")]
+    degraded_carrier = 5,
+    carrier = 6,
+    degraded = 7,
+    enslaved = 8,
+    routable = 9,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
