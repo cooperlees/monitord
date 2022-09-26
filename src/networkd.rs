@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -87,12 +88,13 @@ pub struct InterfaceState {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct NetworkdState {
-    interface_states: Vec<InterfaceState>,
+    interfaces_state: Vec<InterfaceState>,
+    managed_interfaces: u32,
 }
 
 pub const NETWORKD_STATE_FILES: &str = "/run/systemd/netif/links";
 
-/// Parse a networkd state file
+/// Parse a networkd state file contents
 pub fn parse_interface_stats(interface_state_str: String) -> Result<InterfaceState, String> {
     let mut interface_state = InterfaceState {
         admin_state: AdminState::unknown,
@@ -124,14 +126,37 @@ pub fn parse_interface_stats(interface_state_str: String) -> Result<InterfaceSta
 }
 
 /// Parse interface state files in directory supplied
-pub fn parse_interface_state_files(_states_path_path: PathBuf) -> Result<(), String> {
-    println!("TBA");
-    Ok(())
+pub fn parse_interface_state_files(
+    states_path_path: PathBuf,
+) -> Result<NetworkdState, std::io::Error> {
+    let mut managed_interface_count: u32 = 0;
+    let mut interfaces_state = vec![];
+
+    for state_file_dir in fs::read_dir(states_path_path)? {
+        let state_file = state_file_dir.unwrap();
+        if !state_file.path().is_file() {
+            continue;
+        }
+        let interface_stats_file_str =
+            fs::read_to_string(state_file.path()).expect("Unable to read networkd state file");
+        if !interface_stats_file_str.contains("NETWORK_FILE") {
+            continue;
+        }
+        managed_interface_count += 1;
+        interfaces_state.push(parse_interface_stats(interface_stats_file_str).unwrap());
+    }
+    Ok(NetworkdState {
+        interfaces_state,
+        managed_interfaces: managed_interface_count,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
 
     const MOCK_INTERFACE_STATE: &str = r###"# This is private data. Do not parse.
 ADMIN_STATE=configured
@@ -155,15 +180,19 @@ LLMNR=yes
 MDNS=no
 "###;
 
+    fn return_expected_interface_state() -> InterfaceState {
+        InterfaceState {
+            admin_state: AdminState::configured,
+            network_file: "/etc/systemd/network/69-eno4.network".to_string(),
+            oper_state: OperState::routable,
+            required_for_online: BoolState::True,
+        }
+    }
+
     #[test]
     fn test_parse_interface_stats() {
         assert_eq!(
-            InterfaceState {
-                admin_state: AdminState::configured,
-                network_file: "/etc/systemd/network/69-eno4.network".to_string(),
-                oper_state: OperState::routable,
-                required_for_online: BoolState::True,
-            },
+            return_expected_interface_state(),
             parse_interface_stats(MOCK_INTERFACE_STATE.to_string()).unwrap(),
         );
     }
@@ -177,8 +206,18 @@ MDNS=no
     }
 
     #[test]
-    fn test_parse_interface_state_files() {
-        let path = PathBuf::from(NETWORKD_STATE_FILES);
-        assert_eq!(Ok(()), parse_interface_state_files(path),)
+    fn test_parse_interface_state_files() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let file_path = temp_dir.path().join("69");
+        let mut state_file = File::create(file_path)?;
+        writeln!(state_file, "{}", MOCK_INTERFACE_STATE)?;
+
+        let expected_files = NetworkdState {
+            interfaces_state: vec![return_expected_interface_state()],
+            managed_interfaces: 1,
+        };
+        let path = PathBuf::from(temp_dir.path());
+        assert_eq!(expected_files, parse_interface_state_files(path).unwrap());
+        Ok(())
     }
 }
