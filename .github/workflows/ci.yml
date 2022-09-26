@@ -20,7 +20,8 @@ jobs:
       - name: Cargo format
         uses: actions-rs/cargo@v1
         with:
-          command: fmt --check
+          command: fmt
+          args: --check
 
       - name: Cargo test
         uses: actions-rs/cargo@v1
