@@ -1,8 +1,15 @@
+use anyhow::Result;
 use clap::Parser;
 use clap_verbosity_flag::InfoLevel;
 use configparser::ini::Ini;
 use log::debug;
 use log::info;
+
+// Strum contains all the trait definitions
+// extern crate strum;
+extern crate strum_macros;
+
+mod networkd;
 
 const LONG_ABOUT: &str = "monitord: Know how happy your systemd is! 😊";
 
@@ -16,8 +23,6 @@ struct Cli {
     #[clap(flatten)]
     verbose: clap_verbosity_flag::Verbosity<InfoLevel>,
 }
-
-use anyhow::Result;
 
 fn main() -> Result<(), String> {
     let args = Cli::parse();
