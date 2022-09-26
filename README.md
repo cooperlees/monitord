@@ -8,7 +8,7 @@ We offer the following run modes:
   - Refer to monitord.timer and monitord.service unit files
   - Ensure no `daemon:` mode options are set in `monitord.conf`
 - daemon mode
-  - Pass `--daemon`
+  - Enable daemon mode in configuration file
   - Stats will be written to stdout every `daemon_stats_refresh_secs`
 - [promethus-exporter](https://prometheus.io/docs/instrumenting/exporters/) daemon
   - Recommended to use monitord.service + set a non 0 prometheus_exporter in `monitord.conf`
