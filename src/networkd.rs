@@ -28,9 +28,19 @@ pub enum AdminState {
 #[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
 #[repr(u8)]
 pub enum BoolState {
-    #[strum(serialize = "false", serialize = "False")]
+    #[strum(
+        serialize = "false",
+        serialize = "False",
+        serialize = "no",
+        serialize = "No"
+    )]
     False = 0,
-    #[strum(serialize = "true", serialize = "True")]
+    #[strum(
+        serialize = "true",
+        serialize = "True",
+        serialize = "yes",
+        serialize = "Yes"
+    )]
     True = 1,
 }
 
@@ -72,6 +82,7 @@ pub struct InterfaceState {
     admin_state: AdminState,
     network_file: String,
     oper_state: OperState,
+    required_for_online: BoolState,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -87,6 +98,7 @@ pub fn parse_interface_stats(interface_state_str: String) -> Result<InterfaceSta
         admin_state: AdminState::unknown,
         network_file: "".to_string(),
         oper_state: OperState::unknown,
+        required_for_online: BoolState::False,
     };
 
     for line in interface_state_str.lines() {
@@ -101,6 +113,9 @@ pub fn parse_interface_stats(interface_state_str: String) -> Result<InterfaceSta
             "ADMIN_STATE" => interface_state.admin_state = AdminState::from_str(value).unwrap(),
             "NETWORK_FILE" => interface_state.network_file = value.to_string(),
             "OPER_STATE" => interface_state.oper_state = OperState::from_str(value).unwrap(),
+            "REQUIRED_FOR_ONLINE" => {
+                interface_state.required_for_online = BoolState::from_str(value).unwrap()
+            }
             _ => continue,
         };
     }
@@ -147,15 +162,15 @@ MDNS=no
                 admin_state: AdminState::configured,
                 network_file: "/etc/systemd/network/69-eno4.network".to_string(),
                 oper_state: OperState::routable,
+                required_for_online: BoolState::True,
             },
             parse_interface_stats(MOCK_INTERFACE_STATE.to_string()).unwrap(),
         );
     }
 
-    // TODO: Change enum values into ints
     #[test]
     fn test_interface_stats_json() {
-        let expected_interface_state_json = r###"{"admin_state":4,"network_file":"/etc/systemd/network/69-eno4.network","oper_state":9}"###;
+        let expected_interface_state_json = r###"{"admin_state":4,"network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###;
         let stats = parse_interface_stats(MOCK_INTERFACE_STATE.to_string()).unwrap();
         let stats_json = serde_json::to_string(&stats).unwrap();
         assert_eq!(expected_interface_state_json.to_string(), stats_json);
