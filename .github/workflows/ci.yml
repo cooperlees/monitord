@@ -1,0 +1,39 @@
+name: Rust CI
+
+on: [push, pull_request]
+
+jobs:
+  build_and_test:
+    name: Rust Cargo CI on ${{matrix.os}}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [macOS-latest, ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v3.0.2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cargo format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+
+      - name: Cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
+      - name: Cargo clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+
+      - name: Cargo release + all feature build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
