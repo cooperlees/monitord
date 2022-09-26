@@ -88,8 +88,8 @@ pub struct InterfaceState {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
 pub struct NetworkdState {
-    interfaces_state: Vec<InterfaceState>,
-    managed_interfaces: u32,
+    pub interfaces_state: Vec<InterfaceState>,
+    pub managed_interfaces: u32,
 }
 
 pub const NETWORKD_STATE_FILES: &str = "/run/systemd/netif/links";
@@ -234,7 +234,10 @@ MDNS=no
         let path = PathBuf::from(temp_dir.path());
         let interface_stats = parse_interface_state_files(path).unwrap();
         let interface_stats_json = serde_json::to_string(&interface_stats).unwrap();
-        assert_eq!(expected_interface_state_json.to_string(), interface_stats_json);
+        assert_eq!(
+            expected_interface_state_json.to_string(),
+            interface_stats_json
+        );
         Ok(())
     }
 }

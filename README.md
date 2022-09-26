@@ -29,24 +29,33 @@ to match systemd unit files.
 
 ```ini
 [monitord]
-debug = false
+debug=false
 # onetime run (cron/systemd timer) output format
-# Supported: json,json-pretty
-output_format = json
+# Supported: json - TODO: implement if we get another format
+output_format=json
+# Run as a daemon or now
 # Time to refresh systemd stats in seconds
 # Daemon mode only
-daemon_stats_refresh_secs = 60
+daemon_stats_refresh_secs=60
+
+[json]
+# TODO: implement
+# Make JSON squash valuse all into top level
+# e.g. {"key1.subkey1.foo": 69, "key2.subkey2.bar": 42}
+faltten=false
 
 [journald]
-# No settings yet.
+enabled=no
 
 [networkd]
-# No settings yet.
+enabled=true
+link_state_dir=/run/systemd/netif/links
 
 [units]
-# No settings yet.
+enabled=no
 
 # Daemon Mode options
+
 [daemon:prometheus_exporter]
 # We recommend TCP port 1 due to this monitoring PID 1 :)
 # Set a port >= 1 to listen
