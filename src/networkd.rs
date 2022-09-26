@@ -2,16 +2,19 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use anyhow::Result;
+use serde_repr::*;
 use strum_macros::EnumString;
 
 #[allow(non_camel_case_types)]
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[repr(u8)]
 pub enum AddressState {
     unknown = 0,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[repr(u8)]
 pub enum AdminState {
     unknown = 0,
     pending = 1,
@@ -22,29 +25,33 @@ pub enum AdminState {
     linger = 6,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[repr(u8)]
 pub enum BoolState {
     #[strum(serialize = "false", serialize = "False")]
-    False,
+    False = 0,
     #[strum(serialize = "true", serialize = "True")]
-    True,
+    True = 1,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[repr(u8)]
 pub enum CarrierState {
     unknown = 0,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[repr(u8)]
 pub enum OnlineState {
     unknown = 0,
     online = 1,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[repr(u8)]
 pub enum OperState {
     unknown = 0,
     missing = 1,
@@ -148,7 +155,7 @@ MDNS=no
     // TODO: Change enum values into ints
     #[test]
     fn test_interface_stats_json() {
-        let expected_interface_state_json= r###"{"admin_state":"configured","network_file":"/etc/systemd/network/69-eno4.network","oper_state":"routable"}"###;
+        let expected_interface_state_json = r###"{"admin_state":4,"network_file":"/etc/systemd/network/69-eno4.network","oper_state":9}"###;
         let stats = parse_interface_stats(MOCK_INTERFACE_STATE.to_string()).unwrap();
         let stats_json = serde_json::to_string(&stats).unwrap();
         assert_eq!(expected_interface_state_json.to_string(), stats_json);
