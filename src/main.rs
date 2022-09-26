@@ -5,10 +5,6 @@ use configparser::ini::Ini;
 use log::debug;
 use log::info;
 
-// Strum contains all the trait definitions
-// extern crate strum;
-extern crate strum_macros;
-
 pub mod networkd;
 
 const LONG_ABOUT: &str = "monitord: Know how happy your systemd is! 😊";
