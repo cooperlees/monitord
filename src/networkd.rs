@@ -97,7 +97,11 @@ pub enum OperState {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
 pub struct InterfaceState {
+    address_state: AddressState,
     admin_state: AdminState,
+    carrier_state: CarrierState,
+    ipv4_address_state: AddressState,
+    ipv6_address_state: AddressState,
     network_file: String,
     oper_state: OperState,
     required_for_online: BoolState,
@@ -114,7 +118,11 @@ pub const NETWORKD_STATE_FILES: &str = "/run/systemd/netif/links";
 /// Parse a networkd state file contents
 pub fn parse_interface_stats(interface_state_str: String) -> Result<InterfaceState, String> {
     let mut interface_state = InterfaceState {
+        address_state: AddressState::unknown,
         admin_state: AdminState::unknown,
+        carrier_state: CarrierState::unknown,
+        ipv4_address_state: AddressState::unknown,
+        ipv6_address_state: AddressState::unknown,
         network_file: "".to_string(),
         oper_state: OperState::unknown,
         required_for_online: BoolState::False,
@@ -129,7 +137,19 @@ pub fn parse_interface_stats(interface_state_str: String) -> Result<InterfaceSta
             .split_once('=')
             .expect("Unable to split a network state line");
         match key {
+            "ADDRESS_STATE" => {
+                interface_state.address_state = AddressState::from_str(value).unwrap()
+            }
             "ADMIN_STATE" => interface_state.admin_state = AdminState::from_str(value).unwrap(),
+            "CARRIER_STATE" => {
+                interface_state.carrier_state = CarrierState::from_str(value).unwrap()
+            }
+            "IPV4_ADDRESS_STATE" => {
+                interface_state.ipv4_address_state = AddressState::from_str(value).unwrap()
+            }
+            "IPV6_ADDRESS_STATE" => {
+                interface_state.ipv6_address_state = AddressState::from_str(value).unwrap()
+            }
             "NETWORK_FILE" => interface_state.network_file = value.to_string(),
             "OPER_STATE" => interface_state.oper_state = OperState::from_str(value).unwrap(),
             "REQUIRED_FOR_ONLINE" => {
@@ -199,7 +219,11 @@ MDNS=no
 
     fn return_expected_interface_state() -> InterfaceState {
         InterfaceState {
+            address_state: AddressState::routable,
             admin_state: AdminState::configured,
+            carrier_state: CarrierState::carrier,
+            ipv4_address_state: AddressState::routable,
+            ipv6_address_state: AddressState::degraded,
             network_file: "/etc/systemd/network/69-eno4.network".to_string(),
             oper_state: OperState::routable,
             required_for_online: BoolState::True,
@@ -216,7 +240,7 @@ MDNS=no
 
     #[test]
     fn test_parse_interface_stats_json() {
-        let expected_interface_state_json = r###"{"admin_state":4,"network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###;
+        let expected_interface_state_json = r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###;
         let stats = parse_interface_stats(MOCK_INTERFACE_STATE.to_string()).unwrap();
         let stats_json = serde_json::to_string(&stats).unwrap();
         assert_eq!(expected_interface_state_json.to_string(), stats_json);
@@ -241,7 +265,7 @@ MDNS=no
 
     #[test]
     fn test_parse_interface_state_files_json() -> Result<()> {
-        let expected_interface_state_json = r###"{"interfaces_state":[{"admin_state":4,"network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###;
+        let expected_interface_state_json = r###"{"interfaces_state":[{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###;
 
         let temp_dir = tempdir()?;
         let file_path = temp_dir.path().join("69");
