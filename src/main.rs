@@ -36,7 +36,7 @@ pub struct MonitordStats {
 fn print_stats(config: Ini, stats: &MonitordStats) {
     let output_format = config
         .get("monitord", "output_format")
-        .unwrap_or("json".to_lowercase());
+        .unwrap_or_else(|| "json".to_lowercase());
     match output_format.as_str() {
         "json" => println!("{}", serde_json::to_string(&stats).unwrap()),
         "json-pretty" => println!("{}", serde_json::to_string_pretty(&stats).unwrap()),
