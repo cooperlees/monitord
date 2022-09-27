@@ -72,7 +72,11 @@ fn stat_collector(config: Ini) -> Result<(), String> {
         if config.getbool("networkd", "enabled").unwrap().unwrap() {
             let networkd_start_path =
                 PathBuf::from_str(config.get("networkd", "link_state_dir").unwrap().as_str());
-            match networkd::parse_interface_state_files(networkd_start_path.unwrap()) {
+            match networkd::parse_interface_state_files(
+                networkd_start_path.unwrap(),
+                networkd::NETWORKCTL_BINARY,
+                vec!["--json=short".to_string(), "list".to_string()],
+            ) {
                 Ok(networkd_stats) => monitord_stats.networkd = networkd_stats,
                 Err(err) => error!("networkd stats failed: {}", err),
             }
