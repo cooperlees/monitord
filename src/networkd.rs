@@ -6,11 +6,18 @@ use anyhow::Result;
 use serde_repr::*;
 use strum_macros::EnumString;
 
+/*
+systemd enums copied from https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h
+*/
+
 #[allow(non_camel_case_types)]
 #[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
 #[repr(u8)]
 pub enum AddressState {
     unknown = 0,
+    off = 1,
+    degraded = 2,
+    routable = 3,
 }
 
 #[allow(non_camel_case_types)]
@@ -50,6 +57,14 @@ pub enum BoolState {
 #[repr(u8)]
 pub enum CarrierState {
     unknown = 0,
+    off = 1,
+    #[strum(serialize = "no-carrier", serialize = "no_carrier")]
+    no_carrier = 2,
+    dormant = 3,
+    #[strum(serialize = "degraded-carrier", serialize = "degraded_carrier")]
+    degraded_carrier = 4,
+    carrier = 5,
+    enslaved = 6,
 }
 
 #[allow(non_camel_case_types)]
@@ -57,7 +72,9 @@ pub enum CarrierState {
 #[repr(u8)]
 pub enum OnlineState {
     unknown = 0,
-    online = 1,
+    offline = 1,
+    partial = 2,
+    online = 3,
 }
 
 #[allow(non_camel_case_types)]
