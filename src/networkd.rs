@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::str::FromStr;
 
 use anyhow::Result;
@@ -113,6 +114,7 @@ pub struct NetworkdState {
     pub managed_interfaces: u32,
 }
 
+pub const NETWORKCTL_BINARY: &str = "/usr/bin/networkctl";
 pub const NETWORKD_STATE_FILES: &str = "/run/systemd/netif/links";
 
 /// Parse a networkd state file contents
@@ -186,6 +188,24 @@ pub fn parse_interface_state_files(
         interfaces_state,
         managed_interfaces: managed_interface_count,
     })
+}
+
+pub fn parse_networkctl_list(
+    network_ctl_binary: &str,
+    args: Vec<&str>,
+) -> Result<serde_json::Value, serde_json::Error> {
+    let err_msg = format!(
+        "failed to execute '{} {}'",
+        network_ctl_binary,
+        args.join(" ")
+    );
+    let output = Command::new(network_ctl_binary)
+        .args(args)
+        .output()
+        .expect(&err_msg);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout)?;
+    Ok(v)
 }
 
 #[cfg(test)]
@@ -278,6 +298,19 @@ MDNS=no
         assert_eq!(
             expected_interface_state_json.to_string(),
             interface_stats_json
+        );
+        Ok(())
+    }
+
+    #[test]
+    /// Test to show that if we get valid JSON in stdout we're doing the right thing ...
+    fn test_parse_networkctl_json() -> Result<()> {
+        let networkctl_json = r###"{"Interfaces":[{"Index":1,"Name":"lo","Type":"loopback","Flags":65609,"FlagsString":"up,loopback,running,lower-up","KernelOperationalState":0,"KernelOperationalStateString":"unknown","MTU":65536,"MinimumMTU":0,"MaximumMTU":4294967295,"AdministrativeState":"unmanaged","OperationalState":"carrier","CarrierState":"carrier","AddressState":"off","IPv4AddressState":"off","IPv6AddressState":"off","OnlineState":null,"Addresses":[{"Family":10,"Address":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],"PrefixLength":128,"Scope":254,"ScopeString":"host","Flags":128,"FlagsString":"permanent","ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Address":[127,0,0,1],"PrefixLength":8,"Scope":254,"ScopeString":"host","Flags":128,"FlagsString":"permanent","ConfigSource":"foreign","ConfigState":"configured"}],"Routes":[{"Family":2,"Destination":[127,0,0,0],"DestinationPrefixLength":32,"PreferredSource":[127,0,0,1],"Scope":253,"ScopeString":"link","Protocol":2,"ProtocolString":"kernel","Type":3,"TypeString":"broadcast","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Destination":[127,0,0,1],"DestinationPrefixLength":32,"PreferredSource":[127,0,0,1],"Scope":254,"ScopeString":"host","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Destination":[127,0,0,0],"DestinationPrefixLength":8,"PreferredSource":[127,0,0,1],"Scope":254,"ScopeString":"host","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Destination":[127,255,255,255],"DestinationPrefixLength":32,"PreferredSource":[127,0,0,1],"Scope":253,"ScopeString":"link","Protocol":2,"ProtocolString":"kernel","Type":3,"TypeString":"broadcast","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":1,"TypeString":"unicast","Priority":256,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"}]},{"Index":2,"Name":"eth0","Type":"ether","Driver":"bnxt_en","Flags":69699,"FlagsString":"up,broadcast,running,multicast,lower-up","KernelOperationalState":6,"KernelOperationalStateString":"up","MTU":1500,"MinimumMTU":60,"MaximumMTU":9500,"HardwareAddress":[188,151,225,137,250,44],"PermanentHardwareAddress":[188,151,225,137,250,44],"BroadcastAddress":[255,255,255,255,255,255],"IPv6LinkLocalAddress":[254,128,0,0,0,0,0,0,190,151,225,255,254,137,250,44],"AdministrativeState":"configured","OperationalState":"routable","CarrierState":"carrier","AddressState":"routable","IPv4AddressState":"off","IPv6AddressState":"routable","OnlineState":"online","NetworkFile":"/usr/lib/systemd/network/00-metalos-eth0.network","RequiredForOnline":true,"RequiredOperationalStateForOnline":["degraded","routable"],"RequiredFamilyForOnline":"any","ActivationPolicy":"up","LinkFile":"/usr/lib/systemd/network/00-metalos-eth0.link","Path":"pci-0000:02:00.0","Vendor":"Broadcom Inc. and subsidiaries","Model":"BCM57452 NetXtreme-E 10Gb/25Gb/40Gb/50Gb Ethernet","SearchDomains":[{"Domain":"27.lla2.facebook.com","ConfigSource":"static"},{"Domain":"lla2.facebook.com","ConfigSource":"static"},{"Domain":"facebook.com","ConfigSource":"static"},{"Domain":"tfbnw.net","ConfigSource":"static"}],"DNSSettings":[{"LLMNR":"yes","ConfigSource":"static"},{"MDNS":"no","ConfigSource":"static"}],"Addresses":[{"Family":10,"Address":[254,128,0,0,0,0,0,0,190,151,225,255,254,137,250,44],"PrefixLength":64,"Scope":253,"ScopeString":"link","Flags":128,"FlagsString":"permanent","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Address":[36,1,219,0,48,44,65,36,250,206,0,0,2,34,0,0],"PrefixLength":64,"Scope":0,"ScopeString":"global","Flags":128,"FlagsString":"permanent","ConfigSource":"static","ConfigState":"configured"},{"Family":10,"Address":[40,3,96,128,137,4,146,34,0,0,0,0,0,0,0,1],"PrefixLength":64,"Scope":0,"ScopeString":"global","Flags":160,"FlagsString":"deprecated,permanent","PreferredLifetimeUsec":600951316,"ConfigSource":"static","ConfigState":"configured"}],"Routes":[{"Family":10,"Destination":[36,1,219,0,48,44,65,36,250,206,0,0,2,34,0,0],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[40,3,96,128,137,4,146,34,0,0,0,0,0,0,0,0],"DestinationPrefixLength":64,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":1,"TypeString":"unicast","Priority":256,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[254,128,0,0,0,0,0,0,190,151,225,255,254,137,250,44],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"DestinationPrefixLength":8,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":5,"TypeString":"multicast","Priority":256,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[40,3,96,128,137,4,146,34,0,0,0,0,0,0,0,1],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"DestinationPrefixLength":0,"Gateway":[254,128,0,0,0,0,0,0,0,0,0,0,250,206,176,12],"Scope":0,"ScopeString":"global","Protocol":4,"ProtocolString":"static","Type":1,"TypeString":"unicast","Priority":10,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"static","ConfigState":"configuring,configured"},{"Family":10,"Destination":[36,1,219,0,48,44,65,36,0,0,0,0,0,0,0,0],"DestinationPrefixLength":64,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":1,"TypeString":"unicast","Priority":256,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[254,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"DestinationPrefixLength":64,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":1,"TypeString":"unicast","Priority":256,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"}]}],"RoutingPolicyRules":[{"Family":2,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":32767,"FirewallMark":0,"FirewallMask":0,"Table":253,"TableString":"default(253)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":0,"FirewallMark":0,"FirewallMask":0,"Table":255,"TableString":"local(255)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":0,"FirewallMark":0,"FirewallMask":0,"Table":255,"TableString":"local(255)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":32766,"FirewallMark":0,"FirewallMask":0,"Table":254,"TableString":"main(254)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":32766,"FirewallMark":0,"FirewallMask":0,"Table":254,"TableString":"main(254)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"}]}"###;
+        let expected_json_value: serde_json::Value = serde_json::from_str(networkctl_json).unwrap();
+        assert_eq!(
+            expected_json_value,
+            // We rely on echo existing at this path - Could move to `sh -c echo` if actions has issues
+            parse_networkctl_list("/usr/bin/echo", vec![&networkctl_json]).unwrap()
         );
         Ok(())
     }
