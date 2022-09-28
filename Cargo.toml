@@ -1,7 +1,15 @@
 [package]
 name = "monitord"
-version = "0.0.1"
+version = "0.1.0"
+authors = ["Cooper Ry Lees <me@cooperlees.com>"]
+license = "GPL v2.1"
+readme = "README.md"
+repository = "https://github.com/cooperlees/monitord"
 edition = "2021"
+description = """
+monitord ... know how happy your systemd is! 😊
+"""
+categories = ["network-programming", "os::linux-apis"]
 
 [dependencies]
 anyhow = "1.0"
