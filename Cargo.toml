@@ -20,3 +20,6 @@ strum_macros = "0.24"
 [dev-dependencies]
 oxidized-json-checker = "0.3.2"
 tempfile = "3.3.0"
+
+[profile]
+release = { strip = "symbols", lto = "thin", opt-level = "z" }
