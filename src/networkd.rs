@@ -35,9 +35,11 @@ pub enum AdminState {
     linger = 6,
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
 #[repr(u8)]
 pub enum BoolState {
+    unknown = u8::MAX,
     #[strum(
         serialize = "false",
         serialize = "False",
@@ -112,11 +114,17 @@ pub struct InterfaceState {
 
 /// Take an interface id and return the name or empty string
 fn interface_id_to_name(id: u64, networkctl_json: &serde_json::Value) -> String {
-    let interfaces_array = networkctl_json["Interfaces"].as_array().unwrap();
+    let interfaces_array = match networkctl_json["Interfaces"].as_array() {
+        Some(nj) => nj,
+        None => {
+            error!("networkctl JSON passed has no \"Interfaces\" vector");
+            return "".to_string();
+        }
+    };
     for interface in interfaces_array.iter() {
-        let interface_index: u64 = interface["Index"].as_u64().unwrap();
+        let interface_index: u64 = interface["Index"].as_u64().unwrap_or(0);
         if interface_index == id {
-            return interface["Name"].as_str().unwrap().to_string();
+            return interface["Name"].as_str().unwrap_or("").to_string();
         }
     }
     error!("Unable to find interface name for id {}", id);
@@ -168,22 +176,33 @@ pub fn parse_interface_stats(
             .expect("Unable to split a network state line");
         match key {
             "ADDRESS_STATE" => {
-                interface_state.address_state = AddressState::from_str(value).unwrap()
+                interface_state.address_state =
+                    AddressState::from_str(value).unwrap_or(AddressState::unknown)
             }
-            "ADMIN_STATE" => interface_state.admin_state = AdminState::from_str(value).unwrap(),
+            "ADMIN_STATE" => {
+                interface_state.admin_state =
+                    AdminState::from_str(value).unwrap_or(AdminState::unknown)
+            }
             "CARRIER_STATE" => {
-                interface_state.carrier_state = CarrierState::from_str(value).unwrap()
+                interface_state.carrier_state =
+                    CarrierState::from_str(value).unwrap_or(CarrierState::unknown)
             }
             "IPV4_ADDRESS_STATE" => {
-                interface_state.ipv4_address_state = AddressState::from_str(value).unwrap()
+                interface_state.ipv4_address_state =
+                    AddressState::from_str(value).unwrap_or(AddressState::unknown)
             }
             "IPV6_ADDRESS_STATE" => {
-                interface_state.ipv6_address_state = AddressState::from_str(value).unwrap()
+                interface_state.ipv6_address_state =
+                    AddressState::from_str(value).unwrap_or(AddressState::unknown)
             }
             "NETWORK_FILE" => interface_state.network_file = value.to_string(),
-            "OPER_STATE" => interface_state.oper_state = OperState::from_str(value).unwrap(),
+            "OPER_STATE" => {
+                interface_state.oper_state =
+                    OperState::from_str(value).unwrap_or(OperState::unknown)
+            }
             "REQUIRED_FOR_ONLINE" => {
-                interface_state.required_for_online = BoolState::from_str(value).unwrap()
+                interface_state.required_for_online =
+                    BoolState::from_str(value).unwrap_or(BoolState::unknown)
             }
             _ => continue,
         };
@@ -194,16 +213,29 @@ pub fn parse_interface_stats(
 
 /// Parse interface state files in directory supplied
 pub fn parse_interface_state_files(
-    states_path_path: PathBuf,
+    states_path: PathBuf,
     networkctl_binary: &str,
     args: Vec<String>,
 ) -> Result<NetworkdState, std::io::Error> {
     let mut managed_interface_count: u64 = 0;
     let mut interfaces_state = vec![];
 
-    let networkctl_json = parse_networkctl_list(networkctl_binary, args).unwrap();
-    for state_file_dir in fs::read_dir(&states_path_path)? {
-        let state_file = state_file_dir.unwrap();
+    let networkctl_json: Option<serde_json::Value> =
+        match parse_networkctl_list(networkctl_binary, args) {
+            Ok(json) => Some(json),
+            Err(err) => {
+                error!("Unable to parse networkctl JSON: {:?}", err);
+                None
+            }
+        };
+    for state_file_dir in fs::read_dir(&states_path)? {
+        let state_file = match state_file_dir {
+            Ok(sf) => sf,
+            Err(err) => {
+                error!("Unable to read dir {:?}: {}", states_path.as_os_str(), err);
+                break;
+            }
+        };
         if !state_file.path().is_file() {
             continue;
         }
@@ -215,14 +247,18 @@ pub fn parse_interface_state_files(
         managed_interface_count += 1;
         let fname = state_file.file_name();
         let interface_id: u64 = u64::from_str(fname.to_str().unwrap_or("0")).unwrap_or(0);
-        interfaces_state.push(
-            parse_interface_stats(
-                interface_stats_file_str,
-                interface_id,
-                Some(&networkctl_json),
-            )
-            .unwrap(),
-        );
+        match parse_interface_stats(
+            interface_stats_file_str,
+            interface_id,
+            networkctl_json.as_ref(),
+        ) {
+            Ok(interface_state) => interfaces_state.push(interface_state),
+            Err(err) => error!(
+                "Unable to parse interface statistics for {:?}: {}",
+                state_file.path().into_os_string(),
+                err
+            ),
+        }
     }
     Ok(NetworkdState {
         interfaces_state,
@@ -249,10 +285,16 @@ pub fn parse_networkctl_list(
             network_ctl_binary,
             args.join(" ")
         );
-        let v: serde_json::Value = serde_json::from_str("{}")?;
-        return Ok(v);
+        serde_json::from_str("invalid_json")?;
     }
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout = match String::from_utf8(output.stdout) {
+        Ok(stdout) => stdout,
+        Err(err) => {
+            error!("Unable to parse stdout from networkctl run: {}", err);
+            // Pass back invalid JSON so callers get a serde_json error
+            "invalid_json".to_string()
+        }
+    };
     let v: serde_json::Value = serde_json::from_str(&stdout)?;
     Ok(v)
 }
@@ -314,6 +356,15 @@ MDNS=no
         assert_eq!(
             "eth0".to_string(),
             interface_id_to_name(2, &networkctl_json_parsed),
+        );
+    }
+
+    #[test]
+    fn test_interface_id_to_name_fail() {
+        let networkctl_json_parsed = serde_json::from_str("{}").unwrap();
+        assert_eq!(
+            "".to_string(),
+            interface_id_to_name(69, &networkctl_json_parsed),
         );
     }
 
@@ -389,5 +440,17 @@ MDNS=no
             parse_networkctl_list(ECHO_BINARY, return_echo_args()).unwrap()
         );
         Ok(())
+    }
+    #[test]
+    /// Test to show we handle networkctl failing
+    fn test_parse_networkctl_json_fail() {
+        // No stdout
+        assert!(parse_networkctl_list(ECHO_BINARY, vec!["".to_string()]).is_err());
+        // Invalid JSON returned
+        assert!(
+            parse_networkctl_list(ECHO_BINARY, vec!["Cooper is invalid JSON".to_string()]).is_err()
+        );
+        // Bad return value
+        assert!(parse_networkctl_list("/bin/false", vec!["foo".to_string()]).is_err());
     }
 }
