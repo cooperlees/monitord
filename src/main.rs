@@ -91,7 +91,7 @@ fn stat_collector(config: Ini) -> Result<(), String> {
             break;
         }
         let sleep_time = collect_interval_ms - elapsed_runtime;
-        info!("stat collection sleeping for {}", sleep_time);
+        info!("stat collection sleeping for {}s 😴", sleep_time / 1000);
         // TODO: Maybe just default to collect_interval on error
         thread::sleep(Duration::from_millis(sleep_time.try_into().unwrap()));
     }
