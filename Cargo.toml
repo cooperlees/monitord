@@ -2,7 +2,7 @@
 name = "monitord"
 version = "0.1.0"
 authors = ["Cooper Ry Lees <me@cooperlees.com>"]
-license = "GPL v2.1"
+license = "GNU General Public License v2.0 or later"
 readme = "README.md"
 repository = "https://github.com/cooperlees/monitord"
 edition = "2021"
