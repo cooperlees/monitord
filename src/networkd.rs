@@ -99,15 +99,15 @@ pub enum OperState {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
 pub struct InterfaceState {
-    address_state: AddressState,
-    admin_state: AdminState,
-    carrier_state: CarrierState,
-    ipv4_address_state: AddressState,
-    ipv6_address_state: AddressState,
-    name: String,
-    network_file: String,
-    oper_state: OperState,
-    required_for_online: BoolState,
+    pub address_state: AddressState,
+    pub admin_state: AdminState,
+    pub carrier_state: CarrierState,
+    pub ipv4_address_state: AddressState,
+    pub ipv6_address_state: AddressState,
+    pub name: String,
+    pub network_file: String,
+    pub oper_state: OperState,
+    pub required_for_online: BoolState,
 }
 
 /// Take an interface id and return the name or empty string
@@ -126,7 +126,7 @@ fn interface_id_to_name(id: u64, networkctl_json: &serde_json::Value) -> String 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
 pub struct NetworkdState {
     pub interfaces_state: Vec<InterfaceState>,
-    pub managed_interfaces: u32,
+    pub managed_interfaces: u64,
 }
 
 pub const NETWORKCTL_BINARY: &str = "/usr/bin/networkctl";
@@ -198,7 +198,7 @@ pub fn parse_interface_state_files(
     networkctl_binary: &str,
     args: Vec<String>,
 ) -> Result<NetworkdState, std::io::Error> {
-    let mut managed_interface_count: u32 = 0;
+    let mut managed_interface_count: u64 = 0;
     let mut interfaces_state = vec![];
 
     let networkctl_json = parse_networkctl_list(networkctl_binary, args).unwrap();

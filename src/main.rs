@@ -12,6 +12,7 @@ use log::debug;
 use log::error;
 use log::info;
 
+pub mod json;
 pub mod networkd;
 
 const LONG_ABOUT: &str = "monitord: Know how happy your systemd is! 😊";
@@ -39,6 +40,7 @@ fn print_stats(config: Ini, stats: &MonitordStats) {
         .unwrap_or_else(|| "json".to_lowercase());
     match output_format.as_str() {
         "json" => println!("{}", serde_json::to_string(&stats).unwrap()),
+        "json-flat" => println!("{}", json::flatten(stats)),
         "json-pretty" => println!("{}", serde_json::to_string_pretty(&stats).unwrap()),
         err => error!(
             "Unable to print output in {} format ... fix config ...",

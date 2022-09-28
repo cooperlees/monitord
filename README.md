@@ -31,18 +31,12 @@ to match systemd unit files.
 [monitord]
 debug=false
 # onetime run (cron/systemd timer) output format
-# Supported: json, json-pretty
+# Supported: json, json-flat, json-pretty
 output_format=json
 # Run as a daemon or now
 # Time to refresh systemd stats in seconds
 # Daemon mode only
 daemon_stats_refresh_secs=60
-
-[json]
-# TODO: implement
-# Make JSON squash valuse all into top level
-# e.g. {"key1.subkey1.foo": 69, "key2.subkey2.bar": 42}
-faltten=false
 
 [journald]
 enabled=no
@@ -61,6 +55,34 @@ enabled=no
 # Set a port >= 1 to listen
 port = 1
 ```
+
+## Output Formats
+
+### json
+
+Normal `serde_json` non pretty JSON. All on one line. Most compact format.
+
+### json-flat
+
+Move all key value pairs to the top level and . notate compononet + sub values.
+Is semi pretty too + custom. It's all unittested ...
+
+```json
+{
+  'networkd.eth0.address_state': 3
+  'networkd.eth0.admin_state': 4
+  'networkd.eth0.carrier_state': 5
+  'networkd.eth0.ipv4_address_state': 3
+  'networkd.eth0.ipv6_address_state': 2
+  'networkd.eth0.oper_state': 9
+  'networkd.eth0.required_for_online': 1
+  'networkd.managed_interfaces': 1
+}
+```
+
+### json-pretty
+
+Normal `serde_json` pretty representations of each componoents structs.
 
 ## Development
 
