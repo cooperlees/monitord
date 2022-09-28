@@ -19,7 +19,6 @@ fn flatten_networkd(networkd_stats: &networkd::NetworkdState) -> HashMap<String,
     }
 
     for interface in &networkd_stats.interfaces_state {
-        println!("{:?}", interface);
         let interface_base = format!("{}.{}", base_metric_name, interface.name);
         flat_stats.insert(
             format!("{interface_base}.address_state"),
@@ -62,7 +61,7 @@ pub fn flatten(stats_struct: &MonitordStats) -> String {
 
     let mut json_str = String::from("{\n");
     for (key, value) in flat_stats.iter().sorted() {
-        let new_kv = format!("  '{}': {},\n", key, value);
+        let new_kv = format!("  \"{}\": {},\n", key, value);
         json_str.push_str(new_kv.as_str());
     }
     // Remove last trailing comma to be valid JSON - Super lame but works ...
@@ -78,14 +77,14 @@ mod tests {
 
     // This will always be sorted / deterministic ...
     const EXPECTED_FLAT_JSON: &str = r###"{
-  'networkd.eth0.address_state': 3,
-  'networkd.eth0.admin_state': 4,
-  'networkd.eth0.carrier_state': 5,
-  'networkd.eth0.ipv4_address_state': 3,
-  'networkd.eth0.ipv6_address_state': 2,
-  'networkd.eth0.oper_state': 9,
-  'networkd.eth0.required_for_online': 1,
-  'networkd.managed_interfaces': 1
+  "networkd.eth0.address_state": 3,
+  "networkd.eth0.admin_state": 4,
+  "networkd.eth0.carrier_state": 5,
+  "networkd.eth0.ipv4_address_state": 3,
+  "networkd.eth0.ipv6_address_state": 2,
+  "networkd.eth0.oper_state": 9,
+  "networkd.eth0.required_for_online": 1,
+  "networkd.managed_interfaces": 1
 }"###;
 
     fn return_monitord_stats() -> MonitordStats {
@@ -109,6 +108,8 @@ mod tests {
 
     #[test]
     fn test_flatten() {
-        assert_eq!(EXPECTED_FLAT_JSON, flatten(&return_monitord_stats()));
+        let json_flat = flatten(&return_monitord_stats());
+        assert_eq!(EXPECTED_FLAT_JSON, json_flat);
+        assert!(oxidized_json_checker::validate_str(&json_flat).is_ok());
     }
 }
