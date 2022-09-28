@@ -62,10 +62,13 @@ pub fn flatten(stats_struct: &MonitordStats) -> String {
 
     let mut json_str = String::from("{\n");
     for (key, value) in flat_stats.iter().sorted() {
-        let new_kv = format!("  '{}': {}\n", key, value);
+        let new_kv = format!("  '{}': {},\n", key, value);
         json_str.push_str(new_kv.as_str());
     }
-    json_str.push('}');
+    // Remove last trailing comma to be valid JSON - Super lame but works ...
+    json_str.pop();
+    json_str.pop();
+    json_str.push_str("\n}");
     json_str
 }
 
@@ -75,13 +78,13 @@ mod tests {
 
     // This will always be sorted / deterministic ...
     const EXPECTED_FLAT_JSON: &str = r###"{
-  'networkd.eth0.address_state': 3
-  'networkd.eth0.admin_state': 4
-  'networkd.eth0.carrier_state': 5
-  'networkd.eth0.ipv4_address_state': 3
-  'networkd.eth0.ipv6_address_state': 2
-  'networkd.eth0.oper_state': 9
-  'networkd.eth0.required_for_online': 1
+  'networkd.eth0.address_state': 3,
+  'networkd.eth0.admin_state': 4,
+  'networkd.eth0.carrier_state': 5,
+  'networkd.eth0.ipv4_address_state': 3,
+  'networkd.eth0.ipv6_address_state': 2,
+  'networkd.eth0.oper_state': 9,
+  'networkd.eth0.required_for_online': 1,
   'networkd.managed_interfaces': 1
 }"###;
 

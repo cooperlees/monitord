@@ -69,13 +69,13 @@ Is semi pretty too + custom. It's all unittested ...
 
 ```json
 {
-  'networkd.eth0.address_state': 3
-  'networkd.eth0.admin_state': 4
-  'networkd.eth0.carrier_state': 5
-  'networkd.eth0.ipv4_address_state': 3
-  'networkd.eth0.ipv6_address_state': 2
-  'networkd.eth0.oper_state': 9
-  'networkd.eth0.required_for_online': 1
+  'networkd.eth0.address_state': 3,
+  'networkd.eth0.admin_state': 4,
+  'networkd.eth0.carrier_state': 5,
+  'networkd.eth0.ipv4_address_state': 3,
+  'networkd.eth0.ipv6_address_state': 2,
+  'networkd.eth0.oper_state': 9,
+  'networkd.eth0.required_for_online': 1,
   'networkd.managed_interfaces': 1
 }
 ```
