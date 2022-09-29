@@ -12,8 +12,9 @@ use log::debug;
 use log::error;
 use log::info;
 
-pub mod json;
-pub mod networkd;
+use monitord::json;
+use monitord::networkd;
+use monitord::MonitordStats;
 
 const LONG_ABOUT: &str = "monitord: Know how happy your systemd is! 😊";
 
@@ -26,12 +27,6 @@ struct Cli {
     config: String,
     #[clap(flatten)]
     verbose: clap_verbosity_flag::Verbosity<InfoLevel>,
-}
-
-// TODO: Add other components as support is added
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
-pub struct MonitordStats {
-    networkd: networkd::NetworkdState,
 }
 
 fn print_stats(config: Ini, stats: &MonitordStats) {

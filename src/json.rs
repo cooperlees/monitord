@@ -14,7 +14,7 @@ fn flatten_networkd(networkd_stats: &networkd::NetworkdState) -> HashMap<String,
     flat_stats.insert(managed_interfaces_key, networkd_stats.managed_interfaces);
 
     if networkd_stats.interfaces_state.is_empty() {
-        debug!("No netword interfaces to add to flat JSON");
+        debug!("No networkd interfaces to add to flat JSON");
         return flat_stats;
     }
 
