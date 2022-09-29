@@ -15,11 +15,46 @@ We offer the following run modes:
 
 Open to more formats / run methods ... Open a PR.
 
-INFO level logging is enabled to stderr by default.
+`monitord` is a config driven binary. We plan to keep CLI arguments to a minimum.
+
+**INFO** level logging is enabled to stderr by default. Use `-v` to increase (DEBUG) and `-q` to reduce logging.
 
 ## Install
 
-Will work on this, but at the moment it's a manual clone and build from this repository.
+Install via cargo or use as a dependency in your `Cargo.toml`.
+
+- `cargo install monitord`
+- Create (copy from repo) a `monitord.conf`
+  - Defaults to looking for it at /etc/monitord.conf
+- `monitord --help`
+
+```console
+crl-m1:monitord cooper$ monitord --help
+monitord 0.6.9
+monitord: Know how happy your systemd is! 😊
+
+USAGE:
+    monitord [OPTIONS]
+
+OPTIONS:
+    -c, --config <CONFIG>
+            Location of your monitord config
+
+            [default: /etc/monitord.conf]
+
+    -h, --help
+            Print help information
+
+    -q, --quiet
+            Less output per occurrence
+
+    -v, --verbose
+            More output per occurrence
+
+    -V, --version
+            Print version information
+```
+
 
 ### Config
 
@@ -64,8 +99,8 @@ Normal `serde_json` non pretty JSON. All on one line. Most compact format.
 
 ### json-flat
 
-Move all key value pairs to the top level and . notate compononet + sub values.
-Is semi pretty too + custom. It's all unittested ...
+Move all key value pairs to the top level and . notate compononets + sub values.
+Is semi pretty too + custom. All unittested ...
 
 ```json
 {
@@ -121,35 +156,13 @@ Normal `serde_json` pretty representations of each componoents structs.
 
 ## Development
 
-- `cargo run -- --help`
-  - `-v` will enable debug logging
+To do test runs (requires `systemd` and `systemd-networkd` *installed*)
+- Pending what you have enabled in your config ...
 
-```console
-crl-m1:monitord cooper$ cargo run -- --help
-   Compiling monitord v0.0.1 (/Users/cooper/repos/monitord)
-    Finished dev [unoptimized + debuginfo] target(s) in 0.45s
-     Running `target/debug/monitord --help`
-monitord 0.0.1
-monitord: Know how happy your systemd is! 😊
+- `cargo run -- -c monitord.conf -v`
 
-USAGE:
-    monitord [OPTIONS]
+Ensure the following pass before submitting a PR (CI checks):
 
-OPTIONS:
-    -c, --config <CONFIG>
-            Location of your monitord config
-
-            [default: /etc/monitord.conf]
-
-    -h, --help
-            Print help information
-
-    -q, --quiet
-            Less output per occurrence
-
-    -v, --verbose
-            More output per occurrence
-
-    -V, --version
-            Print version information
-```
+- `cargo test`
+- `cargo clippy`
+- `cargo fmt`
