@@ -306,7 +306,7 @@ mod tests {
     use std::io::Write;
     use tempfile::tempdir;
 
-    const ECHO_BINARY: &str = "/usr/bin/echo";
+    const ECHO_BINARY: &str = "/bin/echo";
     const MOCK_INTERFACE_STATE: &str = r###"# This is private data. Do not parse.
 ADMIN_STATE=configured
 OPER_STATE=routable
@@ -451,6 +451,6 @@ MDNS=no
             parse_networkctl_list(ECHO_BINARY, vec!["Cooper is invalid JSON".to_string()]).is_err()
         );
         // Bad return value
-        assert!(parse_networkctl_list("/bin/false", vec!["foo".to_string()]).is_err());
+        assert!(parse_networkctl_list("/usr/bin/false", vec!["foo".to_string()]).is_err());
     }
 }
