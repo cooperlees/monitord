@@ -24,7 +24,7 @@ const LONG_ABOUT: &str = "monitord: Know how happy your systemd is! 😊";
 struct Cli {
     /// Location of your monitord config
     #[clap(short, long, value_parser, default_value = "/etc/monitord.conf")]
-    config: String,
+    config: PathBuf,
     #[clap(flatten)]
     verbose: clap_verbosity_flag::Verbosity<InfoLevel>,
 }
@@ -46,19 +46,20 @@ fn print_stats(config: Ini, stats: &MonitordStats) {
 
 fn stat_collector(config: Ini) -> Result<(), String> {
     let daemon_mode = config.getbool("monitord", "daemon").unwrap().unwrap();
-    let collect_interval_ms: u128 = <u64 as Into<u128>>::into(
-        config
-            .getuint("monitord", "daemon_stats_refresh_secs")
-            .unwrap()
-            .unwrap(),
-    ) * 1000;
+    let mut collect_interval_ms = 0;
+    if daemon_mode {
+        collect_interval_ms = match config.getuint("monitord", "daemon_stats_refresh_secs") {
+            Ok(daemon_stats_refresh_secs) => daemon_stats_refresh_secs.unwrap(),
+            Err(err) => {
+                return Err(format!(
+                    "Daemon mode is true in config and no daemon_stats_refresh_secs is set: {}",
+                    err
+                ))
+            }
+        };
+    }
 
-    let mut monitord_stats = MonitordStats {
-        networkd: networkd::NetworkdState {
-            interfaces_state: vec![],
-            managed_interfaces: 0,
-        },
-    };
+    let mut monitord_stats = MonitordStats::default();
     loop {
         let collect_start_time = Instant::now();
 
@@ -79,16 +80,15 @@ fn stat_collector(config: Ini) -> Result<(), String> {
             }
         }
 
-        let elapsed_runtime = collect_start_time.elapsed().as_millis();
-        info!("stat collection run took {}ms", elapsed_runtime);
+        let elapsed_runtime_ms: u64 = collect_start_time.elapsed().as_secs() * 1000;
+        info!("stat collection run took {}ms", elapsed_runtime_ms);
         print_stats(config.clone(), &monitord_stats);
         if !daemon_mode {
             break;
         }
-        let sleep_time = collect_interval_ms - elapsed_runtime;
-        info!("stat collection sleeping for {}s 😴", sleep_time / 1000);
-        // TODO: Maybe just default to collect_interval on error
-        thread::sleep(Duration::from_millis(sleep_time.try_into().unwrap()));
+        let sleep_time_ms = collect_interval_ms - elapsed_runtime_ms;
+        info!("stat collection sleeping for {}s 😴", sleep_time_ms / 1000);
+        thread::sleep(Duration::from_millis(sleep_time_ms));
     }
     Ok(())
 }
@@ -101,7 +101,7 @@ fn main() -> Result<(), String> {
 
     info!("{}", LONG_ABOUT);
     debug!("CLI Args: {:?}", args);
-    debug!("Loading {} config", args.config);
+    debug!("Loading {:?} config", args.config.as_os_str());
     let mut config = Ini::new();
     let _config_map = config.load(args.config)?;
 

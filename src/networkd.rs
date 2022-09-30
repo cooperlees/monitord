@@ -131,7 +131,7 @@ fn interface_id_to_name(id: u64, networkctl_json: &serde_json::Value) -> String 
     "".to_string()
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 pub struct NetworkdState {
     pub interfaces_state: Vec<InterfaceState>,
     pub managed_interfaces: u64,
