@@ -13,7 +13,7 @@ categories = ["network-programming", "os::linux-apis"]
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "3.2.22", features = ["derive"] }
+clap = { version = "4.0.11", features = ["derive"] }
 clap-verbosity-flag = "1.0.1"
 configparser = "3.0.2"
 env_logger = "0.9"
