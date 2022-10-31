@@ -12,6 +12,7 @@ pub struct SystemdUnitStats {
     pub active_units: u64,
     pub automount_units: u64,
     pub device_units: u64,
+    pub failed_units: u64,
     pub inactive_units: u64,
     pub jobs_queued: u64,
     pub loaded_units: u64,
@@ -69,6 +70,7 @@ fn parse_unit(
     // Count unit status
     match unit.3.as_str() {
         "active" => stats.active_units += 1,
+        "failed" => stats.failed_units += 1,
         "inactive" => stats.inactive_units += 1,
         // TOOD: Change to debug logging ...
         unknown => debug!("Found unhandled '{}' unit state", unknown),
@@ -107,6 +109,7 @@ mod tests {
             active_units: 0,
             automount_units: 0,
             device_units: 0,
+            failed_units: 0,
             inactive_units: 1,
             jobs_queued: 0,
             loaded_units: 1,
