@@ -11,11 +11,14 @@ use log::info;
 
 pub mod json;
 pub mod networkd;
+mod systemd_dbus;
+pub mod units;
 
 // TODO: Add other components as support is added
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 pub struct MonitordStats {
     pub networkd: networkd::NetworkdState,
+    pub units: units::SystemdUnitStats,
 }
 
 pub fn print_stats(config: Ini, stats: &MonitordStats) {
@@ -66,6 +69,14 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
             ) {
                 Ok(networkd_stats) => monitord_stats.networkd = networkd_stats,
                 Err(err) => error!("networkd stats failed: {}", err),
+            }
+        }
+
+        // Run units collector if enabled
+        if config.getbool("units", "enabled").unwrap().unwrap() {
+            match units::parse_unit_state() {
+                Ok(units_stats) => monitord_stats.units = units_stats,
+                Err(err) => error!("units stats failed: {}", err),
             }
         }
 
