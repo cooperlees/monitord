@@ -32,7 +32,10 @@ fn read_config_bool(config: &Ini, section: String, key: String) -> bool {
     match option_bool {
         Some(bool_value) => bool_value,
         None => {
-            error!("No value for '{}' in '{}' section ... assuming false", key, section);
+            error!(
+                "No value for '{}' in '{}' section ... assuming false",
+                key, section
+            );
             false
         }
     }
