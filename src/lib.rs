@@ -21,6 +21,23 @@ pub struct MonitordStats {
     pub units: units::SystemdUnitStats,
 }
 
+fn read_config_bool(config: &Ini, section: String, key: String) -> bool {
+    let option_bool = match config.getbool(&section, &key) {
+        Ok(config_option_bool) => config_option_bool,
+        Err(err) => panic!(
+            "Unable to find '{}' key in '{}' section in config file: {}",
+            key, section, err
+        ),
+    };
+    match option_bool {
+        Some(bool_value) => bool_value,
+        None => {
+            error!("No value for '{}' in '{}' section ... assuming false", key, section);
+            false
+        }
+    }
+}
+
 pub fn print_stats(config: Ini, stats: &MonitordStats) {
     let output_format = config
         .get("monitord", "output_format")
@@ -37,7 +54,7 @@ pub fn print_stats(config: Ini, stats: &MonitordStats) {
 }
 
 pub fn stat_collector(config: Ini) -> Result<(), String> {
-    let daemon_mode = config.getbool("monitord", "daemon").unwrap().unwrap();
+    let daemon_mode = read_config_bool(&config, String::from("monitord"), String::from("daemon"));
     let mut collect_interval_ms = 0;
     if daemon_mode {
         collect_interval_ms = match config.getuint("monitord", "daemon_stats_refresh_secs") {
@@ -54,18 +71,24 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
     let mut monitord_stats = MonitordStats::default();
     loop {
         let collect_start_time = Instant::now();
+        let mut ran_collector_count: u8 = 0;
 
         info!("Starting stat collection run");
 
         // TODO: Move each collector into a function + thread
         // Run networkd collector if enabled
-        if config.getbool("networkd", "enabled").unwrap().unwrap() {
-            let networkd_start_path =
-                PathBuf::from_str(config.get("networkd", "link_state_dir").unwrap().as_str());
+        if read_config_bool(&config, String::from("networkd"), String::from("enabled")) {
+            ran_collector_count += 1;
+            let networkd_start_path = PathBuf::from_str(
+                config
+                    .get("networkd", "link_state_dir")
+                    .unwrap_or_else(|| String::from(networkd::NETWORKD_STATE_FILES))
+                    .as_str(),
+            );
             match networkd::parse_interface_state_files(
                 networkd_start_path.unwrap(),
                 networkd::NETWORKCTL_BINARY,
-                vec!["--json=short".to_string(), "list".to_string()],
+                vec![String::from("--json=short"), String::from("list")],
             ) {
                 Ok(networkd_stats) => monitord_stats.networkd = networkd_stats,
                 Err(err) => error!("networkd stats failed: {}", err),
@@ -73,11 +96,17 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
         }
 
         // Run units collector if enabled
-        if config.getbool("units", "enabled").unwrap().unwrap() {
+        if read_config_bool(&config, String::from("units"), String::from("enabled")) {
+            ran_collector_count += 1;
             match units::parse_unit_state() {
                 Ok(units_stats) => monitord_stats.units = units_stats,
                 Err(err) => error!("units stats failed: {}", err),
             }
+        }
+
+        if ran_collector_count < 1 {
+            error!("No collectors ran. Exiting");
+            std::process::exit(1);
         }
 
         let elapsed_runtime_ms: u64 = collect_start_time.elapsed().as_secs() * 1000;
