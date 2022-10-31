@@ -79,7 +79,7 @@ fn flatten_units(units_stats: &units::SystemdUnitStats) -> HashMap<String, u64> 
             "timer_units" => Some(units_stats.timer_units),
             "total_units" => Some(units_stats.total_units),
             _ => {
-                debug!("Got a unahndled stat '{}'", field_name);
+                debug!("Got a unhandled stat '{}'", field_name);
                 None
             }
         };
