@@ -58,7 +58,7 @@ OPTIONS:
 
 ### Config
 
-monitord can have the different components monitoted. To enable / disabled set the 
+monitord can have the different components monitored. To enable / disabled set the 
 following in our monitord.conf. This file is [ini format](https://en.wikipedia.org/wiki/INI_file)
 to match systemd unit files.
 
