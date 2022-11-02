@@ -63,32 +63,31 @@ following in our monitord.conf. This file is [ini format](https://en.wikipedia.o
 to match systemd unit files.
 
 ```ini
+# Pure ini - no yes/no for bools
+
 [monitord]
 debug=false
-# onetime run (cron/systemd timer) output format
-# Supported: json, json-flat, json-pretty
-output_format=json
-# Run as a daemon or now
+# Run as a daemon or 1 time
+daemon = false
 # Time to refresh systemd stats in seconds
 # Daemon mode only
 daemon_stats_refresh_secs=60
+# cron/systemd timer output format
+# Supported: json, json-flat, json-pretty
+output_format=json
 
+# TODO: implement
 [journald]
-enabled=no
+enabled = false
 
+# Grab networkd stats from files + networkctl
 [networkd]
-enabled=true
-link_state_dir=/run/systemd/netif/links
+enabled = true
+link_state_dir = /run/systemd/netif/links
 
+# Grab unit status counts via dbus
 [units]
-enabled=no
-
-# Daemon Mode options
-
-[daemon:prometheus_exporter]
-# We recommend TCP port 1 due to this monitoring PID 1 :)
-# Set a port >= 1 to listen
-port = 1
+enabled = true
 ```
 
 ## Output Formats
@@ -146,7 +145,25 @@ Is semi pretty too + custom. All unittested ...
   "networkd.wg0.ipv4_address_state": 3,
   "networkd.wg0.ipv6_address_state": 3,
   "networkd.wg0.oper_state": 9,
-  "networkd.wg0.required_for_online": 1
+  "networkd.wg0.required_for_online": 1,
+  "units.active_units": 403,
+  "units.automount_units": 1,
+  "units.device_units": 150,
+  "units.failed_units": 0,
+  "units.inactive_units": 159,
+  "units.jobs_queued": 0,
+  "units.loaded_units": 497,
+  "units.masked_units": 25,
+  "units.mount_units": 52,
+  "units.not_found_units": 38,
+  "units.path_units": 4,
+  "units.scope_units": 17,
+  "units.service_units": 199,
+  "units.slice_units": 7,
+  "units.socket_units": 28,
+  "units.target_units": 54,
+  "units.timer_units": 20,
+  "units.total_units": 562
 }
 ```
 
