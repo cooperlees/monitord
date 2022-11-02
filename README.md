@@ -65,15 +65,15 @@ to match systemd unit files.
 # Pure ini - no yes/no for bools
 
 [monitord]
-debug=false
+debug = false
 # Run as a daemon or 1 time
 daemon = false
 # Time to refresh systemd stats in seconds
 # Daemon mode only
-daemon_stats_refresh_secs=60
+daemon_stats_refresh_secs = 60
 # cron/systemd timer output format
 # Supported: json, json-flat, json-pretty
-output_format=json
+output_format = json
 
 # TODO: implement
 [journald]
