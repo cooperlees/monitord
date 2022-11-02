@@ -10,10 +10,8 @@ We offer the following run modes:
 - daemon mode
   - Enable daemon mode in configuration file
   - Stats will be written to stdout every `daemon_stats_refresh_secs`
-- [promethus-exporter](https://prometheus.io/docs/instrumenting/exporters/) daemon
-  - Recommended to use monitord.service + set a non 0 prometheus_exporter in `monitord.conf`
 
-Open to more formats / run methods ... Open a PR.
+Open to more formats / run methods ... Open an issue to discuss. Depends on the dependencies basically.
 
 `monitord` is a config driven binary. We plan to keep CLI arguments to a minimum.
 
