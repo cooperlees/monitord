@@ -1,10 +1,11 @@
 version: 2
 updates:
-  - package-ecosystem: "cargo"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
+# Disabling as going to pin for non OSS use
+#  - package-ecosystem: "cargo"
+#    directory: "/"
+#    schedule:
+#      interval: "weekly"
+#      day: "monday"
 
   - package-ecosystem: "github-actions"
     directory: "/"
