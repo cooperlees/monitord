@@ -13,7 +13,7 @@ systemd enums copied from https://github.com/systemd/systemd/blob/main/src/libsy
 */
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
 #[repr(u8)]
 pub enum AddressState {
     unknown = 0,
@@ -23,7 +23,7 @@ pub enum AddressState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
 #[repr(u8)]
 pub enum AdminState {
     unknown = 0,
@@ -36,7 +36,7 @@ pub enum AdminState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
 #[repr(u8)]
 pub enum BoolState {
     unknown = u8::MAX,
@@ -57,7 +57,7 @@ pub enum BoolState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
 #[repr(u8)]
 pub enum CarrierState {
     unknown = 0,
@@ -72,7 +72,7 @@ pub enum CarrierState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
 #[repr(u8)]
 pub enum OnlineState {
     unknown = 0,
@@ -82,7 +82,7 @@ pub enum OnlineState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Debug, Eq, PartialEq, EnumString)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
 #[repr(u8)]
 pub enum OperState {
     unknown = 0,
