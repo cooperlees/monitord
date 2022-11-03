@@ -65,6 +65,10 @@ to match systemd unit files.
 # Pure ini - no yes/no for bools
 
 [monitord]
+# Set a custom dbus address to connect to
+# OPTIONAL: If not set, we default to the Unix socket below
+dbus_address = unix:path=/run/dbus/system_bus_socket
+# Get debug output
 debug = false
 # Run as a daemon or 1 time
 daemon = false

@@ -101,7 +101,8 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
         // Run units collector if enabled
         if read_config_bool(&config, String::from("units"), String::from("enabled")) {
             ran_collector_count += 1;
-            match units::parse_unit_state() {
+            let dbus_address = config.get("monitord", "dbus_address");
+            match units::parse_unit_state(dbus_address) {
                 Ok(units_stats) => monitord_stats.units = units_stats,
                 Err(err) => error!("units stats failed: {}", err),
             }
