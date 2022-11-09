@@ -92,12 +92,16 @@ fn flatten_units(units_stats: &units::SystemdUnitStats) -> HashMap<String, u64> 
 }
 
 /// Take the standard returned structs and move all to a flat HashMap<str, float|int> like JSON
-pub fn flatten(stats_struct: &MonitordStats) -> String {
+pub fn flatten_hashmap(stats_struct: &MonitordStats) -> HashMap<String, u64> {
     let mut flat_stats: HashMap<String, u64> = HashMap::new();
-
-    // Add networkd stats
     flat_stats.extend(flatten_networkd(&stats_struct.networkd));
     flat_stats.extend(flatten_units(&stats_struct.units));
+    flat_stats
+}
+
+/// Take the standard returned structs and move all to a flat JSON str
+pub fn flatten(stats_struct: &MonitordStats) -> String {
+    let flat_stats = flatten_hashmap(stats_struct);
 
     let mut json_str = String::from("{\n");
     for (key, value) in flat_stats.iter().sorted() {
@@ -163,6 +167,12 @@ mod tests {
             },
             units: crate::units::SystemdUnitStats::default(),
         }
+    }
+
+    #[test]
+    fn test_flatten_hashmap() {
+        let json_flat_map = flatten_hashmap(&return_monitord_stats());
+        assert_eq!(26, json_flat_map.len());
     }
 
     #[test]

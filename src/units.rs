@@ -5,7 +5,7 @@ use dbus::blocking::Connection;
 use log::debug;
 use struct_field_names_as_array::FieldNamesAsArray;
 
-const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
+pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
 #[derive(
     serde::Serialize, serde::Deserialize, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
