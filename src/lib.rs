@@ -10,6 +10,7 @@ use log::error;
 use log::info;
 
 pub mod json;
+mod network_dbus;
 pub mod networkd;
 mod systemd_dbus;
 pub mod units;
@@ -88,11 +89,7 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
                     .unwrap_or_else(|| String::from(networkd::NETWORKD_STATE_FILES))
                     .as_str(),
             );
-            match networkd::parse_interface_state_files(
-                networkd_start_path.unwrap(),
-                networkd::NETWORKCTL_BINARY,
-                vec![String::from("--json=short"), String::from("list")],
-            ) {
+            match networkd::parse_interface_state_files(networkd_start_path.unwrap(), None) {
                 Ok(networkd_stats) => monitord_stats.networkd = networkd_stats,
                 Err(err) => error!("networkd stats failed: {}", err),
             }

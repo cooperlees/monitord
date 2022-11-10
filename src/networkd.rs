@@ -1,12 +1,16 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 use std::str::FromStr;
+use std::time::Duration;
 
 use anyhow::Result;
+use dbus::blocking::Connection;
 use log::error;
 use serde_repr::*;
 use strum_macros::EnumString;
+
+pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
 /*
 systemd enums copied from https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h
@@ -112,23 +116,27 @@ pub struct InterfaceState {
     pub required_for_online: BoolState,
 }
 
-/// Take an interface id and return the name or empty string
-fn interface_id_to_name(id: u64, networkctl_json: &serde_json::Value) -> String {
-    let interfaces_array = match networkctl_json["Interfaces"].as_array() {
-        Some(nj) => nj,
-        None => {
-            error!("networkctl JSON passed has no \"Interfaces\" vector");
-            return "".to_string();
-        }
-    };
-    for interface in interfaces_array.iter() {
-        let interface_index: u64 = interface["Index"].as_u64().unwrap_or(0);
-        if interface_index == id {
-            return interface["Name"].as_str().unwrap_or("").to_string();
-        }
+/// Get interface id + name from dbus list_links API
+fn get_interface_links(
+    potential_dbus_address: Option<String>,
+) -> Result<HashMap<i32, String>, Box<dyn std::error::Error>> {
+    std::env::set_var(
+        "DBUS_SYSTEM_BUS_ADDRESS",
+        potential_dbus_address.unwrap_or_else(|| String::from(DEFAULT_DBUS_ADDRESS)),
+    );
+    let c = Connection::new_system()?;
+    let p = c.with_proxy(
+        "org.freedesktop.network1",
+        "/org/freedesktop/network1",
+        Duration::new(5, 0),
+    );
+    use crate::network_dbus::OrgFreedesktopNetwork1Manager;
+    let links = p.list_links()?;
+    let mut link_int_to_name: HashMap<i32, String> = HashMap::new();
+    for network_link in links {
+        link_int_to_name.insert(network_link.0, network_link.1);
     }
-    error!("Unable to find interface name for id {}", id);
-    "".to_string()
+    Ok(link_int_to_name)
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
@@ -137,14 +145,13 @@ pub struct NetworkdState {
     pub managed_interfaces: u64,
 }
 
-pub const NETWORKCTL_BINARY: &str = "/usr/bin/networkctl";
 pub const NETWORKD_STATE_FILES: &str = "/run/systemd/netif/links";
 
-/// Parse a networkd state file contents
+/// Parse a networkd state file contents + convert int ID to name via DBUS
 pub fn parse_interface_stats(
     interface_state_str: String,
-    interface_id: u64,
-    networkctl_json: Option<&serde_json::Value>,
+    interface_id: i32,
+    interface_id_to_name: &HashMap<i32, String>,
 ) -> Result<InterfaceState, String> {
     let mut interface_state = InterfaceState {
         address_state: AddressState::unknown,
@@ -164,11 +171,12 @@ pub fn parse_interface_stats(
             continue;
         }
 
-        // The double ifs are due to a rust bug: #53667 <https://github.com/rust-lang/rust/issues/53667
-        if let Some(actual_networkctl_json) = networkctl_json {
-            if interface_id > 0 {
-                interface_state.name = interface_id_to_name(interface_id, actual_networkctl_json);
-            }
+        // Pull interface name out of list_links generated HashMap
+        if interface_id > 0 {
+            interface_state.name = interface_id_to_name
+                .get(&interface_id)
+                .unwrap_or(&String::from(""))
+                .to_string();
         }
 
         let (key, value) = line
@@ -214,20 +222,21 @@ pub fn parse_interface_stats(
 /// Parse interface state files in directory supplied
 pub fn parse_interface_state_files(
     states_path: PathBuf,
-    networkctl_binary: &str,
-    args: Vec<String>,
+    maybe_network_int_to_name: Option<HashMap<i32, String>>,
 ) -> Result<NetworkdState, std::io::Error> {
     let mut managed_interface_count: u64 = 0;
     let mut interfaces_state = vec![];
 
-    let networkctl_json: Option<serde_json::Value> =
-        match parse_networkctl_list(networkctl_binary, args) {
-            Ok(json) => Some(json),
+    let network_int_to_name = match maybe_network_int_to_name {
+        None => match get_interface_links(None) {
+            Ok(hashmap) => hashmap,
             Err(err) => {
-                error!("Unable to parse networkctl JSON: {:?}", err);
-                None
+                panic!("Unable to get interface links via DBUS: {:#?}", err)
             }
-        };
+        },
+        Some(valid_hashmap) => valid_hashmap,
+    };
+
     for state_file_dir in fs::read_dir(&states_path)? {
         let state_file = match state_file_dir {
             Ok(sf) => sf,
@@ -246,12 +255,8 @@ pub fn parse_interface_state_files(
         }
         managed_interface_count += 1;
         let fname = state_file.file_name();
-        let interface_id: u64 = u64::from_str(fname.to_str().unwrap_or("0")).unwrap_or(0);
-        match parse_interface_stats(
-            interface_stats_file_str,
-            interface_id,
-            networkctl_json.as_ref(),
-        ) {
+        let interface_id: i32 = i32::from_str(fname.to_str().unwrap_or("0")).unwrap_or(0);
+        match parse_interface_stats(interface_stats_file_str, interface_id, &network_int_to_name) {
             Ok(interface_state) => interfaces_state.push(interface_state),
             Err(err) => error!(
                 "Unable to parse interface statistics for {:?}: {}",
@@ -266,39 +271,6 @@ pub fn parse_interface_state_files(
     })
 }
 
-pub fn parse_networkctl_list(
-    network_ctl_binary: &str,
-    args: Vec<String>,
-) -> Result<serde_json::Value, serde_json::Error> {
-    let err_msg = format!(
-        "failed to execute '{} {}'",
-        network_ctl_binary,
-        args.join(" ")
-    );
-    let output = Command::new(network_ctl_binary)
-        .args(&args)
-        .output()
-        .expect(&err_msg);
-    if !output.status.success() {
-        error!(
-            "Failed to obtain '{} {}' JSON output",
-            network_ctl_binary,
-            args.join(" ")
-        );
-        serde_json::from_str("invalid_json")?;
-    }
-    let stdout = match String::from_utf8(output.stdout) {
-        Ok(stdout) => stdout,
-        Err(err) => {
-            error!("Unable to parse stdout from networkctl run: {}", err);
-            // Pass back invalid JSON so callers get a serde_json error
-            "invalid_json".to_string()
-        }
-    };
-    let v: serde_json::Value = serde_json::from_str(&stdout)?;
-    Ok(v)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,7 +278,6 @@ mod tests {
     use std::io::Write;
     use tempfile::tempdir;
 
-    const ECHO_BINARY: &str = "/bin/echo";
     const MOCK_INTERFACE_STATE: &str = r###"# This is private data. Do not parse.
 ADMIN_STATE=configured
 OPER_STATE=routable
@@ -329,8 +300,6 @@ LLMNR=yes
 MDNS=no
 "###;
 
-    const NETWORKCTL_JSON: &str = r###"{"Interfaces":[{"Index":1,"Name":"lo","Type":"loopback","Flags":65609,"FlagsString":"up,loopback,running,lower-up","KernelOperationalState":0,"KernelOperationalStateString":"unknown","MTU":65536,"MinimumMTU":0,"MaximumMTU":4294967295,"AdministrativeState":"unmanaged","OperationalState":"carrier","CarrierState":"carrier","AddressState":"off","IPv4AddressState":"off","IPv6AddressState":"off","OnlineState":null,"Addresses":[{"Family":10,"Address":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],"PrefixLength":128,"Scope":254,"ScopeString":"host","Flags":128,"FlagsString":"permanent","ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Address":[127,0,0,1],"PrefixLength":8,"Scope":254,"ScopeString":"host","Flags":128,"FlagsString":"permanent","ConfigSource":"foreign","ConfigState":"configured"}],"Routes":[{"Family":2,"Destination":[127,0,0,0],"DestinationPrefixLength":32,"PreferredSource":[127,0,0,1],"Scope":253,"ScopeString":"link","Protocol":2,"ProtocolString":"kernel","Type":3,"TypeString":"broadcast","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Destination":[127,0,0,1],"DestinationPrefixLength":32,"PreferredSource":[127,0,0,1],"Scope":254,"ScopeString":"host","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Destination":[127,0,0,0],"DestinationPrefixLength":8,"PreferredSource":[127,0,0,1],"Scope":254,"ScopeString":"host","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Destination":[127,255,255,255],"DestinationPrefixLength":32,"PreferredSource":[127,0,0,1],"Scope":253,"ScopeString":"link","Protocol":2,"ProtocolString":"kernel","Type":3,"TypeString":"broadcast","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":1,"TypeString":"unicast","Priority":256,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"}]},{"Index":2,"Name":"eth0","Type":"ether","Driver":"bnxt_en","Flags":69699,"FlagsString":"up,broadcast,running,multicast,lower-up","KernelOperationalState":6,"KernelOperationalStateString":"up","MTU":1500,"MinimumMTU":60,"MaximumMTU":9500,"HardwareAddress":[188,151,225,137,250,44],"PermanentHardwareAddress":[188,151,225,137,250,44],"BroadcastAddress":[255,255,255,255,255,255],"IPv6LinkLocalAddress":[254,128,0,0,0,0,0,0,190,151,225,255,254,137,250,44],"AdministrativeState":"configured","OperationalState":"routable","CarrierState":"carrier","AddressState":"routable","IPv4AddressState":"off","IPv6AddressState":"routable","OnlineState":"online","NetworkFile":"/usr/lib/systemd/network/00-metalos-eth0.network","RequiredForOnline":true,"RequiredOperationalStateForOnline":["degraded","routable"],"RequiredFamilyForOnline":"any","ActivationPolicy":"up","LinkFile":"/usr/lib/systemd/network/00-metalos-eth0.link","Path":"pci-0000:02:00.0","Vendor":"Broadcom Inc. and subsidiaries","Model":"BCM57452 NetXtreme-E 10Gb/25Gb/40Gb/50Gb Ethernet","SearchDomains":[{"Domain":"27.lla2.facebook.com","ConfigSource":"static"},{"Domain":"lla2.facebook.com","ConfigSource":"static"},{"Domain":"facebook.com","ConfigSource":"static"},{"Domain":"tfbnw.net","ConfigSource":"static"}],"DNSSettings":[{"LLMNR":"yes","ConfigSource":"static"},{"MDNS":"no","ConfigSource":"static"}],"Addresses":[{"Family":10,"Address":[254,128,0,0,0,0,0,0,190,151,225,255,254,137,250,44],"PrefixLength":64,"Scope":253,"ScopeString":"link","Flags":128,"FlagsString":"permanent","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Address":[36,1,219,0,48,44,65,36,250,206,0,0,2,34,0,0],"PrefixLength":64,"Scope":0,"ScopeString":"global","Flags":128,"FlagsString":"permanent","ConfigSource":"static","ConfigState":"configured"},{"Family":10,"Address":[40,3,96,128,137,4,146,34,0,0,0,0,0,0,0,1],"PrefixLength":64,"Scope":0,"ScopeString":"global","Flags":160,"FlagsString":"deprecated,permanent","PreferredLifetimeUsec":600951316,"ConfigSource":"static","ConfigState":"configured"}],"Routes":[{"Family":10,"Destination":[36,1,219,0,48,44,65,36,250,206,0,0,2,34,0,0],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[40,3,96,128,137,4,146,34,0,0,0,0,0,0,0,0],"DestinationPrefixLength":64,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":1,"TypeString":"unicast","Priority":256,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[254,128,0,0,0,0,0,0,190,151,225,255,254,137,250,44],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"DestinationPrefixLength":8,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":5,"TypeString":"multicast","Priority":256,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[40,3,96,128,137,4,146,34,0,0,0,0,0,0,0,1],"DestinationPrefixLength":128,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":2,"TypeString":"local","Priority":0,"Table":255,"TableString":"local(255)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"DestinationPrefixLength":0,"Gateway":[254,128,0,0,0,0,0,0,0,0,0,0,250,206,176,12],"Scope":0,"ScopeString":"global","Protocol":4,"ProtocolString":"static","Type":1,"TypeString":"unicast","Priority":10,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"static","ConfigState":"configuring,configured"},{"Family":10,"Destination":[36,1,219,0,48,44,65,36,0,0,0,0,0,0,0,0],"DestinationPrefixLength":64,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":1,"TypeString":"unicast","Priority":256,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Destination":[254,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"DestinationPrefixLength":64,"Scope":0,"ScopeString":"global","Protocol":2,"ProtocolString":"kernel","Type":1,"TypeString":"unicast","Priority":256,"Table":254,"TableString":"main(254)","Preference":0,"Flags":0,"FlagsString":"","ConfigSource":"foreign","ConfigState":"configured"}]}],"RoutingPolicyRules":[{"Family":2,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":32767,"FirewallMark":0,"FirewallMask":0,"Table":253,"TableString":"default(253)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":0,"FirewallMark":0,"FirewallMask":0,"Table":255,"TableString":"local(255)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":0,"FirewallMark":0,"FirewallMask":0,"Table":255,"TableString":"local(255)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"},{"Family":10,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":32766,"FirewallMark":0,"FirewallMask":0,"Table":254,"TableString":"main(254)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"},{"Family":2,"Protocol":2,"ProtocolString":"kernel","TOS":0,"Type":1,"TypeString":"table","IPProtocol":0,"IPProtocolString":"ip","Priority":32766,"FirewallMark":0,"FirewallMask":0,"Table":254,"TableString":"main(254)","Invert":false,"ConfigSource":"foreign","ConfigState":"configured"}]}"###;
-
     fn return_expected_interface_state() -> InterfaceState {
         InterfaceState {
             address_state: AddressState::routable,
@@ -345,36 +314,23 @@ MDNS=no
         }
     }
 
-    fn return_echo_args() -> Vec<String> {
-        vec![NETWORKCTL_JSON.to_string()]
-    }
-
-    #[test]
-    fn test_interface_id_to_name() {
-        let networkctl_json_parsed =
-            parse_networkctl_list(ECHO_BINARY, return_echo_args()).unwrap();
-        assert_eq!(
-            "eth0".to_string(),
-            interface_id_to_name(2, &networkctl_json_parsed),
-        );
-    }
-
-    #[test]
-    fn test_interface_id_to_name_fail() {
-        let networkctl_json_parsed = serde_json::from_str("{}").unwrap();
-        assert_eq!(
-            "".to_string(),
-            interface_id_to_name(69, &networkctl_json_parsed),
-        );
+    fn return_mock_int_name_hashmap() -> Option<HashMap<i32, String>> {
+        let mut h: HashMap<i32, String> = HashMap::new();
+        h.insert(2, String::from("eth0"));
+        h.insert(69, String::from("eth69"));
+        Some(h)
     }
 
     #[test]
     fn test_parse_interface_stats() {
-        let networkctl_json = parse_networkctl_list(ECHO_BINARY, return_echo_args()).unwrap();
         assert_eq!(
             return_expected_interface_state(),
-            parse_interface_stats(MOCK_INTERFACE_STATE.to_string(), 2, Some(&networkctl_json))
-                .unwrap(),
+            parse_interface_stats(
+                MOCK_INTERFACE_STATE.to_string(),
+                2,
+                &return_mock_int_name_hashmap().unwrap()
+            )
+            .unwrap(),
         );
     }
 
@@ -382,7 +338,8 @@ MDNS=no
     fn test_parse_interface_stats_json() {
         // 'name' stays as an empty string cause we don't pass in networkctl json or an interface id
         let expected_interface_state_json = r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###;
-        let stats = parse_interface_stats(MOCK_INTERFACE_STATE.to_string(), 0, None).unwrap();
+        let stats =
+            parse_interface_stats(MOCK_INTERFACE_STATE.to_string(), 0, &HashMap::new()).unwrap();
         let stats_json = serde_json::to_string(&stats).unwrap();
         assert_eq!(expected_interface_state_json.to_string(), stats_json);
     }
@@ -403,14 +360,14 @@ MDNS=no
         let path = PathBuf::from(temp_dir.path());
         assert_eq!(
             expected_files,
-            parse_interface_state_files(path, ECHO_BINARY, return_echo_args()).unwrap()
+            parse_interface_state_files(path, return_mock_int_name_hashmap()).unwrap()
         );
         Ok(())
     }
 
     #[test]
     fn test_parse_interface_state_files_json() -> Result<()> {
-        let expected_interface_state_json = r###"{"interfaces_state":[{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###;
+        let expected_interface_state_json = r###"{"interfaces_state":[{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"eth69","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###;
 
         let temp_dir = tempdir()?;
         // As the networkctl JSON has no interface with index 69 name gets no value ...
@@ -420,37 +377,12 @@ MDNS=no
 
         let path = PathBuf::from(temp_dir.path());
         let interface_stats =
-            parse_interface_state_files(path, ECHO_BINARY, vec![NETWORKCTL_JSON.to_string()])
-                .unwrap();
+            parse_interface_state_files(path, return_mock_int_name_hashmap()).unwrap();
         let interface_stats_json = serde_json::to_string(&interface_stats).unwrap();
         assert_eq!(
             expected_interface_state_json.to_string(),
             interface_stats_json
         );
         Ok(())
-    }
-
-    #[test]
-    /// Test to show that if we get valid JSON in stdout we're doing the right thing ...
-    fn test_parse_networkctl_json() -> Result<()> {
-        let expected_json_value: serde_json::Value = serde_json::from_str(NETWORKCTL_JSON).unwrap();
-        assert_eq!(
-            expected_json_value,
-            // We rely on echo existing at this path - Could move to `sh -c echo` if actions has issues
-            parse_networkctl_list(ECHO_BINARY, return_echo_args()).unwrap()
-        );
-        Ok(())
-    }
-    #[test]
-    /// Test to show we handle networkctl failing
-    fn test_parse_networkctl_json_fail() {
-        // No stdout
-        assert!(parse_networkctl_list(ECHO_BINARY, vec!["".to_string()]).is_err());
-        // Invalid JSON returned
-        assert!(
-            parse_networkctl_list(ECHO_BINARY, vec!["Cooper is invalid JSON".to_string()]).is_err()
-        );
-        // Bad return value
-        assert!(parse_networkctl_list("/usr/bin/false", vec!["foo".to_string()]).is_err());
     }
 }
