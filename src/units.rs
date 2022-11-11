@@ -85,7 +85,7 @@ fn parse_unit(
 
 pub fn parse_unit_state(
     potential_dbus_address: Option<String>,
-) -> Result<SystemdUnitStats, Box<dyn std::error::Error>> {
+) -> Result<SystemdUnitStats, Box<dyn std::error::Error + Send + Sync>> {
     std::env::set_var(
         "DBUS_SYSTEM_BUS_ADDRESS",
         potential_dbus_address.unwrap_or_else(|| String::from(DEFAULT_DBUS_ADDRESS)),

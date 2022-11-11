@@ -119,7 +119,7 @@ pub struct InterfaceState {
 /// Get interface id + name from dbus list_links API
 fn get_interface_links(
     potential_dbus_address: Option<String>,
-) -> Result<HashMap<i32, String>, Box<dyn std::error::Error>> {
+) -> Result<HashMap<i32, String>, Box<dyn std::error::Error + Send + Sync>> {
     std::env::set_var(
         "DBUS_SYSTEM_BUS_ADDRESS",
         potential_dbus_address.unwrap_or_else(|| String::from(DEFAULT_DBUS_ADDRESS)),
