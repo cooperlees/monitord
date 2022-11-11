@@ -73,6 +73,9 @@ daemon = false
 # Time to refresh systemd stats in seconds
 # Daemon mode only
 daemon_stats_refresh_secs = 60
+# Prefix flat-json key with this value
+# The value automatically gets a '.' appended (so don't put here)
+key_prefix = monitord
 # cron/systemd timer output format
 # Supported: json, json-flat, json-pretty
 output_format = json
