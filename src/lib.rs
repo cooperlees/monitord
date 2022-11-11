@@ -46,9 +46,13 @@ pub fn print_stats(config: Ini, stats: &MonitordStats) {
     let output_format = config
         .get("monitord", "output_format")
         .unwrap_or_else(|| "json".to_lowercase());
+    let key_prefix = config
+        .get("monitord", "key_prefix")
+        .unwrap_or_else(|| String::from(""));
+
     match output_format.as_str() {
         "json" => println!("{}", serde_json::to_string(&stats).unwrap()),
-        "json-flat" => println!("{}", json::flatten(stats)),
+        "json-flat" => println!("{}", json::flatten(stats, &key_prefix)),
         "json-pretty" => println!("{}", serde_json::to_string_pretty(&stats).unwrap()),
         err => error!(
             "Unable to print output in {} format ... fix config ...",

@@ -7,9 +7,19 @@ use crate::networkd;
 use crate::units;
 use crate::MonitordStats;
 
-fn flatten_networkd(networkd_stats: &networkd::NetworkdState) -> HashMap<String, u64> {
+fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
+    match key_prefix.len() {
+        0 => String::from(metric_name),
+        _ => format!("{}.{}", key_prefix, metric_name),
+    }
+}
+
+fn flatten_networkd(
+    networkd_stats: &networkd::NetworkdState,
+    key_prefix: &String,
+) -> HashMap<String, u64> {
     let mut flat_stats: HashMap<String, u64> = HashMap::new();
-    let base_metric_name = "networkd";
+    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("networkd"));
 
     let managed_interfaces_key = format!("{}.managed_interfaces", base_metric_name);
     flat_stats.insert(managed_interfaces_key, networkd_stats.managed_interfaces);
@@ -53,9 +63,12 @@ fn flatten_networkd(networkd_stats: &networkd::NetworkdState) -> HashMap<String,
     flat_stats
 }
 
-fn flatten_units(units_stats: &units::SystemdUnitStats) -> HashMap<String, u64> {
+fn flatten_units(
+    units_stats: &units::SystemdUnitStats,
+    key_prefix: &String,
+) -> HashMap<String, u64> {
     let mut flat_stats: HashMap<String, u64> = HashMap::new();
-    let base_metric_name = "units";
+    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("units"));
 
     // TODO: Work out a smarter way to do this rather than hard code mappings
     for field_name in units::UNIT_FIELD_NAMES {
@@ -92,16 +105,16 @@ fn flatten_units(units_stats: &units::SystemdUnitStats) -> HashMap<String, u64> 
 }
 
 /// Take the standard returned structs and move all to a flat HashMap<str, float|int> like JSON
-pub fn flatten_hashmap(stats_struct: &MonitordStats) -> HashMap<String, u64> {
+pub fn flatten_hashmap(stats_struct: &MonitordStats, key_prefix: &String) -> HashMap<String, u64> {
     let mut flat_stats: HashMap<String, u64> = HashMap::new();
-    flat_stats.extend(flatten_networkd(&stats_struct.networkd));
-    flat_stats.extend(flatten_units(&stats_struct.units));
+    flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
+    flat_stats.extend(flatten_units(&stats_struct.units, key_prefix));
     flat_stats
 }
 
 /// Take the standard returned structs and move all to a flat JSON str
-pub fn flatten(stats_struct: &MonitordStats) -> String {
-    let flat_stats = flatten_hashmap(stats_struct);
+pub fn flatten(stats_struct: &MonitordStats, key_prefix: &String) -> String {
+    let flat_stats = flatten_hashmap(stats_struct, key_prefix);
 
     let mut json_str = String::from("{\n");
     for (key, value) in flat_stats.iter().sorted() {
@@ -149,6 +162,35 @@ mod tests {
   "units.total_units": 0
 }"###;
 
+    const EXPECTED_PREFIXED_FLAT_JSON: &str = r###"{
+  "monitord.networkd.eth0.address_state": 3,
+  "monitord.networkd.eth0.admin_state": 4,
+  "monitord.networkd.eth0.carrier_state": 5,
+  "monitord.networkd.eth0.ipv4_address_state": 3,
+  "monitord.networkd.eth0.ipv6_address_state": 2,
+  "monitord.networkd.eth0.oper_state": 9,
+  "monitord.networkd.eth0.required_for_online": 1,
+  "monitord.networkd.managed_interfaces": 1,
+  "monitord.units.active_units": 0,
+  "monitord.units.automount_units": 0,
+  "monitord.units.device_units": 0,
+  "monitord.units.failed_units": 0,
+  "monitord.units.inactive_units": 0,
+  "monitord.units.jobs_queued": 0,
+  "monitord.units.loaded_units": 0,
+  "monitord.units.masked_units": 0,
+  "monitord.units.mount_units": 0,
+  "monitord.units.not_found_units": 0,
+  "monitord.units.path_units": 0,
+  "monitord.units.scope_units": 0,
+  "monitord.units.service_units": 0,
+  "monitord.units.slice_units": 0,
+  "monitord.units.socket_units": 0,
+  "monitord.units.target_units": 0,
+  "monitord.units.timer_units": 0,
+  "monitord.units.total_units": 0
+}"###;
+
     fn return_monitord_stats() -> MonitordStats {
         MonitordStats {
             networkd: networkd::NetworkdState {
@@ -171,14 +213,21 @@ mod tests {
 
     #[test]
     fn test_flatten_hashmap() {
-        let json_flat_map = flatten_hashmap(&return_monitord_stats());
+        let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
         assert_eq!(26, json_flat_map.len());
     }
 
     #[test]
     fn test_flatten() {
-        let json_flat = flatten(&return_monitord_stats());
+        let json_flat = flatten(&return_monitord_stats(), &String::from(""));
         assert_eq!(EXPECTED_FLAT_JSON, json_flat);
+        assert!(oxidized_json_checker::validate_str(&json_flat).is_ok());
+    }
+
+    #[test]
+    fn test_flatten_prefixed() {
+        let json_flat = flatten(&return_monitord_stats(), &String::from("monitord"));
+        assert_eq!(EXPECTED_PREFIXED_FLAT_JSON, json_flat);
         assert!(oxidized_json_checker::validate_str(&json_flat).is_ok());
     }
 }
