@@ -107,8 +107,8 @@ fn flatten_units(
 /// Take the standard returned structs and move all to a flat HashMap<str, float|int> like JSON
 pub fn flatten_hashmap(stats_struct: &MonitordStats, key_prefix: &String) -> HashMap<String, u64> {
     let mut flat_stats: HashMap<String, u64> = HashMap::new();
-    flat_stats.extend(flatten_networkd(&stats_struct.networkd, &key_prefix));
-    flat_stats.extend(flatten_units(&stats_struct.units, &key_prefix));
+    flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
+    flat_stats.extend(flatten_units(&stats_struct.units, key_prefix));
     flat_stats
 }
 
