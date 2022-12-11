@@ -36,16 +36,16 @@ pub const UNIT_FIELD_NAMES: &[&str] = SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
 fn parse_unit(
     stats: &mut SystemdUnitStats,
     unit: (
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        dbus::Path<'static>,
-        u32,
-        String,
-        dbus::Path<'static>,
+        String,              // The primary unit name as string
+        String,              // The human readable description string
+        String, // The load state (i.e. whether the unit file has been loaded successfully)
+        String, // The active state (i.e. whether the unit is currently started or not)
+        String, // The sub state (i.e. unit type more specific state)
+        String, // A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
+        dbus::Path<'static>, // The unit object path
+        u32,    // If there is a job queued for the job unit, the numeric job id, 0 otherwise
+        String, // The job type as string
+        dbus::Path<'static>, // The job object path
     ),
 ) {
     // Count unit type
