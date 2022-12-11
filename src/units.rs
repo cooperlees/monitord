@@ -74,7 +74,6 @@ fn parse_unit(
         "active" => stats.active_units += 1,
         "failed" => stats.failed_units += 1,
         "inactive" => stats.inactive_units += 1,
-        // TOOD: Change to debug logging ...
         unknown => debug!("Found unhandled '{}' unit state", unknown),
     };
     // Count jobs queued
