@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::thread;
@@ -13,6 +14,7 @@ pub mod json;
 mod network_dbus;
 pub mod networkd;
 mod systemd_dbus;
+mod unit_dbus;
 pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
@@ -109,9 +111,16 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
         }
 
         // Run units collector if enabled
+        let config_map = config.get_map().expect("Unable to get a config map");
+        let default_services_hashmap = HashMap::new();
+        let services_to_get_stats: Vec<&String> = config_map
+            .get("services")
+            .unwrap_or(&default_services_hashmap)
+            .keys()
+            .collect();
         if read_config_bool(&config, String::from("units"), String::from("enabled")) {
             ran_collector_count += 1;
-            match units::parse_unit_state(&dbus_address) {
+            match units::parse_unit_state(&dbus_address, services_to_get_stats) {
                 Ok(units_stats) => monitord_stats.units = units_stats,
                 Err(err) => error!("units stats failed: {}", err),
             }
