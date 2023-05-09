@@ -5,8 +5,6 @@ use dbus::blocking::Connection;
 use log::debug;
 use struct_field_names_as_array::FieldNamesAsArray;
 
-pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
-
 #[derive(
     serde::Serialize, serde::Deserialize, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
@@ -83,12 +81,9 @@ fn parse_unit(
 }
 
 pub fn parse_unit_state(
-    potential_dbus_address: Option<String>,
+    dbus_address: &str,
 ) -> Result<SystemdUnitStats, Box<dyn std::error::Error + Send + Sync>> {
-    std::env::set_var(
-        "DBUS_SYSTEM_BUS_ADDRESS",
-        potential_dbus_address.unwrap_or_else(|| String::from(DEFAULT_DBUS_ADDRESS)),
-    );
+    std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
     let mut stats = SystemdUnitStats::default();
     let c = Connection::new_system()?;
     let p = c.with_proxy(

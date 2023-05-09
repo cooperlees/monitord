@@ -15,6 +15,8 @@ pub mod networkd;
 mod systemd_dbus;
 pub mod units;
 
+pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
+
 // TODO: Add other components as support is added
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 pub struct MonitordStats {
@@ -77,6 +79,9 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
     }
 
     let mut monitord_stats = MonitordStats::default();
+    let dbus_address = config
+        .get("monitord", "dbus_address")
+        .unwrap_or(String::from(DEFAULT_DBUS_ADDRESS));
     loop {
         let collect_start_time = Instant::now();
         let mut ran_collector_count: u8 = 0;
@@ -93,7 +98,11 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
                     .unwrap_or_else(|| String::from(networkd::NETWORKD_STATE_FILES))
                     .as_str(),
             );
-            match networkd::parse_interface_state_files(networkd_start_path.unwrap(), None) {
+            match networkd::parse_interface_state_files(
+                networkd_start_path.unwrap(),
+                None,
+                &dbus_address,
+            ) {
                 Ok(networkd_stats) => monitord_stats.networkd = networkd_stats,
                 Err(err) => error!("networkd stats failed: {}", err),
             }
@@ -102,8 +111,7 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
         // Run units collector if enabled
         if read_config_bool(&config, String::from("units"), String::from("enabled")) {
             ran_collector_count += 1;
-            let dbus_address = config.get("monitord", "dbus_address");
-            match units::parse_unit_state(dbus_address) {
+            match units::parse_unit_state(&dbus_address) {
                 Ok(units_stats) => monitord_stats.units = units_stats,
                 Err(err) => error!("units stats failed: {}", err),
             }

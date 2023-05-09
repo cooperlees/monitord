@@ -10,8 +10,6 @@ use log::error;
 use serde_repr::*;
 use strum_macros::EnumString;
 
-pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
-
 /*
 systemd enums copied from https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h
 */
@@ -118,12 +116,9 @@ pub struct InterfaceState {
 
 /// Get interface id + name from dbus list_links API
 fn get_interface_links(
-    potential_dbus_address: Option<String>,
+    dbus_address: &str,
 ) -> Result<HashMap<i32, String>, Box<dyn std::error::Error + Send + Sync>> {
-    std::env::set_var(
-        "DBUS_SYSTEM_BUS_ADDRESS",
-        potential_dbus_address.unwrap_or_else(|| String::from(DEFAULT_DBUS_ADDRESS)),
-    );
+    std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
     let c = Connection::new_system()?;
     let p = c.with_proxy(
         "org.freedesktop.network1",
@@ -223,12 +218,13 @@ pub fn parse_interface_stats(
 pub fn parse_interface_state_files(
     states_path: PathBuf,
     maybe_network_int_to_name: Option<HashMap<i32, String>>,
+    dbus_address: &str,
 ) -> Result<NetworkdState, std::io::Error> {
     let mut managed_interface_count: u64 = 0;
     let mut interfaces_state = vec![];
 
     let network_int_to_name = match maybe_network_int_to_name {
-        None => match get_interface_links(None) {
+        None => match get_interface_links(dbus_address) {
             Ok(hashmap) => hashmap,
             Err(err) => {
                 panic!("Unable to get interface links via DBUS: {:#?}", err)
@@ -360,7 +356,12 @@ MDNS=no
         let path = PathBuf::from(temp_dir.path());
         assert_eq!(
             expected_files,
-            parse_interface_state_files(path, return_mock_int_name_hashmap()).unwrap()
+            parse_interface_state_files(
+                path,
+                return_mock_int_name_hashmap(),
+                crate::DEFAULT_DBUS_ADDRESS
+            )
+            .unwrap()
         );
         Ok(())
     }
@@ -376,8 +377,12 @@ MDNS=no
         writeln!(state_file, "{}", MOCK_INTERFACE_STATE)?;
 
         let path = PathBuf::from(temp_dir.path());
-        let interface_stats =
-            parse_interface_state_files(path, return_mock_int_name_hashmap()).unwrap();
+        let interface_stats = parse_interface_state_files(
+            path,
+            return_mock_int_name_hashmap(),
+            crate::DEFAULT_DBUS_ADDRESS,
+        )
+        .unwrap();
         let interface_stats_json = serde_json::to_string(&interface_stats).unwrap();
         assert_eq!(
             expected_interface_state_json.to_string(),
