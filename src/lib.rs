@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::thread;
@@ -110,14 +109,12 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
             }
         }
 
-        // Run units collector if enabled
+        // Run service collectors if there are services listed in config
         let config_map = config.get_map().expect("Unable to get a config map");
-        let default_services_hashmap = HashMap::new();
-        let services_to_get_stats: Vec<&String> = config_map
-            .get("services")
-            .unwrap_or(&default_services_hashmap)
-            .keys()
-            .collect();
+        let services_to_get_stats: Vec<&String> = match config_map.get("services") {
+            Some(services_hash) => services_hash.keys().collect(),
+            None => Vec::from([]),
+        };
         if read_config_bool(&config, String::from("units"), String::from("enabled")) {
             ran_collector_count += 1;
             match units::parse_unit_state(&dbus_address, services_to_get_stats) {
