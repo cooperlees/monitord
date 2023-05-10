@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::Result;
 use dbus::blocking::Connection;
 use log::debug;
+use log::error;
 use struct_field_names_as_array::FieldNamesAsArray;
 
 #[derive(
@@ -27,9 +29,58 @@ pub struct SystemdUnitStats {
     pub target_units: u64,
     pub timer_units: u64,
     pub total_units: u64,
+    pub service_stats: HashMap<String, ServiceStats>,
 }
 
+#[derive(
+    serde::Serialize, serde::Deserialize, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
+)]
+pub struct ServiceStats {
+    pub active_enter_timestamp: u64,
+    pub active_exit_timestamp: u64,
+    pub cpuusage_nsec: u64,
+    pub inactive_exit_timestamp: u64,
+    pub ioread_bytes: u64,
+    pub ioread_operations: u64,
+    pub memory_available: u64,
+    pub memory_current: u64,
+    pub nrestarts: u32,
+    pub processes: u32,
+    pub restart_usec: u64,
+    pub state_change_timestamp: u64,
+    pub status_errno: i32,
+    pub tasks_current: u64,
+    pub timeout_clean_usec: u64,
+    pub watchdog_usec: u64,
+}
+
+pub const SERVICE_FIELD_NAMES: &[&str] = ServiceStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_FIELD_NAMES: &[&str] = SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
+
+fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats, dbus::Error> {
+    debug!("Parsing service {} stats", name);
+    let p = c.with_proxy("org.freedesktop.systemd1", path, Duration::new(2, 0));
+    use crate::unit_dbus::OrgFreedesktopSystemd1Service;
+    use crate::unit_dbus::OrgFreedesktopSystemd1Unit;
+    Ok(ServiceStats {
+        active_enter_timestamp: p.active_enter_timestamp()?,
+        active_exit_timestamp: p.active_exit_timestamp()?,
+        cpuusage_nsec: p.cpuusage_nsec()?,
+        inactive_exit_timestamp: p.inactive_exit_timestamp()?,
+        ioread_bytes: p.ioread_bytes()?,
+        ioread_operations: p.ioread_operations()?,
+        memory_current: p.memory_current()?,
+        memory_available: p.memory_available()?,
+        nrestarts: p.nrestarts()?,
+        processes: p.get_processes()?[0].1,
+        restart_usec: p.restart_usec()?,
+        state_change_timestamp: p.state_change_timestamp()?,
+        status_errno: p.status_errno()?,
+        tasks_current: p.tasks_current()?,
+        timeout_clean_usec: p.timeout_clean_usec()?,
+        watchdog_usec: p.watchdog_usec()?,
+    })
+}
 
 fn parse_unit(
     stats: &mut SystemdUnitStats,
@@ -82,6 +133,7 @@ fn parse_unit(
 
 pub fn parse_unit_state(
     dbus_address: &str,
+    services_to_get_stats: Vec<&String>,
 ) -> Result<SystemdUnitStats, Box<dyn std::error::Error + Send + Sync>> {
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
     let mut stats = SystemdUnitStats::default();
@@ -95,7 +147,19 @@ pub fn parse_unit_state(
     let units = p.list_units()?;
     stats.total_units = units.len() as u64;
     for unit in units {
-        parse_unit(&mut stats, unit);
+        parse_unit(&mut stats, unit.clone());
+        if services_to_get_stats.contains(&&unit.0) {
+            debug!("Collecting service stats for {}", &unit.0);
+            match parse_service(&c, &unit.0, &unit.6) {
+                Ok(service_stats) => {
+                    stats.service_stats.insert(unit.0.clone(), service_stats);
+                }
+                Err(err) => error!(
+                    "Unable to get service stats for {} {}: {:#?}",
+                    &unit.0, &unit.6, err
+                ),
+            }
+        }
     }
     debug!("unit stats: {:?}", stats);
     Ok(stats)
@@ -126,6 +190,7 @@ mod tests {
             target_units: 0,
             timer_units: 1,
             total_units: 0,
+            service_stats: HashMap::new(),
         };
         let mut stats = SystemdUnitStats::default();
         let systemd_unit = (

@@ -89,6 +89,12 @@ enabled = false
 enabled = true
 link_state_dir = /run/systemd/netif/links
 
+# Services to grab extra stats for
+# .service is important as that's what DBus returns from `list_units`
+[services]
+foo.service
+sshd.service
+
 # Grab unit status counts via dbus
 [units]
 enabled = true
@@ -150,6 +156,21 @@ Is semi pretty too + custom. All unittested ...
   "networkd.wg0.ipv6_address_state": 3,
   "networkd.wg0.oper_state": 9,
   "networkd.wg0.required_for_online": 1,
+  "services.chronyd.service.active_enter_timestamp": 1683556542382710,
+  "services.chronyd.service.active_exit_timestamp": 0,
+  "services.chronyd.service.cpuusage_nsec": 328951000,
+  "services.chronyd.service.inactive_exit_timestamp": 1683556541360626,
+  "services.chronyd.service.ioread_bytes": 18446744073709551615,
+  "services.chronyd.service.ioread_operations": 18446744073709551615,
+  "services.chronyd.service.memory_available": 18446744073709551615,
+  "services.chronyd.service.memory_current": 5214208,
+  "services.chronyd.service.nrestarts": 0,
+  "services.chronyd.service.restart_usec": 100000,
+  "services.chronyd.service.state_change_timestamp": 1683556542382710,
+  "services.chronyd.service.status_errno": 0,
+  "services.chronyd.service.tasks_current": 1,
+  "services.chronyd.service.timeout_clean_usec": 18446744073709551615,
+  "services.chronyd.service.watchdog_usec": 0,
   "units.active_units": 403,
   "units.automount_units": 1,
   "units.device_units": 150,
@@ -187,3 +208,16 @@ Ensure the following pass before submitting a PR (CI checks):
 - `cargo test`
 - `cargo clippy`
 - `cargo fmt`
+
+### Generate codegen APIs
+
+- `cargo install dbus-codegen`
+- `dbus-codegen-rust -s -g -m None -d org.freedesktop.systemd1 -p /org/freedesktop/systemd1/unit/chronyd_2eservice > unit_dbus.rs`
+
+Then add the following macros to tell clippy to go away:
+
+```rust
+#![allow(warnings)]
+#![allow(clippy)]
+#![allow(unknown_lints)]
+```

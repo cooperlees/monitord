@@ -63,6 +63,47 @@ fn flatten_networkd(
     flat_stats
 }
 
+fn flatten_services(
+    service_stats_hash: &HashMap<String, units::ServiceStats>,
+    key_prefix: &String,
+) -> HashMap<String, u64> {
+    let mut flat_stats: HashMap<String, u64> = HashMap::new();
+    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("services"));
+
+    for (service_name, service_stats) in service_stats_hash.iter() {
+        for field_name in units::SERVICE_FIELD_NAMES {
+            let key = format!("{base_metric_name}.{service_name}.{field_name}");
+            let value: Option<u64> = match field_name.to_string().as_str() {
+                "active_enter_timestamp" => Some(service_stats.active_enter_timestamp),
+                "active_exit_timestamp" => Some(service_stats.active_exit_timestamp),
+                "cpuusage_nsec" => Some(service_stats.cpuusage_nsec),
+                "inactive_exit_timestamp" => Some(service_stats.inactive_exit_timestamp),
+                "ioread_bytes" => Some(service_stats.ioread_bytes),
+                "ioread_operations" => Some(service_stats.ioread_operations),
+                "memory_available" => Some(service_stats.memory_available),
+                "memory_current" => Some(service_stats.memory_current),
+                "nrestarts" => Some(service_stats.nrestarts.into()),
+                "processes" => Some(service_stats.processes.into()),
+                "restart_usec" => Some(service_stats.restart_usec),
+                "state_change_timestamp" => Some(service_stats.state_change_timestamp),
+                // TODO: Is there a better way to identify the i32 was negative?
+                "status_errno" => Some(service_stats.status_errno.try_into().unwrap_or(u64::MAX)),
+                "tasks_current" => Some(service_stats.tasks_current),
+                "timeout_clean_usec" => Some(service_stats.timeout_clean_usec),
+                "watchdog_usec" => Some(service_stats.watchdog_usec),
+                _ => {
+                    debug!("Got a unhandled stat '{}'", field_name);
+                    None
+                }
+            };
+            if let Some(an_integer) = value {
+                flat_stats.insert(key, an_integer);
+            }
+        }
+    }
+    flat_stats
+}
+
 fn flatten_units(
     units_stats: &units::SystemdUnitStats,
     key_prefix: &String,
@@ -108,6 +149,10 @@ fn flatten_units(
 pub fn flatten_hashmap(stats_struct: &MonitordStats, key_prefix: &String) -> HashMap<String, u64> {
     let mut flat_stats: HashMap<String, u64> = HashMap::new();
     flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
+    flat_stats.extend(flatten_services(
+        &stats_struct.units.service_stats,
+        key_prefix,
+    ));
     flat_stats.extend(flatten_units(&stats_struct.units, key_prefix));
     flat_stats
 }
@@ -142,6 +187,22 @@ mod tests {
   "networkd.eth0.oper_state": 9,
   "networkd.eth0.required_for_online": 1,
   "networkd.managed_interfaces": 1,
+  "services.unittest.service.active_enter_timestamp": 0,
+  "services.unittest.service.active_exit_timestamp": 0,
+  "services.unittest.service.cpuusage_nsec": 0,
+  "services.unittest.service.inactive_exit_timestamp": 0,
+  "services.unittest.service.ioread_bytes": 0,
+  "services.unittest.service.ioread_operations": 0,
+  "services.unittest.service.memory_available": 0,
+  "services.unittest.service.memory_current": 0,
+  "services.unittest.service.nrestarts": 0,
+  "services.unittest.service.processes": 0,
+  "services.unittest.service.restart_usec": 0,
+  "services.unittest.service.state_change_timestamp": 0,
+  "services.unittest.service.status_errno": 0,
+  "services.unittest.service.tasks_current": 0,
+  "services.unittest.service.timeout_clean_usec": 0,
+  "services.unittest.service.watchdog_usec": 0,
   "units.active_units": 0,
   "units.automount_units": 0,
   "units.device_units": 0,
@@ -171,6 +232,22 @@ mod tests {
   "monitord.networkd.eth0.oper_state": 9,
   "monitord.networkd.eth0.required_for_online": 1,
   "monitord.networkd.managed_interfaces": 1,
+  "monitord.services.unittest.service.active_enter_timestamp": 0,
+  "monitord.services.unittest.service.active_exit_timestamp": 0,
+  "monitord.services.unittest.service.cpuusage_nsec": 0,
+  "monitord.services.unittest.service.inactive_exit_timestamp": 0,
+  "monitord.services.unittest.service.ioread_bytes": 0,
+  "monitord.services.unittest.service.ioread_operations": 0,
+  "monitord.services.unittest.service.memory_available": 0,
+  "monitord.services.unittest.service.memory_current": 0,
+  "monitord.services.unittest.service.nrestarts": 0,
+  "monitord.services.unittest.service.processes": 0,
+  "monitord.services.unittest.service.restart_usec": 0,
+  "monitord.services.unittest.service.state_change_timestamp": 0,
+  "monitord.services.unittest.service.status_errno": 0,
+  "monitord.services.unittest.service.tasks_current": 0,
+  "monitord.services.unittest.service.timeout_clean_usec": 0,
+  "monitord.services.unittest.service.watchdog_usec": 0,
   "monitord.units.active_units": 0,
   "monitord.units.automount_units": 0,
   "monitord.units.device_units": 0,
@@ -192,7 +269,7 @@ mod tests {
 }"###;
 
     fn return_monitord_stats() -> MonitordStats {
-        MonitordStats {
+        let mut stats = MonitordStats {
             networkd: networkd::NetworkdState {
                 interfaces_state: vec![networkd::InterfaceState {
                     address_state: networkd::AddressState::routable,
@@ -208,13 +285,18 @@ mod tests {
                 managed_interfaces: 1,
             },
             units: crate::units::SystemdUnitStats::default(),
-        }
+        };
+        stats.units.service_stats.insert(
+            String::from("unittest.service"),
+            units::ServiceStats::default(),
+        );
+        stats
     }
 
     #[test]
     fn test_flatten_hashmap() {
         let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
-        assert_eq!(26, json_flat_map.len());
+        assert_eq!(42, json_flat_map.len());
     }
 
     #[test]
