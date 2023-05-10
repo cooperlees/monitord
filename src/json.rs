@@ -83,6 +83,7 @@ fn flatten_services(
                 "memory_available" => Some(service_stats.memory_available),
                 "memory_current" => Some(service_stats.memory_current),
                 "nrestarts" => Some(service_stats.nrestarts.into()),
+                "processes" => Some(service_stats.processes.into()),
                 "restart_usec" => Some(service_stats.restart_usec),
                 "state_change_timestamp" => Some(service_stats.state_change_timestamp),
                 // TODO: Is there a better way to identify the i32 was negative?
