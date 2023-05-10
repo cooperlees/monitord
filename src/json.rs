@@ -154,6 +154,9 @@ fn flatten_units(
     units_stats: &units::SystemdUnitStats,
     key_prefix: &String,
 ) -> HashMap<String, JsonFlatValue> {
+    // fields of the SystemdUnitStats struct we know to ignore so don't log below
+    let fields_to_ignore = Vec::from(["service_stats"]);
+
     let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("units"));
 
@@ -216,7 +219,9 @@ fn flatten_units(
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.total_units));
             }
             _ => {
-                debug!("Got a unhandled stat '{}'", field_name);
+                if !fields_to_ignore.contains(field_name) {
+                   debug!("Got a unhandled stat '{}'", field_name);
+                }
             }
         };
     }
