@@ -29,7 +29,10 @@ fn flatten_networkd(
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("networkd"));
 
     let managed_interfaces_key = format!("{}.managed_interfaces", base_metric_name);
-    flat_stats.insert(managed_interfaces_key, JsonFlatValue::U64(networkd_stats.managed_interfaces));
+    flat_stats.insert(
+        managed_interfaces_key,
+        JsonFlatValue::U64(networkd_stats.managed_interfaces),
+    );
 
     if networkd_stats.interfaces_state.is_empty() {
         debug!("No networkd interfaces to add to flat JSON");
@@ -82,7 +85,10 @@ fn flatten_services(
             let key = format!("{base_metric_name}.{service_name}.{field_name}");
             match field_name.to_string().as_str() {
                 "active_enter_timestamp" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.active_enter_timestamp));
+                    flat_stats.insert(
+                        key,
+                        JsonFlatValue::U64(service_stats.active_enter_timestamp),
+                    );
                 }
                 "active_exit_timestamp" => {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.active_exit_timestamp));
@@ -91,7 +97,10 @@ fn flatten_services(
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.cpuusage_nsec));
                 }
                 "inactive_exit_timestamp" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.inactive_exit_timestamp));
+                    flat_stats.insert(
+                        key,
+                        JsonFlatValue::U64(service_stats.inactive_exit_timestamp),
+                    );
                 }
                 "ioread_bytes" => {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.ioread_bytes));
@@ -115,7 +124,10 @@ fn flatten_services(
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.restart_usec));
                 }
                 "state_change_timestamp" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.state_change_timestamp));
+                    flat_stats.insert(
+                        key,
+                        JsonFlatValue::U64(service_stats.state_change_timestamp),
+                    );
                 }
                 "status_errno" => {
                     flat_stats.insert(key, JsonFlatValue::I32(service_stats.status_errno));
@@ -212,7 +224,10 @@ fn flatten_units(
 }
 
 /// Take the standard returned structs and move all to a flat HashMap<str, float|int> like JSON
-pub fn flatten_hashmap(stats_struct: &MonitordStats, key_prefix: &String) -> HashMap<String, JsonFlatValue> {
+pub fn flatten_hashmap(
+    stats_struct: &MonitordStats,
+    key_prefix: &String,
+) -> HashMap<String, JsonFlatValue> {
     let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
     flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_services(
@@ -366,7 +381,7 @@ mod tests {
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
             service_unit_name.clone(),
-            units::ServiceStats{
+            units::ServiceStats {
                 // Ensure json-flat handles negative i32s
                 status_errno: -69,
                 ..Default::default()
