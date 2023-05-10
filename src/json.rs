@@ -7,6 +7,13 @@ use crate::networkd;
 use crate::units;
 use crate::MonitordStats;
 
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum JsonFlatValue {
+    U64(u64),
+    I32(i32),
+    U32(u32),
+}
+
 fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
     match key_prefix.len() {
         0 => String::from(metric_name),
@@ -17,12 +24,15 @@ fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
 fn flatten_networkd(
     networkd_stats: &networkd::NetworkdState,
     key_prefix: &String,
-) -> HashMap<String, u64> {
-    let mut flat_stats: HashMap<String, u64> = HashMap::new();
+) -> HashMap<String, JsonFlatValue> {
+    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("networkd"));
 
     let managed_interfaces_key = format!("{}.managed_interfaces", base_metric_name);
-    flat_stats.insert(managed_interfaces_key, networkd_stats.managed_interfaces);
+    flat_stats.insert(
+        managed_interfaces_key,
+        JsonFlatValue::U64(networkd_stats.managed_interfaces),
+    );
 
     if networkd_stats.interfaces_state.is_empty() {
         debug!("No networkd interfaces to add to flat JSON");
@@ -33,31 +43,31 @@ fn flatten_networkd(
         let interface_base = format!("{}.{}", base_metric_name, interface.name);
         flat_stats.insert(
             format!("{interface_base}.address_state"),
-            interface.address_state as u64,
+            JsonFlatValue::U64(interface.address_state as u64),
         );
         flat_stats.insert(
             format!("{interface_base}.admin_state"),
-            interface.admin_state as u64,
+            JsonFlatValue::U64(interface.admin_state as u64),
         );
         flat_stats.insert(
             format!("{interface_base}.carrier_state"),
-            interface.carrier_state as u64,
+            JsonFlatValue::U64(interface.carrier_state as u64),
         );
         flat_stats.insert(
             format!("{interface_base}.ipv4_address_state"),
-            interface.ipv4_address_state as u64,
+            JsonFlatValue::U64(interface.ipv4_address_state as u64),
         );
         flat_stats.insert(
             format!("{interface_base}.ipv6_address_state"),
-            interface.ipv6_address_state as u64,
+            JsonFlatValue::U64(interface.ipv6_address_state as u64),
         );
         flat_stats.insert(
             format!("{interface_base}.oper_state"),
-            interface.oper_state as u64,
+            JsonFlatValue::U64(interface.oper_state as u64),
         );
         flat_stats.insert(
             format!("{interface_base}.required_for_online"),
-            interface.required_for_online as u64,
+            JsonFlatValue::U64(interface.required_for_online as u64),
         );
     }
     flat_stats
@@ -66,38 +76,74 @@ fn flatten_networkd(
 fn flatten_services(
     service_stats_hash: &HashMap<String, units::ServiceStats>,
     key_prefix: &String,
-) -> HashMap<String, u64> {
-    let mut flat_stats: HashMap<String, u64> = HashMap::new();
+) -> HashMap<String, JsonFlatValue> {
+    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("services"));
 
     for (service_name, service_stats) in service_stats_hash.iter() {
         for field_name in units::SERVICE_FIELD_NAMES {
             let key = format!("{base_metric_name}.{service_name}.{field_name}");
-            let value: Option<u64> = match field_name.to_string().as_str() {
-                "active_enter_timestamp" => Some(service_stats.active_enter_timestamp),
-                "active_exit_timestamp" => Some(service_stats.active_exit_timestamp),
-                "cpuusage_nsec" => Some(service_stats.cpuusage_nsec),
-                "inactive_exit_timestamp" => Some(service_stats.inactive_exit_timestamp),
-                "ioread_bytes" => Some(service_stats.ioread_bytes),
-                "ioread_operations" => Some(service_stats.ioread_operations),
-                "memory_available" => Some(service_stats.memory_available),
-                "memory_current" => Some(service_stats.memory_current),
-                "nrestarts" => Some(service_stats.nrestarts.into()),
-                "processes" => Some(service_stats.processes.into()),
-                "restart_usec" => Some(service_stats.restart_usec),
-                "state_change_timestamp" => Some(service_stats.state_change_timestamp),
-                // TODO: Is there a better way to identify the i32 was negative?
-                "status_errno" => Some(service_stats.status_errno.try_into().unwrap_or(u64::MAX)),
-                "tasks_current" => Some(service_stats.tasks_current),
-                "timeout_clean_usec" => Some(service_stats.timeout_clean_usec),
-                "watchdog_usec" => Some(service_stats.watchdog_usec),
+            match field_name.to_string().as_str() {
+                "active_enter_timestamp" => {
+                    flat_stats.insert(
+                        key,
+                        JsonFlatValue::U64(service_stats.active_enter_timestamp),
+                    );
+                }
+                "active_exit_timestamp" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.active_exit_timestamp));
+                }
+                "cpuusage_nsec" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.cpuusage_nsec));
+                }
+                "inactive_exit_timestamp" => {
+                    flat_stats.insert(
+                        key,
+                        JsonFlatValue::U64(service_stats.inactive_exit_timestamp),
+                    );
+                }
+                "ioread_bytes" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.ioread_bytes));
+                }
+                "ioread_operations" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.ioread_operations));
+                }
+                "memory_available" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.memory_available));
+                }
+                "memory_current" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.memory_current));
+                }
+                "nrestarts" => {
+                    flat_stats.insert(key, JsonFlatValue::U32(service_stats.nrestarts));
+                }
+                "processes" => {
+                    flat_stats.insert(key, JsonFlatValue::U32(service_stats.processes));
+                }
+                "restart_usec" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.restart_usec));
+                }
+                "state_change_timestamp" => {
+                    flat_stats.insert(
+                        key,
+                        JsonFlatValue::U64(service_stats.state_change_timestamp),
+                    );
+                }
+                "status_errno" => {
+                    flat_stats.insert(key, JsonFlatValue::I32(service_stats.status_errno));
+                }
+                "tasks_current" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.tasks_current));
+                }
+                "timeout_clean_usec" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.timeout_clean_usec));
+                }
+                "watchdog_usec" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.watchdog_usec));
+                }
                 _ => {
                     debug!("Got a unhandled stat '{}'", field_name);
-                    None
                 }
-            };
-            if let Some(an_integer) = value {
-                flat_stats.insert(key, an_integer);
             }
         }
     }
@@ -107,47 +153,82 @@ fn flatten_services(
 fn flatten_units(
     units_stats: &units::SystemdUnitStats,
     key_prefix: &String,
-) -> HashMap<String, u64> {
-    let mut flat_stats: HashMap<String, u64> = HashMap::new();
+) -> HashMap<String, JsonFlatValue> {
+    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("units"));
 
     // TODO: Work out a smarter way to do this rather than hard code mappings
     for field_name in units::UNIT_FIELD_NAMES {
         let key = format!("{base_metric_name}.{field_name}");
-        let value: Option<u64> = match field_name.to_string().as_str() {
-            "active_units" => Some(units_stats.active_units),
-            "automount_units" => Some(units_stats.automount_units),
-            "device_units" => Some(units_stats.device_units),
-            "failed_units" => Some(units_stats.failed_units),
-            "inactive_units" => Some(units_stats.inactive_units),
-            "jobs_queued" => Some(units_stats.jobs_queued),
-            "loaded_units" => Some(units_stats.loaded_units),
-            "masked_units" => Some(units_stats.masked_units),
-            "mount_units" => Some(units_stats.mount_units),
-            "not_found_units" => Some(units_stats.not_found_units),
-            "path_units" => Some(units_stats.path_units),
-            "scope_units" => Some(units_stats.scope_units),
-            "service_units" => Some(units_stats.service_units),
-            "slice_units" => Some(units_stats.slice_units),
-            "socket_units" => Some(units_stats.socket_units),
-            "target_units" => Some(units_stats.target_units),
-            "timer_units" => Some(units_stats.timer_units),
-            "total_units" => Some(units_stats.total_units),
+        match field_name.to_string().as_str() {
+            "active_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.active_units));
+            }
+            "automount_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.automount_units));
+            }
+            "device_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.device_units));
+            }
+            "failed_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.failed_units));
+            }
+            "inactive_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.inactive_units));
+            }
+            "jobs_queued" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.jobs_queued));
+            }
+            "loaded_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.loaded_units));
+            }
+            "masked_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.masked_units));
+            }
+            "mount_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.mount_units));
+            }
+            "not_found_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.not_found_units));
+            }
+            "path_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.path_units));
+            }
+            "scope_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.scope_units));
+            }
+            "service_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.service_units));
+            }
+            "slice_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.slice_units));
+            }
+            "socket_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.socket_units));
+            }
+            "target_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.target_units));
+            }
+            "timer_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.timer_units));
+            }
+            "total_units" => {
+                flat_stats.insert(key, JsonFlatValue::U64(units_stats.total_units));
+            }
             _ => {
                 debug!("Got a unhandled stat '{}'", field_name);
-                None
             }
         };
-        if let Some(an_integer) = value {
-            flat_stats.insert(key, an_integer);
-        }
     }
     flat_stats
 }
 
 /// Take the standard returned structs and move all to a flat HashMap<str, float|int> like JSON
-pub fn flatten_hashmap(stats_struct: &MonitordStats, key_prefix: &String) -> HashMap<String, u64> {
-    let mut flat_stats: HashMap<String, u64> = HashMap::new();
+pub fn flatten_hashmap(
+    stats_struct: &MonitordStats,
+    key_prefix: &String,
+) -> HashMap<String, JsonFlatValue> {
+    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
     flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_services(
         &stats_struct.units.service_stats,
@@ -163,7 +244,18 @@ pub fn flatten(stats_struct: &MonitordStats, key_prefix: &String) -> String {
 
     let mut json_str = String::from("{\n");
     for (key, value) in flat_stats.iter().sorted() {
-        let new_kv = format!("  \"{}\": {},\n", key, value);
+        let new_kv_a = format!("  \"{}\": ", key);
+        let new_kv = match value {
+            JsonFlatValue::I32(an_int) => {
+                format!("{}{},\n", new_kv_a, an_int)
+            }
+            JsonFlatValue::U32(an_int) => {
+                format!("{}{},\n", new_kv_a, an_int)
+            }
+            JsonFlatValue::U64(an_int) => {
+                format!("{}{},\n", new_kv_a, an_int)
+            }
+        };
         json_str.push_str(new_kv.as_str());
     }
     // Remove last trailing comma to be valid JSON - Super lame but works ...
@@ -199,7 +291,7 @@ mod tests {
   "services.unittest.service.processes": 0,
   "services.unittest.service.restart_usec": 0,
   "services.unittest.service.state_change_timestamp": 0,
-  "services.unittest.service.status_errno": 0,
+  "services.unittest.service.status_errno": -69,
   "services.unittest.service.tasks_current": 0,
   "services.unittest.service.timeout_clean_usec": 0,
   "services.unittest.service.watchdog_usec": 0,
@@ -244,7 +336,7 @@ mod tests {
   "monitord.services.unittest.service.processes": 0,
   "monitord.services.unittest.service.restart_usec": 0,
   "monitord.services.unittest.service.state_change_timestamp": 0,
-  "monitord.services.unittest.service.status_errno": 0,
+  "monitord.services.unittest.service.status_errno": -69,
   "monitord.services.unittest.service.tasks_current": 0,
   "monitord.services.unittest.service.timeout_clean_usec": 0,
   "monitord.services.unittest.service.watchdog_usec": 0,
@@ -286,9 +378,14 @@ mod tests {
             },
             units: crate::units::SystemdUnitStats::default(),
         };
+        let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
-            String::from("unittest.service"),
-            units::ServiceStats::default(),
+            service_unit_name.clone(),
+            units::ServiceStats {
+                // Ensure json-flat handles negative i32s
+                status_errno: -69,
+                ..Default::default()
+            },
         );
         stats
     }
