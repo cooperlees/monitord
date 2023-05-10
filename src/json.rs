@@ -196,6 +196,7 @@ mod tests {
   "services.unittest.service.memory_available": 0,
   "services.unittest.service.memory_current": 0,
   "services.unittest.service.nrestarts": 0,
+  "services.unittest.service.processes": 0,
   "services.unittest.service.restart_usec": 0,
   "services.unittest.service.state_change_timestamp": 0,
   "services.unittest.service.status_errno": 0,
@@ -240,6 +241,7 @@ mod tests {
   "monitord.services.unittest.service.memory_available": 0,
   "monitord.services.unittest.service.memory_current": 0,
   "monitord.services.unittest.service.nrestarts": 0,
+  "monitord.services.unittest.service.processes": 0,
   "monitord.services.unittest.service.restart_usec": 0,
   "monitord.services.unittest.service.state_change_timestamp": 0,
   "monitord.services.unittest.service.status_errno": 0,
@@ -294,7 +296,7 @@ mod tests {
     #[test]
     fn test_flatten_hashmap() {
         let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
-        assert_eq!(41, json_flat_map.len());
+        assert_eq!(42, json_flat_map.len());
     }
 
     #[test]
