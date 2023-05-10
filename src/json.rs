@@ -220,7 +220,7 @@ fn flatten_units(
             }
             _ => {
                 if !fields_to_ignore.contains(field_name) {
-                   debug!("Got a unhandled stat '{}'", field_name);
+                    debug!("Got a unhandled stat '{}'", field_name);
                 }
             }
         };
