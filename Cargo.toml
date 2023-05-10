@@ -13,11 +13,11 @@ categories = ["network-programming", "os::linux-apis"]
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.1", features = ["derive"] }
+clap = { version = "4.2", features = ["derive"] }
 clap-verbosity-flag = "2.0"
 configparser = "3.0.2"
 dbus = "0.9.3"
-env_logger = "0.7"
+env_logger = "0.10"
 itertools = "0.10.3"
 log = "0.4"
 serde = { version = "1.0.136", features = ["derive"] }
