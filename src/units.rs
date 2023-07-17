@@ -3,9 +3,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use dbus::blocking::Connection;
-use log::debug;
-use log::error;
 use struct_field_names_as_array::FieldNamesAsArray;
+use tracing::debug;
+use tracing::error;
 
 #[derive(
     serde::Serialize, serde::Deserialize, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
