@@ -2,10 +2,9 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use clap_verbosity_flag::InfoLevel;
 use configparser::ini::Ini;
-use log::debug;
-use log::info;
+use tracing::debug;
+use tracing::info;
 
 const LONG_ABOUT: &str = "monitord: Know how happy your systemd is! 😊";
 
@@ -16,15 +15,15 @@ struct Cli {
     /// Location of your monitord config
     #[clap(short, long, value_parser, default_value = "/etc/monitord.conf")]
     config: PathBuf,
-    #[clap(flatten)]
-    verbose: clap_verbosity_flag::Verbosity<InfoLevel>,
+
+    /// Adjust the console log-level
+    #[arg(long, short, value_enum, ignore_case = true, default_value = "Info")]
+    log_level: monitord::logging::LogLevels,
 }
 
 fn main() -> Result<(), String> {
     let args = Cli::parse();
-    env_logger::Builder::new()
-        .filter_level(args.verbose.log_level_filter())
-        .init();
+    monitord::logging::setup_logging(args.log_level.into());
 
     info!("{}", LONG_ABOUT);
     debug!("CLI Args: {:?}", args);

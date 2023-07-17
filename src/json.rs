@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use itertools::Itertools;
-use log::debug;
+use tracing::debug;
 
 use crate::networkd;
 use crate::units;

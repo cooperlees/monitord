@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use dbus::blocking::Connection;
-use log::error;
 use serde_repr::*;
 use strum_macros::EnumString;
+use tracing::error;
 
 /*
 systemd enums copied from https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h

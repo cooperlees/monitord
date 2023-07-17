@@ -6,10 +6,11 @@ use std::time::Instant;
 
 use anyhow::Result;
 use configparser::ini::Ini;
-use log::error;
-use log::info;
+use tracing::error;
+use tracing::info;
 
 pub mod json;
+pub mod logging;
 mod network_dbus;
 pub mod networkd;
 mod systemd_dbus;
