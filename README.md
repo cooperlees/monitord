@@ -200,7 +200,7 @@ Normal `serde_json` pretty representations of each componoents structs.
 To do test runs (requires `systemd` and `systemd-networkd` *installed*)
 - Pending what you have enabled in your config ...
 
-- `cargo run -- -c monitord.conf -v`
+- `cargo run -- -c monitord.conf -l debug`
 
 Ensure the following pass before submitting a PR (CI checks):
 
