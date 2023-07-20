@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use dbus::blocking::Connection;
+use int_enum::IntEnum;
 use serde_repr::*;
 use strum_macros::EnumString;
 use tracing::error;
@@ -15,7 +16,9 @@ systemd enums copied from https://github.com/systemd/systemd/blob/main/src/libsy
 */
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
+#[derive(
+    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+)]
 #[repr(u8)]
 pub enum AddressState {
     unknown = 0,
@@ -25,7 +28,9 @@ pub enum AddressState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
+#[derive(
+    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+)]
 #[repr(u8)]
 pub enum AdminState {
     unknown = 0,
@@ -38,7 +43,9 @@ pub enum AdminState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
+#[derive(
+    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+)]
 #[repr(u8)]
 pub enum BoolState {
     unknown = u8::MAX,
@@ -59,7 +66,9 @@ pub enum BoolState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
+#[derive(
+    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+)]
 #[repr(u8)]
 pub enum CarrierState {
     unknown = 0,
@@ -74,7 +83,9 @@ pub enum CarrierState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
+#[derive(
+    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+)]
 #[repr(u8)]
 pub enum OnlineState {
     unknown = 0,
@@ -84,7 +95,9 @@ pub enum OnlineState {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString)]
+#[derive(
+    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+)]
 #[repr(u8)]
 pub enum OperState {
     unknown = 0,
@@ -388,6 +401,18 @@ MDNS=no
             expected_interface_state_json.to_string(),
             interface_stats_json
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_enums_to_ints() -> Result<()> {
+        assert_eq!(3, AddressState::routable as u64,);
+        let carrier_state_int: i64 = CarrierState::degraded_carrier.int_value().into();
+        assert_eq!(4, carrier_state_int);
+        assert_eq!(1, BoolState::True as i64,);
+        let bool_state_false_int: u8 = BoolState::False.int_value().into();
+        assert_eq!(0, bool_state_false_int);
+
         Ok(())
     }
 }
