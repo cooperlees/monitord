@@ -32,7 +32,7 @@ pub fn setup_logging(log_filter_level: LevelFilter) {
     let fmt = fmt::Layer::default()
         .with_writer(std::io::stderr)
         .event_format(Glog::default().with_timer(tracing_glog::LocalTime::default()))
-        .fmt_fields(GlogFields)
+        .fmt_fields(GlogFields::default())
         .with_filter(log_filter_level);
 
     let subscriber = Registry::default().with(fmt);
