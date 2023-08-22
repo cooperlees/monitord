@@ -9,12 +9,10 @@ use configparser::ini::Ini;
 use tracing::error;
 use tracing::info;
 
+pub(crate) mod dbus;
 pub mod json;
 pub mod logging;
-mod network_dbus;
 pub mod networkd;
-mod systemd_dbus;
-mod unit_dbus;
 pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
