@@ -60,8 +60,8 @@ pub const UNIT_FIELD_NAMES: &[&str] = SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
 fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats, dbus::Error> {
     debug!("Parsing service {} stats", name);
     let p = c.with_proxy("org.freedesktop.systemd1", path, Duration::new(2, 0));
-    use crate::unit_dbus::OrgFreedesktopSystemd1Service;
-    use crate::unit_dbus::OrgFreedesktopSystemd1Unit;
+    use crate::dbus::units::OrgFreedesktopSystemd1Service;
+    use crate::dbus::units::OrgFreedesktopSystemd1Unit;
     Ok(ServiceStats {
         active_enter_timestamp: p.active_enter_timestamp()?,
         active_exit_timestamp: p.active_exit_timestamp()?,
@@ -143,7 +143,7 @@ pub fn parse_unit_state(
         "/org/freedesktop/systemd1",
         Duration::new(5, 0),
     );
-    use crate::systemd_dbus::OrgFreedesktopSystemd1Manager;
+    use crate::dbus::systemd::OrgFreedesktopSystemd1Manager;
     let units = p.list_units()?;
     stats.total_units = units.len() as u64;
     for unit in units {

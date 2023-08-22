@@ -138,7 +138,7 @@ fn get_interface_links(
         "/org/freedesktop/network1",
         Duration::new(5, 0),
     );
-    use crate::network_dbus::OrgFreedesktopNetwork1Manager;
+    use crate::dbus::networkd::OrgFreedesktopNetwork1Manager;
     let links = p.list_links()?;
     let mut link_int_to_name: HashMap<i32, String> = HashMap::new();
     for network_link in links {
