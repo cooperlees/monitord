@@ -240,7 +240,11 @@ pub fn parse_interface_state_files(
         None => match get_interface_links(dbus_address) {
             Ok(hashmap) => hashmap,
             Err(err) => {
-                panic!("Unable to get interface links via DBUS: {:#?}", err)
+                error!(
+                    "Unable to get interface links via DBUS - is networkd running?: {:#?}",
+                    err
+                );
+                return Ok(NetworkdState::default());
             }
         },
         Some(valid_hashmap) => valid_hashmap,
