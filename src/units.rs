@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -57,21 +58,23 @@ pub struct ServiceStats {
 pub const SERVICE_FIELD_NAMES: &[&str] = ServiceStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_FIELD_NAMES: &[&str] = SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
 
-// Handle there being no processes for stopped units etc.
-// TODO: Go through the Vec of tuples and sum up all the processes for services with multiple PIDs
-fn parse_processes(processes: Vec<(String, u32, String)>) -> u32 {
-    debug!("Found the following processes: {:?}", processes);
-    if processes.len() < 1 {
-        return 0;
-    }
-    processes[0].1
-}
-
 fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats, dbus::Error> {
     debug!("Parsing service {} stats", name);
     let p = c.with_proxy("org.freedesktop.systemd1", path, Duration::new(2, 0));
     use crate::dbus::units::OrgFreedesktopSystemd1Service;
     use crate::dbus::units::OrgFreedesktopSystemd1Unit;
+
+    let processes = match p.get_processes()?.len().try_into() {
+        Ok(procs) => procs,
+        Err(err) => {
+            error!(
+                "Unable to get process count for {} into u32: {:?}",
+                name, err
+            );
+            0
+        }
+    };
+
     Ok(ServiceStats {
         active_enter_timestamp: p.active_enter_timestamp()?,
         active_exit_timestamp: p.active_exit_timestamp()?,
@@ -82,7 +85,7 @@ fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats,
         memory_current: p.memory_current()?,
         memory_available: p.memory_available()?,
         nrestarts: p.nrestarts()?,
-        processes: parse_processes(p.get_processes()?),
+        processes,
         restart_usec: p.restart_usec()?,
         state_change_timestamp: p.state_change_timestamp()?,
         status_errno: p.status_errno()?,
@@ -178,18 +181,6 @@ pub fn parse_unit_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse_processes() {
-        let active_unit_processes = vec![(
-            String::from("/system.slice/sshd.service"),
-            6969,
-            String::from("\"sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups\""),
-        )];
-        assert_eq!(6969, parse_processes(active_unit_processes));
-        let non_active_unit_processes_total = vec![];
-        assert_eq!(0, parse_processes(non_active_unit_processes_total));
-    }
 
     #[test]
     fn test_unit_parse() {
