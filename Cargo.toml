@@ -14,8 +14,9 @@ categories = ["network-programming", "os::linux-apis"]
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.2", features = ["derive"] }
-configparser = "3.0.2"
+configparser = { version = "3.0.2", features = ["indexmap"] }
 dbus = "0.9.3"
+indexmap = "1.9.2"
 int-enum = "0.5.0"
 itertools = "0.10.3"
 serde = { version = "1.0.136", features = ["derive"] }

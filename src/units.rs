@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use dbus::blocking::Connection;
+use indexmap::map::IndexMap;
 use int_enum::IntEnum;
 use serde_repr::*;
 use struct_field_names_as_array::FieldNamesAsArray;
@@ -254,7 +255,7 @@ fn parse_unit(
 /// Pull all units from dbus and count how system is setup and behaving
 pub fn parse_unit_state(
     dbus_address: &str,
-    config_map: HashMap<String, HashMap<String, Option<String>>>,
+    config_map: IndexMap<String, IndexMap<String, Option<String>>>,
 ) -> Result<SystemdUnitStats, Box<dyn std::error::Error + Send + Sync>> {
     // Parse out some config
     let services_to_get_stats: Vec<&String> = match config_map.get("services") {
