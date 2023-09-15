@@ -142,11 +142,44 @@ fn flatten_services(
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.watchdog_usec));
                 }
                 _ => {
-                    debug!("Got a unhandled stat '{}'", field_name);
+                    debug!("Got a unhandled stat: '{}'", field_name);
                 }
             }
         }
     }
+    flat_stats
+}
+
+fn flatten_unit_states(
+    unit_states_hash: &HashMap<String, units::UnitStates>,
+    key_prefix: &String,
+) -> HashMap<String, JsonFlatValue> {
+    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
+    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("unit_states"));
+
+    for (service_name, unit_state_stats) in unit_states_hash.iter() {
+        for field_name in units::UNIT_STATES_FIELD_NAMES {
+            let key = format!("{base_metric_name}.{service_name}.{field_name}");
+            match field_name.to_string().as_str() {
+                "active_state" => {
+                    flat_stats.insert(
+                        key,
+                        JsonFlatValue::U64(unit_state_stats.active_state as u64),
+                    );
+                }
+                "loaded_state" => {
+                    flat_stats.insert(
+                        key,
+                        JsonFlatValue::U64(unit_state_stats.loaded_state as u64),
+                    );
+                }
+                _ => {
+                    debug!("Got a unhandled unit state: '{}'", field_name);
+                }
+            }
+        }
+    }
+
     flat_stats
 }
 
@@ -239,6 +272,10 @@ pub fn flatten_hashmap(
         &stats_struct.units.service_stats,
         key_prefix,
     ));
+    flat_stats.extend(flatten_unit_states(
+        &stats_struct.units.unit_states,
+        key_prefix,
+    ));
     flat_stats.extend(flatten_units(&stats_struct.units, key_prefix));
     flat_stats
 }
@@ -300,6 +337,8 @@ mod tests {
   "services.unittest.service.tasks_current": 0,
   "services.unittest.service.timeout_clean_usec": 0,
   "services.unittest.service.watchdog_usec": 0,
+  "unit_states.unittest.service.active_state": 1,
+  "unit_states.unittest.service.loaded_state": 1,
   "units.active_units": 0,
   "units.automount_units": 0,
   "units.device_units": 0,
@@ -345,6 +384,8 @@ mod tests {
   "monitord.services.unittest.service.tasks_current": 0,
   "monitord.services.unittest.service.timeout_clean_usec": 0,
   "monitord.services.unittest.service.watchdog_usec": 0,
+  "monitord.unit_states.unittest.service.active_state": 1,
+  "monitord.unit_states.unittest.service.loaded_state": 1,
   "monitord.units.active_units": 0,
   "monitord.units.automount_units": 0,
   "monitord.units.device_units": 0,
@@ -392,13 +433,20 @@ mod tests {
                 ..Default::default()
             },
         );
+        stats.units.unit_states.insert(
+            String::from("unittest.service"),
+            units::UnitStates {
+                active_state: units::SystemdUnitActiveState::active,
+                loaded_state: units::SystemdUnitLoadState::loaded,
+            },
+        );
         stats
     }
 
     #[test]
     fn test_flatten_hashmap() {
         let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
-        assert_eq!(42, json_flat_map.len());
+        assert_eq!(44, json_flat_map.len());
     }
 
     #[test]

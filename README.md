@@ -92,11 +92,20 @@ link_state_dir = /run/systemd/netif/links
 # .service is important as that's what DBus returns from `list_units`
 [services]
 foo.service
-sshd.service
 
 # Grab unit status counts via dbus
 [units]
 enabled = true
+state_stats = true
+
+# Filter what services you want collect state stats for
+# If both lists are configured blocklist is preferred
+# If neither exist all units state will generate counters
+[units.state_stats.allowed]
+foo.service
+
+[units.state_stats.disallowed]
+bar.service
 ```
 
 ## Output Formats
@@ -170,6 +179,8 @@ Is semi pretty too + custom. All unittested ...
   "services.chronyd.service.tasks_current": 1,
   "services.chronyd.service.timeout_clean_usec": 18446744073709551615,
   "services.chronyd.service.watchdog_usec": 0,
+  "monitord.unit_states.chronyd.service.active_state": 1,
+  "monitord.unit_states.chronyd.service.loaded_state": 1,
   "units.active_units": 403,
   "units.automount_units": 1,
   "units.device_units": 150,

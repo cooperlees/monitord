@@ -1,16 +1,21 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::Result;
 use dbus::blocking::Connection;
+use int_enum::IntEnum;
+use serde_repr::*;
 use struct_field_names_as_array::FieldNamesAsArray;
+use strum_macros::EnumString;
 use tracing::debug;
 use tracing::error;
 
 #[derive(
     serde::Serialize, serde::Deserialize, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
+
 pub struct SystemdUnitStats {
     pub active_units: u64,
     pub automount_units: u64,
@@ -31,6 +36,7 @@ pub struct SystemdUnitStats {
     pub timer_units: u64,
     pub total_units: u64,
     pub service_stats: HashMap<String, ServiceStats>,
+    pub unit_states: HashMap<String, UnitStates>,
 }
 
 #[derive(
@@ -55,8 +61,68 @@ pub struct ServiceStats {
     pub watchdog_usec: u64,
 }
 
+#[derive(
+    serde::Serialize, serde::Deserialize, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
+)]
+pub struct UnitStates {
+    pub active_state: SystemdUnitActiveState,
+    pub loaded_state: SystemdUnitLoadState,
+}
+
+// Declare state types
+// Reference: https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html
+// SubState can be unit-type-specific so can't enum
+
+#[allow(non_camel_case_types)]
+#[derive(
+    Serialize_repr,
+    Deserialize_repr,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    Eq,
+    PartialEq,
+    EnumString,
+    IntEnum,
+)]
+#[repr(u8)]
+pub enum SystemdUnitActiveState {
+    #[default]
+    unknown = 0,
+    active = 1,
+    reloading = 2,
+    inactive = 3,
+    failed = 4,
+    activating = 5,
+    deactivating = 6,
+}
+
+#[allow(non_camel_case_types)]
+#[derive(
+    Serialize_repr,
+    Deserialize_repr,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    Eq,
+    PartialEq,
+    EnumString,
+    IntEnum,
+)]
+#[repr(u8)]
+pub enum SystemdUnitLoadState {
+    #[default]
+    unknown = 0,
+    loaded = 1,
+    error = 2,
+    masked = 3,
+}
+
 pub const SERVICE_FIELD_NAMES: &[&str] = ServiceStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_FIELD_NAMES: &[&str] = SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
+pub const UNIT_STATES_FIELD_NAMES: &[&str] = UnitStates::FIELD_NAMES_AS_ARRAY;
 
 fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats, dbus::Error> {
     debug!("Parsing service {} stats", name);
@@ -93,6 +159,46 @@ fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats,
         timeout_clean_usec: p.timeout_clean_usec()?,
         watchdog_usec: p.watchdog_usec()?,
     })
+}
+
+fn parse_state(
+    stats: &mut SystemdUnitStats,
+    unit: (
+        String, // unit name
+        String,
+        String, // load state
+        String, // active state
+        String,
+        String,
+        dbus::Path<'static>,
+        u32,
+        String,
+        dbus::Path<'static>,
+    ),
+    allowlist: &[&String],
+    blocklist: &[&String],
+) {
+    let unit_name = unit.0;
+    if blocklist.contains(&&unit_name) {
+        debug!("Skipping state stats for {} due to blocklist", unit_name);
+        return;
+    }
+    if !allowlist.is_empty() && !allowlist.contains(&&unit_name) {
+        debug!(
+            "Skipping state stats for {} due to not being in allowlist",
+            unit_name
+        );
+        return;
+    }
+    stats.unit_states.insert(
+        unit_name.clone(),
+        UnitStates {
+            active_state: SystemdUnitActiveState::from_str(&unit.3)
+                .unwrap_or(SystemdUnitActiveState::unknown),
+            loaded_state: SystemdUnitLoadState::from_str(&unit.2)
+                .unwrap_or(SystemdUnitLoadState::unknown),
+        },
+    );
 }
 
 fn parse_unit(
@@ -146,8 +252,28 @@ fn parse_unit(
 
 pub fn parse_unit_state(
     dbus_address: &str,
-    services_to_get_stats: Vec<&String>,
+    config_map: HashMap<String, HashMap<String, Option<String>>>,
 ) -> Result<SystemdUnitStats, Box<dyn std::error::Error + Send + Sync>> {
+    // Parse out some config
+    let services_to_get_stats: Vec<&String> = match config_map.get("services") {
+        Some(services_hash) => services_hash.keys().collect(),
+        None => Vec::from([]),
+    };
+    let state_stats_allowlist: Vec<&String> = match config_map.get("units.state_stats.allowlist") {
+        Some(services_hash) => services_hash.keys().collect(),
+        None => Vec::from([]),
+    };
+    if !state_stats_allowlist.is_empty() {
+        debug!("Using unit state allowlist: {:?}", state_stats_allowlist);
+    }
+    let state_stats_blocklist: Vec<&String> = match config_map.get("units.state_stats.blocklist") {
+        Some(services_hash) => services_hash.keys().collect(),
+        None => Vec::from([]),
+    };
+    if !state_stats_allowlist.is_empty() {
+        debug!("Using unit state blocklist: {:?}", state_stats_allowlist);
+    }
+
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
     let mut stats = SystemdUnitStats::default();
     let c = Connection::new_system()?;
@@ -160,7 +286,23 @@ pub fn parse_unit_state(
     let units = p.list_units()?;
     stats.total_units = units.len() as u64;
     for unit in units {
+        // Collect unit types + states counts
         parse_unit(&mut stats, unit.clone());
+
+        // Collect per unit state stats - ActiveState + LoadState
+        // Not collecting SubState (yet)
+        if config_map["units"].contains_key("state_stats")
+            && config_map["units"]["state_stats"] == Some(String::from("true"))
+        {
+            parse_state(
+                &mut stats,
+                unit.clone(),
+                &state_stats_allowlist,
+                &state_stats_blocklist,
+            );
+        }
+
+        // Collect service stats
         if services_to_get_stats.contains(&&unit.0) {
             debug!("Collecting service stats for {:?}", &unit);
             match parse_service(&c, &unit.0, &unit.6) {
@@ -181,6 +323,92 @@ pub fn parse_unit_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn get_unit_file() -> (
+        String, // unit name
+        String,
+        String, // load state
+        String, // active state
+        String,
+        String,
+        dbus::Path<'static>,
+        u32,
+        String,
+        dbus::Path<'static>,
+    ) {
+        (
+            String::from("apport-autoreport.timer"),
+            String::from("Process error reports when automatic reporting is enabled (timer based)"),
+            String::from("loaded"),
+            String::from("inactive"),
+            String::from("dead"),
+            String::from(""),
+            dbus::Path::new("/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer\0")
+                .unwrap(),
+            0 as u32,
+            String::from(""),
+            dbus::Path::new("/\0").unwrap(),
+        )
+    }
+
+    #[test]
+    fn test_state_parse() {
+        let test_unit_name = String::from("apport-autoreport.timer");
+        let expected_stats = SystemdUnitStats {
+            active_units: 0,
+            automount_units: 0,
+            device_units: 0,
+            failed_units: 0,
+            inactive_units: 0,
+            jobs_queued: 0,
+            loaded_units: 0,
+            masked_units: 0,
+            mount_units: 0,
+            not_found_units: 0,
+            path_units: 0,
+            scope_units: 0,
+            service_units: 0,
+            slice_units: 0,
+            socket_units: 0,
+            target_units: 0,
+            timer_units: 0,
+            total_units: 0,
+            service_stats: HashMap::new(),
+            unit_states: HashMap::from([(
+                test_unit_name.clone(),
+                UnitStates {
+                    active_state: SystemdUnitActiveState::inactive,
+                    loaded_state: SystemdUnitLoadState::loaded,
+                },
+            )]),
+        };
+        let mut stats = SystemdUnitStats::default();
+        let systemd_unit = get_unit_file();
+
+        // Test no allow list or blocklist
+        parse_state(&mut stats, systemd_unit.clone(), &vec![], &vec![]);
+        assert_eq!(expected_stats, stats);
+
+        // Create some allow/block lists
+        let allowlist = Vec::from([&test_unit_name]);
+        let blocklist = Vec::from([&test_unit_name]);
+
+        // test no blocklist and only allow list - Should equal the same as no lists above
+        let mut allowlist_stats = SystemdUnitStats::default();
+        parse_state(
+            &mut allowlist_stats,
+            systemd_unit.clone(),
+            &allowlist,
+            &vec![],
+        );
+        assert_eq!(expected_stats, allowlist_stats);
+
+        // test blocklist with allow list (show it's preferred)
+        let mut blocklist_stats = SystemdUnitStats::default();
+        let expected_blocklist_stats = SystemdUnitStats::default();
+        parse_state(&mut blocklist_stats, systemd_unit, &allowlist, &blocklist);
+        assert_eq!(expected_blocklist_stats, blocklist_stats);
+    }
 
     #[test]
     fn test_unit_parse() {
@@ -204,21 +432,10 @@ mod tests {
             timer_units: 1,
             total_units: 0,
             service_stats: HashMap::new(),
+            unit_states: HashMap::new(),
         };
         let mut stats = SystemdUnitStats::default();
-        let systemd_unit = (
-            String::from("apport-autoreport.timer"),
-            String::from("Process error reports when automatic reporting is enabled (timer based)"),
-            String::from("loaded"),
-            String::from("inactive"),
-            String::from("dead"),
-            String::from(""),
-            dbus::Path::new("/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer\0")
-                .unwrap(),
-            0 as u32,
-            String::from(""),
-            dbus::Path::new("/\0").unwrap(),
-        );
+        let systemd_unit = get_unit_file();
         parse_unit(&mut stats, systemd_unit);
         assert_eq!(expected_stats, stats);
     }

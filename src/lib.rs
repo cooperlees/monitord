@@ -104,21 +104,17 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
                 &dbus_address,
             ) {
                 Ok(networkd_stats) => monitord_stats.networkd = networkd_stats,
-                Err(err) => error!("networkd stats failed: {}", err),
+                Err(err) => error!("networkd stats failed: {:?}", err),
             }
         }
 
         // Run service collectors if there are services listed in config
         let config_map = config.get_map().expect("Unable to get a config map");
-        let services_to_get_stats: Vec<&String> = match config_map.get("services") {
-            Some(services_hash) => services_hash.keys().collect(),
-            None => Vec::from([]),
-        };
         if read_config_bool(&config, String::from("units"), String::from("enabled")) {
             ran_collector_count += 1;
-            match units::parse_unit_state(&dbus_address, services_to_get_stats) {
+            match units::parse_unit_state(&dbus_address, config_map) {
                 Ok(units_stats) => monitord_stats.units = units_stats,
-                Err(err) => error!("units stats failed: {}", err),
+                Err(err) => error!("units stats failed: {:?}", err),
             }
         }
 
