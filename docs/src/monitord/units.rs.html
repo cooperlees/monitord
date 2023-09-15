@@ -442,6 +442,7 @@
 <a href="#442" id="442">442</a>
 <a href="#443" id="443">443</a>
 <a href="#444" id="444">444</a>
+<a href="#445" id="445">445</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>std::collections::HashMap;
 <span class="kw">use </span>std::convert::TryInto;
 <span class="kw">use </span>std::str::FromStr;
@@ -449,6 +450,7 @@
 
 <span class="kw">use </span>anyhow::Result;
 <span class="kw">use </span>dbus::blocking::Connection;
+<span class="kw">use </span>indexmap::map::IndexMap;
 <span class="kw">use </span>int_enum::IntEnum;
 <span class="kw">use </span>serde_repr::<span class="kw-2">*</span>;
 <span class="kw">use </span>struct_field_names_as_array::FieldNamesAsArray;
@@ -698,7 +700,7 @@
 <span class="doccomment">/// Pull all units from dbus and count how system is setup and behaving
 </span><span class="kw">pub fn </span>parse_unit_state(
     dbus_address: <span class="kw-2">&amp;</span>str,
-    config_map: HashMap&lt;String, HashMap&lt;String, <span class="prelude-ty">Option</span>&lt;String&gt;&gt;&gt;,
+    config_map: IndexMap&lt;String, IndexMap&lt;String, <span class="prelude-ty">Option</span>&lt;String&gt;&gt;&gt;,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;SystemdUnitStats, Box&lt;<span class="kw">dyn </span>std::error::Error + Send + Sync&gt;&gt; {
     <span class="comment">// Parse out some config
     </span><span class="kw">let </span>services_to_get_stats: Vec&lt;<span class="kw-2">&amp;</span>String&gt; = <span class="kw">match </span>config_map.get(<span class="string">&quot;services&quot;</span>) {

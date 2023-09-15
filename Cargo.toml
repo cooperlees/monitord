@@ -1,9 +1,10 @@
 [package]
 name = "monitord"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["Cooper Ry Lees <me@cooperlees.com>"]
 license = "GPL-2.0-or-later"
 readme = "README.md"
+documentation = "http://monitord.xyz/"
 repository = "https://github.com/cooperlees/monitord"
 edition = "2021"
 description = """
