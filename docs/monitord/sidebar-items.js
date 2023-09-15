@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_DBUS_ADDRESS"],"fn":["print_stats","stat_collector"],"mod":["json","logging","networkd","units"],"struct":["MonitordStats"]};

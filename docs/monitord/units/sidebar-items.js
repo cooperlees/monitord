@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SERVICE_FIELD_NAMES","UNIT_FIELD_NAMES","UNIT_STATES_FIELD_NAMES"],"enum":["SystemdUnitActiveState","SystemdUnitLoadState"],"fn":["parse_state","parse_unit_state"],"struct":["ServiceStats","SystemdUnitStats","UnitStates"]};
