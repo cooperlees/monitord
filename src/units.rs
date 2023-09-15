@@ -161,7 +161,8 @@ fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats,
     })
 }
 
-fn parse_state(
+/// Parse state of a unit into our unit_states hash
+pub fn parse_state(
     stats: &mut SystemdUnitStats,
     unit: (
         String, // unit name
@@ -250,6 +251,7 @@ fn parse_unit(
     }
 }
 
+/// Pull all units from dbus and count how system is setup and behaving
 pub fn parse_unit_state(
     dbus_address: &str,
     config_map: HashMap<String, HashMap<String, Option<String>>>,
