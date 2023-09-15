@@ -101,7 +101,7 @@ state_stats = true
 # Filter what services you want collect state stats for
 # If both lists are configured blocklist is preferred
 # If neither exist all units state will generate counters
-[units.state_stats.allowed]
+[units.state_stats.allowlist]
 foo.service
 
 [units.state_stats.blocklist]
