@@ -104,7 +104,7 @@ state_stats = true
 [units.state_stats.allowed]
 foo.service
 
-[units.state_stats.disallowed]
+[units.state_stats.blocklist]
 bar.service
 ```
 
