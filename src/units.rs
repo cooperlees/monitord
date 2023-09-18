@@ -14,7 +14,7 @@ use tracing::debug;
 use tracing::error;
 
 #[derive(
-    serde::Serialize, serde::Deserialize, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
+    serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
 
 pub struct SystemdUnitStats {
@@ -41,7 +41,7 @@ pub struct SystemdUnitStats {
 }
 
 #[derive(
-    serde::Serialize, serde::Deserialize, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
+    serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
 pub struct ServiceStats {
     pub active_enter_timestamp: u64,
@@ -63,7 +63,7 @@ pub struct ServiceStats {
 }
 
 #[derive(
-    serde::Serialize, serde::Deserialize, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
+    serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
 pub struct UnitStates {
     pub active_state: SystemdUnitActiveState,
