@@ -167,11 +167,8 @@ fn flatten_unit_states(
                         JsonFlatValue::U64(unit_state_stats.active_state as u64),
                     );
                 }
-                "loaded_state" => {
-                    flat_stats.insert(
-                        key,
-                        JsonFlatValue::U64(unit_state_stats.loaded_state as u64),
-                    );
+                "load_state" => {
+                    flat_stats.insert(key, JsonFlatValue::U64(unit_state_stats.load_state as u64));
                 }
                 _ => {
                     debug!("Got a unhandled unit state: '{}'", field_name);
@@ -338,7 +335,7 @@ mod tests {
   "services.unittest.service.timeout_clean_usec": 0,
   "services.unittest.service.watchdog_usec": 0,
   "unit_states.unittest.service.active_state": 1,
-  "unit_states.unittest.service.loaded_state": 1,
+  "unit_states.unittest.service.load_state": 1,
   "units.active_units": 0,
   "units.automount_units": 0,
   "units.device_units": 0,
@@ -385,7 +382,7 @@ mod tests {
   "monitord.services.unittest.service.timeout_clean_usec": 0,
   "monitord.services.unittest.service.watchdog_usec": 0,
   "monitord.unit_states.unittest.service.active_state": 1,
-  "monitord.unit_states.unittest.service.loaded_state": 1,
+  "monitord.unit_states.unittest.service.load_state": 1,
   "monitord.units.active_units": 0,
   "monitord.units.automount_units": 0,
   "monitord.units.device_units": 0,
@@ -437,7 +434,7 @@ mod tests {
             String::from("unittest.service"),
             units::UnitStates {
                 active_state: units::SystemdUnitActiveState::active,
-                loaded_state: units::SystemdUnitLoadState::loaded,
+                load_state: units::SystemdUnitLoadState::loaded,
             },
         );
         stats

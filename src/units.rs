@@ -67,7 +67,7 @@ pub struct ServiceStats {
 )]
 pub struct UnitStates {
     pub active_state: SystemdUnitActiveState,
-    pub loaded_state: SystemdUnitLoadState,
+    pub load_state: SystemdUnitLoadState,
 }
 
 // Declare state types
@@ -197,7 +197,7 @@ pub fn parse_state(
         UnitStates {
             active_state: SystemdUnitActiveState::from_str(&unit.3)
                 .unwrap_or(SystemdUnitActiveState::unknown),
-            loaded_state: SystemdUnitLoadState::from_str(&unit.2)
+            load_state: SystemdUnitLoadState::from_str(&unit.2)
                 .unwrap_or(SystemdUnitLoadState::unknown),
         },
     );
@@ -381,7 +381,7 @@ mod tests {
                 test_unit_name.clone(),
                 UnitStates {
                     active_state: SystemdUnitActiveState::inactive,
-                    loaded_state: SystemdUnitLoadState::loaded,
+                    load_state: SystemdUnitLoadState::loaded,
                 },
             )]),
         };
