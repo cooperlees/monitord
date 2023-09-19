@@ -17,7 +17,16 @@ systemd enums copied from https://github.com/systemd/systemd/blob/main/src/libsy
 
 #[allow(non_camel_case_types)]
 #[derive(
-    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+    Serialize_repr,
+    Deserialize_repr,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    EnumString,
+    IntEnum,
+    strum_macros::ToString,
 )]
 #[repr(u8)]
 pub enum AddressState {
@@ -29,7 +38,16 @@ pub enum AddressState {
 
 #[allow(non_camel_case_types)]
 #[derive(
-    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+    Serialize_repr,
+    Deserialize_repr,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    EnumString,
+    IntEnum,
+    strum_macros::ToString,
 )]
 #[repr(u8)]
 pub enum AdminState {
@@ -44,7 +62,16 @@ pub enum AdminState {
 
 #[allow(non_camel_case_types)]
 #[derive(
-    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+    Serialize_repr,
+    Deserialize_repr,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    EnumString,
+    IntEnum,
+    strum_macros::ToString,
 )]
 #[repr(u8)]
 pub enum BoolState {
@@ -67,7 +94,16 @@ pub enum BoolState {
 
 #[allow(non_camel_case_types)]
 #[derive(
-    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+    Serialize_repr,
+    Deserialize_repr,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    EnumString,
+    IntEnum,
+    strum_macros::ToString,
 )]
 #[repr(u8)]
 pub enum CarrierState {
@@ -84,7 +120,16 @@ pub enum CarrierState {
 
 #[allow(non_camel_case_types)]
 #[derive(
-    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+    Serialize_repr,
+    Deserialize_repr,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    EnumString,
+    IntEnum,
+    strum_macros::ToString,
 )]
 #[repr(u8)]
 pub enum OnlineState {
@@ -96,7 +141,16 @@ pub enum OnlineState {
 
 #[allow(non_camel_case_types)]
 #[derive(
-    Serialize_repr, Deserialize_repr, Clone, Copy, Debug, Eq, PartialEq, EnumString, IntEnum,
+    Serialize_repr,
+    Deserialize_repr,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    EnumString,
+    IntEnum,
+    strum_macros::ToString,
 )]
 #[repr(u8)]
 pub enum OperState {

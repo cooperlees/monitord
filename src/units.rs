@@ -86,6 +86,7 @@ pub struct UnitStates {
     PartialEq,
     EnumString,
     IntEnum,
+    strum_macros::ToString,
 )]
 #[repr(u8)]
 pub enum SystemdUnitActiveState {
@@ -111,6 +112,7 @@ pub enum SystemdUnitActiveState {
     PartialEq,
     EnumString,
     IntEnum,
+    strum_macros::ToString,
 )]
 #[repr(u8)]
 pub enum SystemdUnitLoadState {
