@@ -103,6 +103,10 @@ fn flatten_pid1(
         JsonFlatValue::U64(pid1_stats.memory_usage_bytes),
     );
     flat_stats.insert(
+        format!("{}.fd_count", base_metric_name),
+        JsonFlatValue::U64(pid1_stats.fd_count),
+    );
+    flat_stats.insert(
         format!("{}.num_threads", base_metric_name),
         JsonFlatValue::U64(pid1_stats.num_threads),
     );
@@ -358,6 +362,7 @@ mod tests {
   "networkd.managed_interfaces": 1,
   "pid1.cpu_time_kernel": 69,
   "pid1.cpu_user_kernel": 69,
+  "pid1.fd_count": 69,
   "pid1.memory_usage_bytes": 69,
   "pid1.num_threads": 1,
   "services.unittest.service.active_enter_timestamp": 0,
@@ -409,6 +414,7 @@ mod tests {
   "monitord.networkd.managed_interfaces": 1,
   "monitord.pid1.cpu_time_kernel": 69,
   "monitord.pid1.cpu_user_kernel": 69,
+  "monitord.pid1.fd_count": 69,
   "monitord.pid1.memory_usage_bytes": 69,
   "monitord.pid1.num_threads": 1,
   "monitord.services.unittest.service.active_enter_timestamp": 0,
@@ -469,6 +475,7 @@ mod tests {
                 cpu_time_kernel: 69,
                 cpu_time_user: 69,
                 memory_usage_bytes: 69,
+                fd_count: 69,
                 num_threads: 1,
             }),
             units: crate::units::SystemdUnitStats::default(),
@@ -495,7 +502,7 @@ mod tests {
     #[test]
     fn test_flatten_hashmap() {
         let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
-        assert_eq!(48, json_flat_map.len());
+        assert_eq!(49, json_flat_map.len());
     }
 
     #[test]
