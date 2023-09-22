@@ -6,7 +6,7 @@ pub struct Pid1Stats {
     pub cpu_time_user: u64,
     pub memory_usage_bytes: u64,
     pub fd_count: u64,
-    pub num_threads: u64,
+    pub tasks: u64,
 }
 
 /// Get procfs info on pid 1 - https://manpages.debian.org/buster/manpages/procfs.5.en.html
@@ -23,8 +23,13 @@ pub fn get_pid1_stats() -> anyhow::Result<Pid1Stats> {
         cpu_time_user: (stat_file.utime) / (ticks_per_second),
         memory_usage_bytes: (stat_file.rss) * (bytes_per_page),
         fd_count: pid1_proc.fd_count()?.try_into()?,
-        // Using 0 as impossible number of threads
-        num_threads: stat_file.num_threads.try_into().unwrap_or(0),
+        // Using 0 as impossible number of tasks
+        tasks: pid1_proc
+            .tasks()?
+            .flatten()
+            .collect::<Vec<_>>()
+            .len()
+            .try_into()?,
     })
 }
 
@@ -35,7 +40,7 @@ pub mod tests {
     #[test]
     pub fn test_get_stats() -> anyhow::Result<()> {
         let pid1_stats = get_pid1_stats()?;
-        assert!(pid1_stats.num_threads > 0);
+        assert!(pid1_stats.tasks > 0);
         Ok(())
     }
 }

@@ -107,8 +107,8 @@ fn flatten_pid1(
         JsonFlatValue::U64(pid1_stats.fd_count),
     );
     flat_stats.insert(
-        format!("{}.num_threads", base_metric_name),
-        JsonFlatValue::U64(pid1_stats.num_threads),
+        format!("{}.tasks", base_metric_name),
+        JsonFlatValue::U64(pid1_stats.tasks),
     );
 
     flat_stats
@@ -364,7 +364,7 @@ mod tests {
   "pid1.cpu_user_kernel": 69,
   "pid1.fd_count": 69,
   "pid1.memory_usage_bytes": 69,
-  "pid1.num_threads": 1,
+  "pid1.tasks": 1,
   "services.unittest.service.active_enter_timestamp": 0,
   "services.unittest.service.active_exit_timestamp": 0,
   "services.unittest.service.cpuusage_nsec": 0,
@@ -416,7 +416,7 @@ mod tests {
   "monitord.pid1.cpu_user_kernel": 69,
   "monitord.pid1.fd_count": 69,
   "monitord.pid1.memory_usage_bytes": 69,
-  "monitord.pid1.num_threads": 1,
+  "monitord.pid1.tasks": 1,
   "monitord.services.unittest.service.active_enter_timestamp": 0,
   "monitord.services.unittest.service.active_exit_timestamp": 0,
   "monitord.services.unittest.service.cpuusage_nsec": 0,
@@ -476,7 +476,7 @@ mod tests {
                 cpu_time_user: 69,
                 memory_usage_bytes: 69,
                 fd_count: 69,
-                num_threads: 1,
+                tasks: 1,
             }),
             units: crate::units::SystemdUnitStats::default(),
         };
