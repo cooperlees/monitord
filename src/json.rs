@@ -4,6 +4,7 @@ use itertools::Itertools;
 use tracing::debug;
 
 use crate::networkd;
+use crate::pid1;
 use crate::units;
 use crate::MonitordStats;
 
@@ -70,6 +71,46 @@ fn flatten_networkd(
             JsonFlatValue::U64(interface.required_for_online as u64),
         );
     }
+    flat_stats
+}
+
+fn flatten_pid1(
+    optional_pid1_stats: &Option<pid1::Pid1Stats>,
+    key_prefix: &String,
+) -> HashMap<String, JsonFlatValue> {
+    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
+    // If we're not collcting pid1 stats don't add
+    let pid1_stats = match optional_pid1_stats {
+        Some(ps) => ps,
+        None => {
+            debug!("Skipping flatenning pid1 stats as we got None ...");
+            return flat_stats;
+        }
+    };
+
+    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("pid1"));
+
+    flat_stats.insert(
+        format!("{}.cpu_time_kernel", base_metric_name),
+        JsonFlatValue::U64(pid1_stats.cpu_time_kernel),
+    );
+    flat_stats.insert(
+        format!("{}.cpu_user_kernel", base_metric_name),
+        JsonFlatValue::U64(pid1_stats.cpu_time_user),
+    );
+    flat_stats.insert(
+        format!("{}.memory_usage_bytes", base_metric_name),
+        JsonFlatValue::U64(pid1_stats.memory_usage_bytes),
+    );
+    flat_stats.insert(
+        format!("{}.fd_count", base_metric_name),
+        JsonFlatValue::U64(pid1_stats.fd_count),
+    );
+    flat_stats.insert(
+        format!("{}.tasks", base_metric_name),
+        JsonFlatValue::U64(pid1_stats.tasks),
+    );
+
     flat_stats
 }
 
@@ -265,6 +306,7 @@ pub fn flatten_hashmap(
 ) -> HashMap<String, JsonFlatValue> {
     let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
     flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
+    flat_stats.extend(flatten_pid1(&stats_struct.pid1, key_prefix));
     flat_stats.extend(flatten_services(
         &stats_struct.units.service_stats,
         key_prefix,
@@ -318,6 +360,11 @@ mod tests {
   "networkd.eth0.oper_state": 9,
   "networkd.eth0.required_for_online": 1,
   "networkd.managed_interfaces": 1,
+  "pid1.cpu_time_kernel": 69,
+  "pid1.cpu_user_kernel": 69,
+  "pid1.fd_count": 69,
+  "pid1.memory_usage_bytes": 69,
+  "pid1.tasks": 1,
   "services.unittest.service.active_enter_timestamp": 0,
   "services.unittest.service.active_exit_timestamp": 0,
   "services.unittest.service.cpuusage_nsec": 0,
@@ -365,6 +412,11 @@ mod tests {
   "monitord.networkd.eth0.oper_state": 9,
   "monitord.networkd.eth0.required_for_online": 1,
   "monitord.networkd.managed_interfaces": 1,
+  "monitord.pid1.cpu_time_kernel": 69,
+  "monitord.pid1.cpu_user_kernel": 69,
+  "monitord.pid1.fd_count": 69,
+  "monitord.pid1.memory_usage_bytes": 69,
+  "monitord.pid1.tasks": 1,
   "monitord.services.unittest.service.active_enter_timestamp": 0,
   "monitord.services.unittest.service.active_exit_timestamp": 0,
   "monitord.services.unittest.service.cpuusage_nsec": 0,
@@ -419,6 +471,13 @@ mod tests {
                 }],
                 managed_interfaces: 1,
             },
+            pid1: Some(crate::pid1::Pid1Stats {
+                cpu_time_kernel: 69,
+                cpu_time_user: 69,
+                memory_usage_bytes: 69,
+                fd_count: 69,
+                tasks: 1,
+            }),
             units: crate::units::SystemdUnitStats::default(),
         };
         let service_unit_name = String::from("unittest.service");
@@ -443,7 +502,7 @@ mod tests {
     #[test]
     fn test_flatten_hashmap() {
         let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
-        assert_eq!(44, json_flat_map.len());
+        assert_eq!(49, json_flat_map.len());
     }
 
     #[test]

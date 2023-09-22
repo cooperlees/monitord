@@ -13,6 +13,7 @@ pub(crate) mod dbus;
 pub mod json;
 pub mod logging;
 pub mod networkd;
+pub mod pid1;
 pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
@@ -21,6 +22,7 @@ pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 pub struct MonitordStats {
     pub networkd: networkd::NetworkdState,
+    pub pid1: Option<pid1::Pid1Stats>,
     pub units: units::SystemdUnitStats,
 }
 
@@ -87,6 +89,17 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
         let mut ran_collector_count: u8 = 0;
 
         info!("Starting stat collection run");
+
+        // Collect pid1 procfs stas
+        if read_config_bool(&config, String::from("pid1"), String::from("enabled")) {
+            monitord_stats.pid1 = match crate::pid1::get_pid1_stats() {
+                Ok(s) => Some(s),
+                Err(err) => {
+                    error!("Unable to set pid1 stats: {:?}", err);
+                    None
+                }
+            }
+        }
 
         // TODO: Move each collector into a function + thread
         // Run networkd collector if enabled
