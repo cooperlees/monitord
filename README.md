@@ -15,7 +15,7 @@ Open to more formats / run methods ... Open an issue to discuss. Depends on the 
 
 `monitord` is a config driven binary. We plan to keep CLI arguments to a minimum.
 
-**INFO** level logging is enabled to stderr by default. Use `-v` to increase (DEBUG) and `-q` to reduce logging.
+**INFO** level logging is enabled to stderr by default. Use `-l LEVEL` to increase or decrease logging.
 
 ## Install
 
@@ -79,14 +79,14 @@ key_prefix = monitord
 # Supported: json, json-flat, json-pretty
 output_format = json
 
-# TODO: implement
-[journald]
-enabled = false
-
 # Grab networkd stats from files + networkctl
 [networkd]
 enabled = true
 link_state_dir = /run/systemd/netif/links
+
+# Enable grabbing PID 1 stats via procfs
+[pid1]
+enabled = true
 
 # Services to grab extra stats for
 # .service is important as that's what DBus returns from `list_units`
@@ -166,8 +166,9 @@ Is semi pretty too + custom. All unittested ...
   "networkd.wg0.required_for_online": 1,
   "pid1.cpu_time_kernel": 48,
   "pid1.cpu_user_kernel": 41,
+  "pid1.fd_count": 245,
   "pid1.memory_usage_bytes": 19165184,
-  "pid1.num_threads": 1,
+  "pid1.tasks": 1,
   "services.chronyd.service.active_enter_timestamp": 1683556542382710,
   "services.chronyd.service.active_exit_timestamp": 0,
   "services.chronyd.service.cpuusage_nsec": 328951000,
