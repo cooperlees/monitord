@@ -135,6 +135,19 @@
 <a href="#135" id="135">135</a>
 <a href="#136" id="136">136</a>
 <a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
+<a href="#139" id="139">139</a>
+<a href="#140" id="140">140</a>
+<a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a>
+<a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a>
+<a href="#147" id="147">147</a>
+<a href="#148" id="148">148</a>
+<a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>std::path::PathBuf;
 <span class="kw">use </span>std::str::FromStr;
 <span class="kw">use </span>std::thread;
@@ -150,6 +163,7 @@
 <span class="kw">pub mod </span>json;
 <span class="kw">pub mod </span>logging;
 <span class="kw">pub mod </span>networkd;
+<span class="kw">pub mod </span>pid1;
 <span class="kw">pub mod </span>units;
 
 <span class="kw">pub const </span>DEFAULT_DBUS_ADDRESS: <span class="kw-2">&amp;</span>str = <span class="string">&quot;unix:path=/run/dbus/system_bus_socket&quot;</span>;
@@ -158,6 +172,7 @@
 </span><span class="attr">#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 </span><span class="kw">pub struct </span>MonitordStats {
     <span class="kw">pub </span>networkd: networkd::NetworkdState,
+    <span class="kw">pub </span>pid1: <span class="prelude-ty">Option</span>&lt;pid1::Pid1Stats&gt;,
     <span class="kw">pub </span>units: units::SystemdUnitStats,
 }
 
@@ -224,6 +239,17 @@
         <span class="kw">let </span><span class="kw-2">mut </span>ran_collector_count: u8 = <span class="number">0</span>;
 
         <span class="macro">info!</span>(<span class="string">&quot;Starting stat collection run&quot;</span>);
+
+        <span class="comment">// Collect pid1 procfs stas
+        </span><span class="kw">if </span>read_config_bool(<span class="kw-2">&amp;</span>config, String::from(<span class="string">&quot;pid1&quot;</span>), String::from(<span class="string">&quot;enabled&quot;</span>)) {
+            monitord_stats.pid1 = <span class="kw">match </span><span class="kw">crate</span>::pid1::get_pid1_stats() {
+                <span class="prelude-val">Ok</span>(s) =&gt; <span class="prelude-val">Some</span>(s),
+                <span class="prelude-val">Err</span>(err) =&gt; {
+                    <span class="macro">error!</span>(<span class="string">&quot;Unable to set pid1 stats: {:?}&quot;</span>, err);
+                    <span class="prelude-val">None
+                </span>}
+            }
+        }
 
         <span class="comment">// TODO: Move each collector into a function + thread
         // Run networkd collector if enabled

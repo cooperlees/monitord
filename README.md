@@ -28,7 +28,7 @@ Install via cargo or use as a dependency in your `Cargo.toml`.
 
 ```console
 crl-linux:monitord cooper$ monitord --help
-monitord 0.5.0
+monitord 0.7.0
 Cooper Ry Lees <me@cooperlees.com>
 monitord: Know how happy your systemd is! 😊
 
