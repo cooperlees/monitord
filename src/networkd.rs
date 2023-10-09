@@ -168,7 +168,7 @@ pub enum OperState {
     routable = 9,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct InterfaceState {
     pub address_state: AddressState,
     pub admin_state: AdminState,
