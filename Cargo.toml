@@ -1,6 +1,6 @@
 [package]
 name = "monitord"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Cooper Ry Lees <me@cooperlees.com>"]
 license = "GPL-2.0-or-later"
 readme = "README.md"
