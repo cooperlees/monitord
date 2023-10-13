@@ -184,6 +184,7 @@ Is semi pretty too + custom. All unittested ...
   "services.chronyd.service.tasks_current": 1,
   "services.chronyd.service.timeout_clean_usec": 18446744073709551615,
   "services.chronyd.service.watchdog_usec": 0,
+  "system-state": 3,
   "unit_states.chronyd.service.active_state": 1,
   "unit_states.chronyd.service.loaded_state": 1,
   "units.active_units": 403,
