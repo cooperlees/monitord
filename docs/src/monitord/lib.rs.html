@@ -148,6 +148,18 @@
 <a href="#148" id="148">148</a>
 <a href="#149" id="149">149</a>
 <a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
+<a href="#152" id="152">152</a>
+<a href="#153" id="153">153</a>
+<a href="#154" id="154">154</a>
+<a href="#155" id="155">155</a>
+<a href="#156" id="156">156</a>
+<a href="#157" id="157">157</a>
+<a href="#158" id="158">158</a>
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>std::path::PathBuf;
 <span class="kw">use </span>std::str::FromStr;
 <span class="kw">use </span>std::thread;
@@ -164,15 +176,16 @@
 <span class="kw">pub mod </span>logging;
 <span class="kw">pub mod </span>networkd;
 <span class="kw">pub mod </span>pid1;
+<span class="kw">pub mod </span>system;
 <span class="kw">pub mod </span>units;
 
 <span class="kw">pub const </span>DEFAULT_DBUS_ADDRESS: <span class="kw-2">&amp;</span>str = <span class="string">&quot;unix:path=/run/dbus/system_bus_socket&quot;</span>;
 
-<span class="comment">// TODO: Add other components as support is added
-</span><span class="attr">#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
+<span class="attr">#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 </span><span class="kw">pub struct </span>MonitordStats {
     <span class="kw">pub </span>networkd: networkd::NetworkdState,
     <span class="kw">pub </span>pid1: <span class="prelude-ty">Option</span>&lt;pid1::Pid1Stats&gt;,
+    <span class="kw">pub </span>system_state: system::SystemdSystemState,
     <span class="kw">pub </span>units: units::SystemdUnitStats,
 }
 
@@ -269,6 +282,17 @@
                 <span class="prelude-val">Ok</span>(networkd_stats) =&gt; monitord_stats.networkd = networkd_stats,
                 <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(<span class="string">&quot;networkd stats failed: {:?}&quot;</span>, err),
             }
+        }
+
+        <span class="comment">// Run system running (SystemState) state collector
+        </span><span class="kw">if </span>read_config_bool(
+            <span class="kw-2">&amp;</span>config,
+            String::from(<span class="string">&quot;system-state&quot;</span>),
+            String::from(<span class="string">&quot;enabled&quot;</span>),
+        ) {
+            ran_collector_count += <span class="number">1</span>;
+            monitord_stats.system_state = <span class="kw">crate</span>::system::get_system_state(<span class="kw-2">&amp;</span>dbus_address)
+                .map_err(|e| <span class="macro">format!</span>(<span class="string">&quot;Error getting system state: {:?}&quot;</span>, e))<span class="question-mark">?</span>;
         }
 
         <span class="comment">// Run service collectors if there are services listed in config

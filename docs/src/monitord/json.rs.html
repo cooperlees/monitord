@@ -519,6 +519,13 @@
 <a href="#519" id="519">519</a>
 <a href="#520" id="520">520</a>
 <a href="#521" id="521">521</a>
+<a href="#522" id="522">522</a>
+<a href="#523" id="523">523</a>
+<a href="#524" id="524">524</a>
+<a href="#525" id="525">525</a>
+<a href="#526" id="526">526</a>
+<a href="#527" id="527">527</a>
+<a href="#528" id="528">528</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>std::collections::HashMap;
 
 <span class="kw">use </span>itertools::Itertools;
@@ -828,6 +835,10 @@
     <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
     flat_stats.extend(flatten_networkd(<span class="kw-2">&amp;</span>stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_pid1(<span class="kw-2">&amp;</span>stats_struct.pid1, key_prefix));
+    flat_stats.insert(
+        gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;system-state&quot;</span>)),
+        JsonFlatValue::U64(stats_struct.system_state <span class="kw">as </span>u64),
+    );
     flat_stats.extend(flatten_services(
         <span class="kw-2">&amp;</span>stats_struct.units.service_stats,
         key_prefix,
@@ -902,6 +913,7 @@
   &quot;services.unittest.service.tasks_current&quot;: 0,
   &quot;services.unittest.service.timeout_clean_usec&quot;: 0,
   &quot;services.unittest.service.watchdog_usec&quot;: 0,
+  &quot;system-state&quot;: 3,
   &quot;unit_states.unittest.service.active_state&quot;: 1,
   &quot;unit_states.unittest.service.load_state&quot;: 1,
   &quot;units.active_units&quot;: 0,
@@ -954,6 +966,7 @@
   &quot;monitord.services.unittest.service.tasks_current&quot;: 0,
   &quot;monitord.services.unittest.service.timeout_clean_usec&quot;: 0,
   &quot;monitord.services.unittest.service.watchdog_usec&quot;: 0,
+  &quot;monitord.system-state&quot;: 3,
   &quot;monitord.unit_states.unittest.service.active_state&quot;: 1,
   &quot;monitord.unit_states.unittest.service.load_state&quot;: 1,
   &quot;monitord.units.active_units&quot;: 0,
@@ -999,6 +1012,7 @@
                 fd_count: <span class="number">69</span>,
                 tasks: <span class="number">1</span>,
             }),
+            system_state: <span class="kw">crate</span>::system::SystemdSystemState::running,
             units: <span class="kw">crate</span>::units::SystemdUnitStats::default(),
         };
         <span class="kw">let </span>service_unit_name = String::from(<span class="string">&quot;unittest.service&quot;</span>);
@@ -1023,7 +1037,7 @@
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_flatten_hashmap() {
         <span class="kw">let </span>json_flat_map = flatten_hashmap(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;&quot;</span>));
-        <span class="macro">assert_eq!</span>(<span class="number">49</span>, json_flat_map.len());
+        <span class="macro">assert_eq!</span>(<span class="number">50</span>, json_flat_map.len());
     }
 
     <span class="attr">#[test]

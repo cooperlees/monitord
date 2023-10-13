@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["SystemdSystemState"],"fn":["get_system_state"]};
