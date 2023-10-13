@@ -14,15 +14,16 @@ pub mod json;
 pub mod logging;
 pub mod networkd;
 pub mod pid1;
+pub mod system;
 pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
-// TODO: Add other components as support is added
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 pub struct MonitordStats {
     pub networkd: networkd::NetworkdState,
     pub pid1: Option<pid1::Pid1Stats>,
+    pub system_state: system::SystemdSystemState,
     pub units: units::SystemdUnitStats,
 }
 
@@ -119,6 +120,17 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
                 Ok(networkd_stats) => monitord_stats.networkd = networkd_stats,
                 Err(err) => error!("networkd stats failed: {:?}", err),
             }
+        }
+
+        // Run system running (SystemState) state collector
+        if read_config_bool(
+            &config,
+            String::from("system-state"),
+            String::from("enabled"),
+        ) {
+            ran_collector_count += 1;
+            monitord_stats.system_state = crate::system::get_system_state(&dbus_address)
+                .map_err(|e| format!("Error getting system state: {:?}", e))?;
         }
 
         // Run service collectors if there are services listed in config

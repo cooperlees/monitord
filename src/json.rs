@@ -307,6 +307,10 @@ pub fn flatten_hashmap(
     let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
     flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_pid1(&stats_struct.pid1, key_prefix));
+    flat_stats.insert(
+        gen_base_metric_key(key_prefix, &String::from("system-state")),
+        JsonFlatValue::U64(stats_struct.system_state as u64),
+    );
     flat_stats.extend(flatten_services(
         &stats_struct.units.service_stats,
         key_prefix,
@@ -381,6 +385,7 @@ mod tests {
   "services.unittest.service.tasks_current": 0,
   "services.unittest.service.timeout_clean_usec": 0,
   "services.unittest.service.watchdog_usec": 0,
+  "system-state": 3,
   "unit_states.unittest.service.active_state": 1,
   "unit_states.unittest.service.load_state": 1,
   "units.active_units": 0,
@@ -433,6 +438,7 @@ mod tests {
   "monitord.services.unittest.service.tasks_current": 0,
   "monitord.services.unittest.service.timeout_clean_usec": 0,
   "monitord.services.unittest.service.watchdog_usec": 0,
+  "monitord.system-state": 3,
   "monitord.unit_states.unittest.service.active_state": 1,
   "monitord.unit_states.unittest.service.load_state": 1,
   "monitord.units.active_units": 0,
@@ -478,6 +484,7 @@ mod tests {
                 fd_count: 69,
                 tasks: 1,
             }),
+            system_state: crate::system::SystemdSystemState::running,
             units: crate::units::SystemdUnitStats::default(),
         };
         let service_unit_name = String::from("unittest.service");
@@ -502,7 +509,7 @@ mod tests {
     #[test]
     fn test_flatten_hashmap() {
         let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
-        assert_eq!(49, json_flat_map.len());
+        assert_eq!(50, json_flat_map.len());
     }
 
     #[test]
