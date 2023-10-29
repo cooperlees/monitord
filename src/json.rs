@@ -15,6 +15,12 @@ pub enum JsonFlatValue {
     U32(u32),
 }
 
+/// JSON escape a string and remove the '"' chars
+fn json_escape_string(s: &str) -> String {
+    let full_json_str = serde_json::json!(s).to_string();
+    full_json_str[1..full_json_str.len() - 1].into()
+}
+
 fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
     match key_prefix.len() {
         0 => String::from(metric_name),
@@ -122,8 +128,9 @@ fn flatten_services(
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("services"));
 
     for (service_name, service_stats) in service_stats_hash.iter() {
+        let escaped_service_name = json_escape_string(service_name);
         for field_name in units::SERVICE_FIELD_NAMES {
-            let key = format!("{base_metric_name}.{service_name}.{field_name}");
+            let key = format!("{base_metric_name}.{escaped_service_name}.{field_name}");
             match field_name.to_string().as_str() {
                 "active_enter_timestamp" => {
                     flat_stats.insert(
@@ -198,9 +205,10 @@ fn flatten_unit_states(
     let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("unit_states"));
 
-    for (service_name, unit_state_stats) in unit_states_hash.iter() {
+    for (unit_name, unit_state_stats) in unit_states_hash.iter() {
+        let escaped_unit_name = json_escape_string(unit_name);
         for field_name in units::UNIT_STATES_FIELD_NAMES {
-            let key = format!("{base_metric_name}.{service_name}.{field_name}");
+            let key = format!("{base_metric_name}.{escaped_unit_name}.{field_name}");
             match field_name.to_string().as_str() {
                 "active_state" => {
                     flat_stats.insert(
@@ -352,6 +360,8 @@ pub fn flatten(stats_struct: &MonitordStats, key_prefix: &String) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     // This will always be sorted / deterministic ...
@@ -386,6 +396,8 @@ mod tests {
   "services.unittest.service.timeout_clean_usec": 0,
   "services.unittest.service.watchdog_usec": 0,
   "system-state": 3,
+  "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.active_state": 1,
+  "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.load_state": 1,
   "unit_states.unittest.service.active_state": 1,
   "unit_states.unittest.service.load_state": 1,
   "units.active_units": 0,
@@ -406,59 +418,6 @@ mod tests {
   "units.target_units": 0,
   "units.timer_units": 0,
   "units.total_units": 0
-}"###;
-
-    const EXPECTED_PREFIXED_FLAT_JSON: &str = r###"{
-  "monitord.networkd.eth0.address_state": 3,
-  "monitord.networkd.eth0.admin_state": 4,
-  "monitord.networkd.eth0.carrier_state": 5,
-  "monitord.networkd.eth0.ipv4_address_state": 3,
-  "monitord.networkd.eth0.ipv6_address_state": 2,
-  "monitord.networkd.eth0.oper_state": 9,
-  "monitord.networkd.eth0.required_for_online": 1,
-  "monitord.networkd.managed_interfaces": 1,
-  "monitord.pid1.cpu_time_kernel": 69,
-  "monitord.pid1.cpu_user_kernel": 69,
-  "monitord.pid1.fd_count": 69,
-  "monitord.pid1.memory_usage_bytes": 69,
-  "monitord.pid1.tasks": 1,
-  "monitord.services.unittest.service.active_enter_timestamp": 0,
-  "monitord.services.unittest.service.active_exit_timestamp": 0,
-  "monitord.services.unittest.service.cpuusage_nsec": 0,
-  "monitord.services.unittest.service.inactive_exit_timestamp": 0,
-  "monitord.services.unittest.service.ioread_bytes": 0,
-  "monitord.services.unittest.service.ioread_operations": 0,
-  "monitord.services.unittest.service.memory_available": 0,
-  "monitord.services.unittest.service.memory_current": 0,
-  "monitord.services.unittest.service.nrestarts": 0,
-  "monitord.services.unittest.service.processes": 0,
-  "monitord.services.unittest.service.restart_usec": 0,
-  "monitord.services.unittest.service.state_change_timestamp": 0,
-  "monitord.services.unittest.service.status_errno": -69,
-  "monitord.services.unittest.service.tasks_current": 0,
-  "monitord.services.unittest.service.timeout_clean_usec": 0,
-  "monitord.services.unittest.service.watchdog_usec": 0,
-  "monitord.system-state": 3,
-  "monitord.unit_states.unittest.service.active_state": 1,
-  "monitord.unit_states.unittest.service.load_state": 1,
-  "monitord.units.active_units": 0,
-  "monitord.units.automount_units": 0,
-  "monitord.units.device_units": 0,
-  "monitord.units.failed_units": 0,
-  "monitord.units.inactive_units": 0,
-  "monitord.units.jobs_queued": 0,
-  "monitord.units.loaded_units": 0,
-  "monitord.units.masked_units": 0,
-  "monitord.units.mount_units": 0,
-  "monitord.units.not_found_units": 0,
-  "monitord.units.path_units": 0,
-  "monitord.units.scope_units": 0,
-  "monitord.units.service_units": 0,
-  "monitord.units.slice_units": 0,
-  "monitord.units.socket_units": 0,
-  "monitord.units.target_units": 0,
-  "monitord.units.timer_units": 0,
-  "monitord.units.total_units": 0
 }"###;
 
     fn return_monitord_stats() -> MonitordStats {
@@ -503,13 +462,23 @@ mod tests {
                 load_state: units::SystemdUnitLoadState::loaded,
             },
         );
+        // Ensure we escape keys correctly
+        stats.units.unit_states.insert(
+            String::from(
+                r"nvme\x2dWDC_CL_SN730_SDBQNTY\x2d512G\x2d2020_37222H80070511\x2dpart3.device",
+            ),
+            units::UnitStates {
+                active_state: units::SystemdUnitActiveState::active,
+                load_state: units::SystemdUnitLoadState::loaded,
+            },
+        );
         stats
     }
 
     #[test]
     fn test_flatten_hashmap() {
         let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
-        assert_eq!(50, json_flat_map.len());
+        assert_eq!(52, json_flat_map.len());
     }
 
     #[test]
@@ -520,9 +489,13 @@ mod tests {
     }
 
     #[test]
-    fn test_flatten_prefixed() {
+    fn test_flatten_prefixed() -> anyhow::Result<()> {
         let json_flat = flatten(&return_monitord_stats(), &String::from("monitord"));
-        assert_eq!(EXPECTED_PREFIXED_FLAT_JSON, json_flat);
+        let json_flat_unserialized: HashMap<String, i32> = serde_json::from_str(&json_flat)?;
+        for (key, _value) in json_flat_unserialized.iter() {
+            assert!(key.starts_with("monitord."));
+        }
         assert!(oxidized_json_checker::validate_str(&json_flat).is_ok());
+        Ok(())
     }
 }
