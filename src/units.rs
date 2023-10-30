@@ -1,3 +1,8 @@
+//! # units module
+//!
+//! All main systemd unit statistics. Counts of types of units, unit states and
+//! queued jobs. We also house service specific statistics and system unit states.
+
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::str::FromStr;
@@ -17,6 +22,7 @@ use tracing::error;
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
 
+/// Struct with all the unit count statistics
 pub struct SystemdUnitStats {
     pub active_units: u64,
     pub automount_units: u64,
@@ -40,6 +46,7 @@ pub struct SystemdUnitStats {
     pub unit_states: HashMap<String, UnitStates>,
 }
 
+/// Selected subset of metrics collected from systemd OrgFreedesktopSystemd1Service
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
@@ -62,6 +69,7 @@ pub struct ServiceStats {
     pub watchdog_usec: u64,
 }
 
+/// Collection of a Unit active and load state: https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
@@ -74,6 +82,7 @@ pub struct UnitStates {
 // Reference: https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html
 // SubState can be unit-type-specific so can't enum
 
+/// Possible systemd unit active states enumerated
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -100,6 +109,7 @@ pub enum SystemdUnitActiveState {
     deactivating = 6,
 }
 
+/// Possible systemd unit load states enumerated
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -127,6 +137,7 @@ pub const SERVICE_FIELD_NAMES: &[&str] = ServiceStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_FIELD_NAMES: &[&str] = SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_STATES_FIELD_NAMES: &[&str] = UnitStates::FIELD_NAMES_AS_ARRAY;
 
+/// Pull out selected systemd service statistics
 fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats, dbus::Error> {
     debug!("Parsing service {} stats", name);
     let p = c.with_proxy("org.freedesktop.systemd1", path, Duration::new(2, 0));
@@ -205,6 +216,7 @@ pub fn parse_state(
     );
 }
 
+/// Parse a unit and add to overall counts of state, type etc.
 fn parse_unit(
     stats: &mut SystemdUnitStats,
     unit: (

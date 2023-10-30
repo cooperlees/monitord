@@ -1,3 +1,8 @@
+//! # json module
+//!
+//! `json` is in charge of generating a flat hashmap like . serperated hierarchical
+//! JSON output. This is used by some metric parsing systems when running a command.
+
 use std::collections::HashMap;
 
 use itertools::Itertools;
@@ -21,10 +26,11 @@ fn json_escape_string(s: &str) -> String {
     full_json_str[1..full_json_str.len() - 1].into()
 }
 
+/// Add a prefix if config wants contains one
 fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
-    match key_prefix.len() {
-        0 => String::from(metric_name),
-        _ => format!("{}.{}", key_prefix, metric_name),
+    match key_prefix.is_empty() {
+        true => String::from(metric_name),
+        false => format!("{}.{}", key_prefix, metric_name),
     }
 }
 
@@ -308,7 +314,7 @@ fn flatten_units(
 }
 
 /// Take the standard returned structs and move all to a flat HashMap<str, float|int> like JSON
-pub fn flatten_hashmap(
+fn flatten_hashmap(
     stats_struct: &MonitordStats,
     key_prefix: &String,
 ) -> HashMap<String, JsonFlatValue> {

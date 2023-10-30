@@ -1,3 +1,9 @@
+//! # monitord Crate
+//!
+//! `monitord` is a library to gather statistics about systemd.
+//! Some APIs are a little ugly due to being a configparser INI based configuration
+//! driven CLL at heart.
+
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::thread;
@@ -19,6 +25,7 @@ pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
+/// Main monitord stats struct collection all enabled stats
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 pub struct MonitordStats {
     pub networkd: networkd::NetworkdState,
@@ -27,6 +34,7 @@ pub struct MonitordStats {
     pub units: units::SystemdUnitStats,
 }
 
+/// Helper function to read "bool" config options
 fn read_config_bool(config: &Ini, section: String, key: String) -> bool {
     let option_bool = match config.getbool(&section, &key) {
         Ok(config_option_bool) => config_option_bool,
@@ -47,6 +55,7 @@ fn read_config_bool(config: &Ini, section: String, key: String) -> bool {
     }
 }
 
+/// Print statistics in the format set in configuration
 pub fn print_stats(config: Ini, stats: &MonitordStats) {
     let output_format = config
         .get("monitord", "output_format")
@@ -66,6 +75,7 @@ pub fn print_stats(config: Ini, stats: &MonitordStats) {
     }
 }
 
+/// Main statictic collection function running what's required by configuration
 pub fn stat_collector(config: Ini) -> Result<(), String> {
     let daemon_mode = read_config_bool(&config, String::from("monitord"), String::from("daemon"));
     let mut collect_interval_ms = 0;

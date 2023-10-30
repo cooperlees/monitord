@@ -1,3 +1,8 @@
+//! # system module
+//!
+//! Handle systemd's overall "system" state. Basically says if we've successfully
+//! booted, stated all units or have been asked to stop, be offline etc.
+
 use std::time::Duration;
 
 use dbus::blocking::Connection;

@@ -1,3 +1,9 @@
+//! # pid1 module
+//!
+//! `pid1` uses procfs to get some statistics on Linux's more important
+//! process pid1. These metrics can help ensure newer systemds don't regress
+//! or show stange behavior. E.g. more file descriptors without more units.
+
 use procfs::process::Process;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
