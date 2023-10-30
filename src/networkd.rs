@@ -63,7 +63,7 @@ pub enum AdminState {
     linger = 6,
 }
 
-/// Enumeration of a true(yes0/false(no) options - e.g. required for online
+/// Enumeration of a true (yes) / false (no) options - e.g. required for online
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
