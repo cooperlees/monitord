@@ -1,3 +1,8 @@
+//! # networkd module
+//!
+//! All structs, enums and methods specific to systemd-networkd.
+//! Enumerations were copied from https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -11,10 +16,7 @@ use serde_repr::*;
 use strum_macros::EnumString;
 use tracing::error;
 
-/*
-systemd enums copied from https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h
-*/
-
+/// Enumeration of networkd address states
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -36,6 +38,7 @@ pub enum AddressState {
     routable = 3,
 }
 
+/// Enumeration of interface administratve states
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -60,6 +63,7 @@ pub enum AdminState {
     linger = 6,
 }
 
+/// Enumeration of a true(yes0/false(no) options - e.g. required for online
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -92,6 +96,7 @@ pub enum BoolState {
     True = 1,
 }
 
+/// Enumeration of networkd physical signal / state of interfaces
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -118,6 +123,7 @@ pub enum CarrierState {
     enslaved = 6,
 }
 
+/// Enumeration of the networkd online state
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -139,6 +145,7 @@ pub enum OnlineState {
     online = 3,
 }
 
+/// Enumeration of networkd's operational state
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -168,6 +175,7 @@ pub enum OperState {
     routable = 9,
 }
 
+/// Main per interface networkd state structure
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct InterfaceState {
     pub address_state: AddressState,
@@ -201,6 +209,7 @@ fn get_interface_links(
     Ok(link_int_to_name)
 }
 
+/// Main networkd structure with per interface state and a count of managed interfaces
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 pub struct NetworkdState {
     pub interfaces_state: Vec<InterfaceState>,

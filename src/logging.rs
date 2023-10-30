@@ -31,6 +31,7 @@ impl From<LogLevels> for LevelFilter {
     }
 }
 
+/// Setup logging with tracing in Glog format for CLI
 pub fn setup_logging(log_filter_level: LevelFilter) {
     let fmt = fmt::Layer::default()
         .with_writer(std::io::stderr)
