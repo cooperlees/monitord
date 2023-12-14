@@ -187,6 +187,7 @@ Is semi pretty too + custom. All unittested ...
   "system-state": 3,
   "unit_states.chronyd.service.active_state": 1,
   "unit_states.chronyd.service.loaded_state": 1,
+  "unit_states.chronyd.service.unhealthy": 0,
   "units.active_units": 403,
   "units.automount_units": 1,
   "units.device_units": 150,
