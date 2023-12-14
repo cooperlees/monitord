@@ -225,6 +225,14 @@ fn flatten_unit_states(
                 "load_state" => {
                     flat_stats.insert(key, JsonFlatValue::U64(unit_state_stats.load_state as u64));
                 }
+                "unhealthy" => match unit_state_stats.unhealthy {
+                    false => {
+                        flat_stats.insert(key, JsonFlatValue::U64(0));
+                    }
+                    true => {
+                        flat_stats.insert(key, JsonFlatValue::U64(1));
+                    }
+                },
                 _ => {
                     debug!("Got a unhandled unit state: '{}'", field_name);
                 }
@@ -404,8 +412,10 @@ mod tests {
   "system-state": 3,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.active_state": 1,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.load_state": 1,
+  "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.unhealthy": 0,
   "unit_states.unittest.service.active_state": 1,
   "unit_states.unittest.service.load_state": 1,
+  "unit_states.unittest.service.unhealthy": 0,
   "units.active_units": 0,
   "units.automount_units": 0,
   "units.device_units": 0,
@@ -466,6 +476,7 @@ mod tests {
             units::UnitStates {
                 active_state: units::SystemdUnitActiveState::active,
                 load_state: units::SystemdUnitLoadState::loaded,
+                unhealthy: false,
             },
         );
         // Ensure we escape keys correctly
@@ -476,6 +487,7 @@ mod tests {
             units::UnitStates {
                 active_state: units::SystemdUnitActiveState::active,
                 load_state: units::SystemdUnitLoadState::loaded,
+                unhealthy: false,
             },
         );
         stats
@@ -484,7 +496,7 @@ mod tests {
     #[test]
     fn test_flatten_hashmap() {
         let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
-        assert_eq!(52, json_flat_map.len());
+        assert_eq!(54, json_flat_map.len());
     }
 
     #[test]

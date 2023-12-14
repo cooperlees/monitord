@@ -76,6 +76,7 @@ pub struct ServiceStats {
 pub struct UnitStates {
     pub active_state: SystemdUnitActiveState,
     pub load_state: SystemdUnitLoadState,
+    pub unhealthy: bool,
 }
 
 // Declare state types
@@ -205,13 +206,15 @@ pub fn parse_state(
         );
         return;
     }
+    let active_state =
+        SystemdUnitActiveState::from_str(&unit.3).unwrap_or(SystemdUnitActiveState::unknown);
     stats.unit_states.insert(
         unit_name.clone(),
         UnitStates {
-            active_state: SystemdUnitActiveState::from_str(&unit.3)
-                .unwrap_or(SystemdUnitActiveState::unknown),
+            active_state,
             load_state: SystemdUnitLoadState::from_str(&unit.2)
                 .unwrap_or(SystemdUnitLoadState::unknown),
+            unhealthy: !matches!(active_state, SystemdUnitActiveState::active),
         },
     );
 }
@@ -396,6 +399,7 @@ mod tests {
                 UnitStates {
                     active_state: SystemdUnitActiveState::inactive,
                     load_state: SystemdUnitLoadState::loaded,
+                    unhealthy: true,
                 },
             )]),
         };
