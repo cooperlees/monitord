@@ -214,10 +214,7 @@ pub fn parse_state(
             active_state,
             load_state: SystemdUnitLoadState::from_str(&unit.2)
                 .unwrap_or(SystemdUnitLoadState::unknown),
-            unhealthy: match active_state {
-                SystemdUnitActiveState::active => false,
-                _ => true,
-            },
+            unhealthy: !matches!(active_state, SystemdUnitActiveState::active),
         },
     );
 }
