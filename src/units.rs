@@ -132,6 +132,7 @@ pub enum SystemdUnitLoadState {
     loaded = 1,
     error = 2,
     masked = 3,
+    not_found = 4,
 }
 
 pub const SERVICE_FIELD_NAMES: &[&str] = ServiceStats::FIELD_NAMES_AS_ARRAY;
@@ -208,12 +209,14 @@ pub fn parse_state(
     }
     let active_state =
         SystemdUnitActiveState::from_str(&unit.3).unwrap_or(SystemdUnitActiveState::unknown);
+    let load_state = SystemdUnitLoadState::from_str(&unit.2.replace('-', "_"))
+        .unwrap_or(SystemdUnitLoadState::unknown);
+
     stats.unit_states.insert(
         unit_name.clone(),
         UnitStates {
             active_state,
-            load_state: SystemdUnitLoadState::from_str(&unit.2)
-                .unwrap_or(SystemdUnitLoadState::unknown),
+            load_state,
             unhealthy: !matches!(active_state, SystemdUnitActiveState::active),
         },
     );
