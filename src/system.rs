@@ -24,7 +24,7 @@ use tracing::error;
     PartialEq,
     EnumString,
     IntEnum,
-    strum_macros::ToString,
+    strum_macros::Display,
 )]
 #[repr(u8)]
 pub enum SystemdSystemState {
@@ -65,4 +65,14 @@ pub fn get_system_state(dbus_address: &str) -> Result<SystemdSystemState, dbus::
         }
     };
     Ok(state)
+}
+
+mod tests {
+    #[test]
+    fn test_display_struct() {
+        assert_eq!(
+            format!("{}", crate::system::SystemdSystemState::running),
+            String::from("running"),
+        )
+    }
 }
