@@ -68,6 +68,16 @@
 <a href="#66" id="66">66</a>
 <a href="#67" id="67">67</a>
 <a href="#68" id="68">68</a>
+<a href="#69" id="69">69</a>
+<a href="#70" id="70">70</a>
+<a href="#71" id="71">71</a>
+<a href="#72" id="72">72</a>
+<a href="#73" id="73">73</a>
+<a href="#74" id="74">74</a>
+<a href="#75" id="75">75</a>
+<a href="#76" id="76">76</a>
+<a href="#77" id="77">77</a>
+<a href="#78" id="78">78</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # system module
 //!
 //! Handle systemd's overall "system" state. Basically says if we've successfully
@@ -94,7 +104,7 @@
     PartialEq,
     EnumString,
     IntEnum,
-    strum_macros::ToString,
+    strum_macros::Display,
 )]
 #[repr(u8)]
 </span><span class="kw">pub enum </span>SystemdSystemState {
@@ -135,5 +145,15 @@
         }
     };
     <span class="prelude-val">Ok</span>(state)
+}
+
+<span class="kw">mod </span>tests {
+    <span class="attr">#[test]
+    </span><span class="kw">fn </span>test_display_struct() {
+        <span class="macro">assert_eq!</span>(
+            <span class="macro">format!</span>(<span class="string">"{}"</span>, <span class="kw">crate</span>::system::SystemdSystemState::running),
+            String::from(<span class="string">"running"</span>),
+        )
+    }
 }
 </code></pre></div></section></main></body></html>
