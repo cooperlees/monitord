@@ -1,4 +1,6 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/dbus/systemd.rs`."><title>systemd.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-fa3bb1812debf86c.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.74.1 (a28077b28 2023-12-04)" data-channel="1.74.1" data-search-js="search-8be46b629f5f14a8.js" data-settings-js="settings-74424d7eec62a23e.js" ><script src="../../../static.files/storage-fec3eaa3851e447d.js"></script><script defer src="../../../static.files/src-script-3280b574d94e47b4.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-c5bd66d33317d69f.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-5d8b3c7633ad77ba.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><nav class="sub"><a class="sub-logo-container" href="../../../monitord/index.html"><img class="rust-logo" src="../../../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/dbus/systemd.rs`."><title>systemd.rs - source</title><script> if (window.location.protocol !== "file:") document.write(`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2">`)</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-e935ef01ae1c1829.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.78.0 (9b00956e5 2024-04-29)" data-channel="1.78.0" data-search-js="search-42d8da7a6b9792c2.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-4c98445ec4002617.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-12cf3b4f4f9dc36d.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title">
+            <h2>Files</h2></div></nav><div class="sidebar-resizer"></div>
+    <main><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../../../monitord/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../../../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -2588,15 +2590,15 @@
     <span class="kw">fn </span>get_machine_id(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt;;
 }
 
-<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>, T: blocking::BlockingSender, C: ::std::ops::Deref&lt;Target = T&gt;&gt; OrgFreedesktopDBusPeer
-    <span class="kw">for </span>blocking::Proxy&lt;<span class="lifetime">&#39;a</span>, C&gt;
+<span class="kw">impl</span>&lt;<span class="lifetime">'a</span>, T: blocking::BlockingSender, C: ::std::ops::Deref&lt;Target = T&gt;&gt; OrgFreedesktopDBusPeer
+    <span class="kw">for </span>blocking::Proxy&lt;<span class="lifetime">'a</span>, C&gt;
 {
     <span class="kw">fn </span>ping(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.DBus.Peer&quot;</span>, <span class="string">&quot;Ping&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.DBus.Peer"</span>, <span class="string">"Ping"</span>, ())
     }
 
     <span class="kw">fn </span>get_machine_id(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.DBus.Peer&quot;</span>, <span class="string">&quot;GetMachineId&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.DBus.Peer"</span>, <span class="string">"GetMachineId"</span>, ())
             .and_then(|r: (String,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 }
@@ -2605,17 +2607,17 @@
     <span class="kw">fn </span>introspect(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt;;
 }
 
-<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>, T: blocking::BlockingSender, C: ::std::ops::Deref&lt;Target = T&gt;&gt;
-    OrgFreedesktopDBusIntrospectable <span class="kw">for </span>blocking::Proxy&lt;<span class="lifetime">&#39;a</span>, C&gt;
+<span class="kw">impl</span>&lt;<span class="lifetime">'a</span>, T: blocking::BlockingSender, C: ::std::ops::Deref&lt;Target = T&gt;&gt;
+    OrgFreedesktopDBusIntrospectable <span class="kw">for </span>blocking::Proxy&lt;<span class="lifetime">'a</span>, C&gt;
 {
     <span class="kw">fn </span>introspect(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.DBus.Introspectable&quot;</span>, <span class="string">&quot;Introspect&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.DBus.Introspectable"</span>, <span class="string">"Introspect"</span>, ())
             .and_then(|r: (String,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 }
 
 <span class="kw">pub trait </span>OrgFreedesktopDBusProperties {
-    <span class="kw">fn </span>get&lt;R0: <span class="kw">for</span>&lt;<span class="lifetime">&#39;b</span>&gt; arg::Get&lt;<span class="lifetime">&#39;b</span>&gt; + <span class="lifetime">&#39;static</span>&gt;(
+    <span class="kw">fn </span>get&lt;R0: <span class="kw">for</span>&lt;<span class="lifetime">'b</span>&gt; arg::Get&lt;<span class="lifetime">'b</span>&gt; + <span class="lifetime">'static</span>&gt;(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         interface_name: <span class="kw-2">&amp;</span>str,
         property_name: <span class="kw-2">&amp;</span>str,
@@ -2655,21 +2657,21 @@
 }
 
 <span class="kw">impl </span>dbus::message::SignalArgs <span class="kw">for </span>OrgFreedesktopDBusPropertiesPropertiesChanged {
-    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;PropertiesChanged&quot;</span>;
-    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;org.freedesktop.DBus.Properties&quot;</span>;
+    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"PropertiesChanged"</span>;
+    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"org.freedesktop.DBus.Properties"</span>;
 }
 
-<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>, T: blocking::BlockingSender, C: ::std::ops::Deref&lt;Target = T&gt;&gt; OrgFreedesktopDBusProperties
-    <span class="kw">for </span>blocking::Proxy&lt;<span class="lifetime">&#39;a</span>, C&gt;
+<span class="kw">impl</span>&lt;<span class="lifetime">'a</span>, T: blocking::BlockingSender, C: ::std::ops::Deref&lt;Target = T&gt;&gt; OrgFreedesktopDBusProperties
+    <span class="kw">for </span>blocking::Proxy&lt;<span class="lifetime">'a</span>, C&gt;
 {
-    <span class="kw">fn </span>get&lt;R0: <span class="kw">for</span>&lt;<span class="lifetime">&#39;b</span>&gt; arg::Get&lt;<span class="lifetime">&#39;b</span>&gt; + <span class="lifetime">&#39;static</span>&gt;(
+    <span class="kw">fn </span>get&lt;R0: <span class="kw">for</span>&lt;<span class="lifetime">'b</span>&gt; arg::Get&lt;<span class="lifetime">'b</span>&gt; + <span class="lifetime">'static</span>&gt;(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         interface_name: <span class="kw-2">&amp;</span>str,
         property_name: <span class="kw-2">&amp;</span>str,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;R0, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.DBus.Properties&quot;</span>,
-            <span class="string">&quot;Get&quot;</span>,
+            <span class="string">"org.freedesktop.DBus.Properties"</span>,
+            <span class="string">"Get"</span>,
             (interface_name, property_name),
         )
         .and_then(|r: (arg::Variant&lt;R0&gt;,)| <span class="prelude-val">Ok</span>((r.<span class="number">0</span>).<span class="number">0</span>))
@@ -2677,8 +2679,8 @@
 
     <span class="kw">fn </span>get_all(<span class="kw-2">&amp;</span><span class="self">self</span>, interface_name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;arg::PropMap, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.DBus.Properties&quot;</span>,
-            <span class="string">&quot;GetAll&quot;</span>,
+            <span class="string">"org.freedesktop.DBus.Properties"</span>,
+            <span class="string">"GetAll"</span>,
             (interface_name,),
         )
         .and_then(|r: (arg::PropMap,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -2691,43 +2693,43 @@
         value: I2,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.DBus.Properties&quot;</span>,
-            <span class="string">&quot;Set&quot;</span>,
+            <span class="string">"org.freedesktop.DBus.Properties"</span>,
+            <span class="string">"Set"</span>,
             (interface_name, property_name, arg::Variant(value)),
         )
     }
 }
 
 <span class="kw">pub trait </span>OrgFreedesktopSystemd1Manager {
-    <span class="kw">fn </span>get_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
-    <span class="kw">fn </span>get_unit_by_pid(<span class="kw-2">&amp;</span><span class="self">self</span>, pid: u32) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>get_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>get_unit_by_pid(<span class="kw-2">&amp;</span><span class="self">self</span>, pid: u32) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>get_unit_by_invocation_id(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         invocation_id: Vec&lt;u8&gt;,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
-    <span class="kw">fn </span>get_unit_by_control_group(<span class="kw-2">&amp;</span><span class="self">self</span>, cgroup: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
-    <span class="kw">fn </span>load_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
-    <span class="kw">fn </span>start_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>get_unit_by_control_group(<span class="kw-2">&amp;</span><span class="self">self</span>, cgroup: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>load_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>start_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>start_unit_replace(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         old_unit: <span class="kw-2">&amp;</span>str,
         new_unit: <span class="kw-2">&amp;</span>str,
         mode: <span class="kw-2">&amp;</span>str,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
-    <span class="kw">fn </span>stop_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
-    <span class="kw">fn </span>reload_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
-    <span class="kw">fn </span>restart_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
-    <span class="kw">fn </span>try_restart_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>stop_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>reload_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>restart_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>try_restart_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>reload_or_restart_unit(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         name: <span class="kw-2">&amp;</span>str,
         mode: <span class="kw-2">&amp;</span>str,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>reload_or_try_restart_unit(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         name: <span class="kw-2">&amp;</span>str,
         mode: <span class="kw-2">&amp;</span>str,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>enqueue_unit_job(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         name: <span class="kw-2">&amp;</span>str,
@@ -2736,15 +2738,15 @@
     ) -&gt; <span class="prelude-ty">Result</span>&lt;
         (
             u32,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             String,
             Vec&lt;(
                 u32,
-                dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                 String,
-                dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                 String,
             )&gt;,
         ),
@@ -2786,7 +2788,7 @@
         mode: <span class="kw-2">&amp;</span>str,
         properties: Vec&lt;(<span class="kw-2">&amp;</span>str, arg::Variant&lt;Box&lt;<span class="kw">dyn </span>arg::RefArg&gt;&gt;)&gt;,
         aux: Vec&lt;(<span class="kw-2">&amp;</span>str, Vec&lt;(<span class="kw-2">&amp;</span>str, arg::Variant&lt;Box&lt;<span class="kw">dyn </span>arg::RefArg&gt;&gt;)&gt;)&gt;,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>get_unit_processes(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, u32, String)&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>attach_processes_to_unit(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
@@ -2795,7 +2797,7 @@
         pids: Vec&lt;u32&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt;;
     <span class="kw">fn </span>abandon_scope(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt;;
-    <span class="kw">fn </span>get_job(<span class="kw-2">&amp;</span><span class="self">self</span>, id: u32) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>get_job(<span class="kw-2">&amp;</span><span class="self">self</span>, id: u32) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>get_job_after(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         id: u32,
@@ -2805,8 +2807,8 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt;;
@@ -2819,8 +2821,8 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt;;
@@ -2838,10 +2840,10 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             u32,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt;;
@@ -2856,10 +2858,10 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             u32,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt;;
@@ -2875,10 +2877,10 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             u32,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt;;
@@ -2893,10 +2895,10 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             u32,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt;;
@@ -2908,8 +2910,8 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt;;
@@ -2932,7 +2934,7 @@
         names: Vec&lt;<span class="kw-2">&amp;</span>str&gt;,
         assignments: Vec&lt;<span class="kw-2">&amp;</span>str&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt;;
-    <span class="kw">fn </span>enqueue_marked_jobs(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;&gt;, dbus::Error&gt;;
+    <span class="kw">fn </span>enqueue_marked_jobs(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>list_unit_files(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String)&gt;, dbus::Error&gt;;
     <span class="kw">fn </span>list_unit_files_by_patterns(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
@@ -3146,7 +3148,7 @@
 <span class="attr">#[derive(Debug)]
 </span><span class="kw">pub struct </span>OrgFreedesktopSystemd1ManagerUnitNew {
     <span class="kw">pub </span>id: String,
-    <span class="kw">pub </span>unit: dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+    <span class="kw">pub </span>unit: dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
 }
 
 <span class="kw">impl </span>arg::AppendAll <span class="kw">for </span>OrgFreedesktopSystemd1ManagerUnitNew {
@@ -3166,14 +3168,14 @@
 }
 
 <span class="kw">impl </span>dbus::message::SignalArgs <span class="kw">for </span>OrgFreedesktopSystemd1ManagerUnitNew {
-    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;UnitNew&quot;</span>;
-    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>;
+    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"UnitNew"</span>;
+    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"org.freedesktop.systemd1.Manager"</span>;
 }
 
 <span class="attr">#[derive(Debug)]
 </span><span class="kw">pub struct </span>OrgFreedesktopSystemd1ManagerUnitRemoved {
     <span class="kw">pub </span>id: String,
-    <span class="kw">pub </span>unit: dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+    <span class="kw">pub </span>unit: dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
 }
 
 <span class="kw">impl </span>arg::AppendAll <span class="kw">for </span>OrgFreedesktopSystemd1ManagerUnitRemoved {
@@ -3193,14 +3195,14 @@
 }
 
 <span class="kw">impl </span>dbus::message::SignalArgs <span class="kw">for </span>OrgFreedesktopSystemd1ManagerUnitRemoved {
-    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;UnitRemoved&quot;</span>;
-    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>;
+    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"UnitRemoved"</span>;
+    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"org.freedesktop.systemd1.Manager"</span>;
 }
 
 <span class="attr">#[derive(Debug)]
 </span><span class="kw">pub struct </span>OrgFreedesktopSystemd1ManagerJobNew {
     <span class="kw">pub </span>id: u32,
-    <span class="kw">pub </span>job: dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+    <span class="kw">pub </span>job: dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
     <span class="kw">pub </span>unit: String,
 }
 
@@ -3223,14 +3225,14 @@
 }
 
 <span class="kw">impl </span>dbus::message::SignalArgs <span class="kw">for </span>OrgFreedesktopSystemd1ManagerJobNew {
-    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;JobNew&quot;</span>;
-    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>;
+    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"JobNew"</span>;
+    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"org.freedesktop.systemd1.Manager"</span>;
 }
 
 <span class="attr">#[derive(Debug)]
 </span><span class="kw">pub struct </span>OrgFreedesktopSystemd1ManagerJobRemoved {
     <span class="kw">pub </span>id: u32,
-    <span class="kw">pub </span>job: dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+    <span class="kw">pub </span>job: dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
     <span class="kw">pub </span>unit: String,
     <span class="kw">pub </span>result: String,
 }
@@ -3256,8 +3258,8 @@
 }
 
 <span class="kw">impl </span>dbus::message::SignalArgs <span class="kw">for </span>OrgFreedesktopSystemd1ManagerJobRemoved {
-    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;JobRemoved&quot;</span>;
-    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>;
+    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"JobRemoved"</span>;
+    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"org.freedesktop.systemd1.Manager"</span>;
 }
 
 <span class="attr">#[derive(Debug)]
@@ -3295,8 +3297,8 @@
 }
 
 <span class="kw">impl </span>dbus::message::SignalArgs <span class="kw">for </span>OrgFreedesktopSystemd1ManagerStartupFinished {
-    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;StartupFinished&quot;</span>;
-    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>;
+    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"StartupFinished"</span>;
+    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"org.freedesktop.systemd1.Manager"</span>;
 }
 
 <span class="attr">#[derive(Debug)]
@@ -3313,8 +3315,8 @@
 }
 
 <span class="kw">impl </span>dbus::message::SignalArgs <span class="kw">for </span>OrgFreedesktopSystemd1ManagerUnitFilesChanged {
-    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;UnitFilesChanged&quot;</span>;
-    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>;
+    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"UnitFilesChanged"</span>;
+    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"org.freedesktop.systemd1.Manager"</span>;
 }
 
 <span class="attr">#[derive(Debug)]
@@ -3335,56 +3337,56 @@
 }
 
 <span class="kw">impl </span>dbus::message::SignalArgs <span class="kw">for </span>OrgFreedesktopSystemd1ManagerReloading {
-    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;Reloading&quot;</span>;
-    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>;
+    <span class="kw">const </span>NAME: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"Reloading"</span>;
+    <span class="kw">const </span>INTERFACE: <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str = <span class="string">"org.freedesktop.systemd1.Manager"</span>;
 }
 
-<span class="kw">impl</span>&lt;<span class="lifetime">&#39;a</span>, T: blocking::BlockingSender, C: ::std::ops::Deref&lt;Target = T&gt;&gt;
-    OrgFreedesktopSystemd1Manager <span class="kw">for </span>blocking::Proxy&lt;<span class="lifetime">&#39;a</span>, C&gt;
+<span class="kw">impl</span>&lt;<span class="lifetime">'a</span>, T: blocking::BlockingSender, C: ::std::ops::Deref&lt;Target = T&gt;&gt;
+    OrgFreedesktopSystemd1Manager <span class="kw">for </span>blocking::Proxy&lt;<span class="lifetime">'a</span>, C&gt;
 {
-    <span class="kw">fn </span>get_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;GetUnit&quot;</span>, (name,))
-            .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+    <span class="kw">fn </span>get_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"GetUnit"</span>, (name,))
+            .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
-    <span class="kw">fn </span>get_unit_by_pid(<span class="kw-2">&amp;</span><span class="self">self</span>, pid: u32) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;GetUnitByPID&quot;</span>, (pid,))
-            .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+    <span class="kw">fn </span>get_unit_by_pid(<span class="kw-2">&amp;</span><span class="self">self</span>, pid: u32) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"GetUnitByPID"</span>, (pid,))
+            .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>get_unit_by_invocation_id(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         invocation_id: Vec&lt;u8&gt;,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;GetUnitByInvocationID&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"GetUnitByInvocationID"</span>,
             (invocation_id,),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
-    <span class="kw">fn </span>get_unit_by_control_group(<span class="kw-2">&amp;</span><span class="self">self</span>, cgroup: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    <span class="kw">fn </span>get_unit_by_control_group(<span class="kw-2">&amp;</span><span class="self">self</span>, cgroup: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;GetUnitByControlGroup&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"GetUnitByControlGroup"</span>,
             (cgroup,),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
-    <span class="kw">fn </span>load_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;LoadUnit&quot;</span>, (name,))
-            .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+    <span class="kw">fn </span>load_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"LoadUnit"</span>, (name,))
+            .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
-    <span class="kw">fn </span>start_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    <span class="kw">fn </span>start_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;StartUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"StartUnit"</span>,
             (name, mode),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>start_unit_replace(
@@ -3392,71 +3394,71 @@
         old_unit: <span class="kw-2">&amp;</span>str,
         new_unit: <span class="kw-2">&amp;</span>str,
         mode: <span class="kw-2">&amp;</span>str,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;StartUnitReplace&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"StartUnitReplace"</span>,
             (old_unit, new_unit, mode),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
-    <span class="kw">fn </span>stop_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;StopUnit&quot;</span>, (name, mode))
-            .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+    <span class="kw">fn </span>stop_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"StopUnit"</span>, (name, mode))
+            .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
-    <span class="kw">fn </span>reload_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    <span class="kw">fn </span>reload_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ReloadUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ReloadUnit"</span>,
             (name, mode),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
-    <span class="kw">fn </span>restart_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    <span class="kw">fn </span>restart_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;RestartUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"RestartUnit"</span>,
             (name, mode),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
-    <span class="kw">fn </span>try_restart_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    <span class="kw">fn </span>try_restart_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;TryRestartUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"TryRestartUnit"</span>,
             (name, mode),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>reload_or_restart_unit(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         name: <span class="kw-2">&amp;</span>str,
         mode: <span class="kw-2">&amp;</span>str,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ReloadOrRestartUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ReloadOrRestartUnit"</span>,
             (name, mode),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>reload_or_try_restart_unit(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         name: <span class="kw-2">&amp;</span>str,
         mode: <span class="kw-2">&amp;</span>str,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ReloadOrTryRestartUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ReloadOrTryRestartUnit"</span>,
             (name, mode),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>enqueue_unit_job(
@@ -3467,55 +3469,55 @@
     ) -&gt; <span class="prelude-ty">Result</span>&lt;
         (
             u32,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             String,
             Vec&lt;(
                 u32,
-                dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                 String,
-                dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                 String,
             )&gt;,
         ),
         dbus::Error,
     &gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;EnqueueUnitJob&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"EnqueueUnitJob"</span>,
             (name, job_type, job_mode),
         )
     }
 
     <span class="kw">fn </span>kill_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, whom: <span class="kw-2">&amp;</span>str, signal: i32) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;KillUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"KillUnit"</span>,
             (name, whom, signal),
         )
     }
 
     <span class="kw">fn </span>clean_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, mask: Vec&lt;<span class="kw-2">&amp;</span>str&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;CleanUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"CleanUnit"</span>,
             (name, mask),
         )
     }
 
     <span class="kw">fn </span>freeze_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;FreezeUnit&quot;</span>, (name,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"FreezeUnit"</span>, (name,))
     }
 
     <span class="kw">fn </span>thaw_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;ThawUnit&quot;</span>, (name,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"ThawUnit"</span>, (name,))
     }
 
     <span class="kw">fn </span>reset_failed_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ResetFailedUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ResetFailedUnit"</span>,
             (name,),
         )
     }
@@ -3527,8 +3529,8 @@
         properties: Vec&lt;(<span class="kw-2">&amp;</span>str, arg::Variant&lt;Box&lt;<span class="kw">dyn </span>arg::RefArg&gt;&gt;)&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;SetUnitProperties&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"SetUnitProperties"</span>,
             (name, runtime, properties),
         )
     }
@@ -3542,8 +3544,8 @@
         mkdir: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;BindMountUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"BindMountUnit"</span>,
             (name, source, destination, read_only, mkdir),
         )
     }
@@ -3558,18 +3560,18 @@
         options: Vec&lt;(<span class="kw-2">&amp;</span>str, <span class="kw-2">&amp;</span>str)&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;MountImageUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"MountImageUnit"</span>,
             (name, source, destination, read_only, mkdir, options),
         )
     }
 
     <span class="kw">fn </span>ref_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;RefUnit&quot;</span>, (name,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"RefUnit"</span>, (name,))
     }
 
     <span class="kw">fn </span>unref_unit(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;UnrefUnit&quot;</span>, (name,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"UnrefUnit"</span>, (name,))
     }
 
     <span class="kw">fn </span>start_transient_unit(
@@ -3578,19 +3580,19 @@
         mode: <span class="kw-2">&amp;</span>str,
         properties: Vec&lt;(<span class="kw-2">&amp;</span>str, arg::Variant&lt;Box&lt;<span class="kw">dyn </span>arg::RefArg&gt;&gt;)&gt;,
         aux: Vec&lt;(<span class="kw-2">&amp;</span>str, Vec&lt;(<span class="kw-2">&amp;</span>str, arg::Variant&lt;Box&lt;<span class="kw">dyn </span>arg::RefArg&gt;&gt;)&gt;)&gt;,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;StartTransientUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"StartTransientUnit"</span>,
             (name, mode, properties, aux),
         )
-        .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+        .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>get_unit_processes(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, u32, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;GetUnitProcesses&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"GetUnitProcesses"</span>,
             (name,),
         )
         .and_then(|r: (Vec&lt;(String, u32, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -3603,19 +3605,19 @@
         pids: Vec&lt;u32&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;AttachProcessesToUnit&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"AttachProcessesToUnit"</span>,
             (unit_name, subcgroup, pids),
         )
     }
 
     <span class="kw">fn </span>abandon_scope(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;AbandonScope&quot;</span>, (name,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"AbandonScope"</span>, (name,))
     }
 
-    <span class="kw">fn </span>get_job(<span class="kw-2">&amp;</span><span class="self">self</span>, id: u32) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;GetJob&quot;</span>, (id,))
-            .and_then(|r: (dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+    <span class="kw">fn </span>get_job(<span class="kw-2">&amp;</span><span class="self">self</span>, id: u32) -&gt; <span class="prelude-ty">Result</span>&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;, dbus::Error&gt; {
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"GetJob"</span>, (id,))
+            .and_then(|r: (dbus::Path&lt;<span class="lifetime">'static</span>&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>get_job_after(
@@ -3627,12 +3629,12 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;GetJobAfter&quot;</span>, (id,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"GetJobAfter"</span>, (id,))
             .and_then(
                 |r: (
                     Vec&lt;(
@@ -3640,8 +3642,8 @@
                         String,
                         String,
                         String,
-                        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
-                        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+                        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                     )&gt;,
                 )| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>),
             )
@@ -3656,12 +3658,12 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;GetJobBefore&quot;</span>, (id,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"GetJobBefore"</span>, (id,))
             .and_then(
                 |r: (
                     Vec&lt;(
@@ -3669,27 +3671,27 @@
                         String,
                         String,
                         String,
-                        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
-                        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+                        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                     )&gt;,
                 )| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>),
             )
     }
 
     <span class="kw">fn </span>cancel_job(<span class="kw-2">&amp;</span><span class="self">self</span>, id: u32) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;CancelJob&quot;</span>, (id,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"CancelJob"</span>, (id,))
     }
 
     <span class="kw">fn </span>clear_jobs(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;ClearJobs&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"ClearJobs"</span>, ())
     }
 
     <span class="kw">fn </span>reset_failed(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;ResetFailed&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"ResetFailed"</span>, ())
     }
 
     <span class="kw">fn </span>set_show_status_(<span class="kw-2">&amp;</span><span class="self">self</span>, mode: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;SetShowStatus&quot;</span>, (mode,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"SetShowStatus"</span>, (mode,))
     }
 
     <span class="kw">fn </span>list_units(
@@ -3702,14 +3704,14 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             u32,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;ListUnits&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"ListUnits"</span>, ())
             .and_then(
                 |r: (
                     Vec&lt;(
@@ -3719,10 +3721,10 @@
                         String,
                         String,
                         String,
-                        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                         u32,
                         String,
-                        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                     )&gt;,
                 )| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>),
             )
@@ -3739,16 +3741,16 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             u32,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ListUnitsFiltered&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ListUnitsFiltered"</span>,
             (states,),
         )
         .and_then(
@@ -3760,10 +3762,10 @@
                     String,
                     String,
                     String,
-                    dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                    dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                     u32,
                     String,
-                    dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                    dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                 )&gt;,
             )| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>),
         )
@@ -3781,16 +3783,16 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             u32,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ListUnitsByPatterns&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ListUnitsByPatterns"</span>,
             (states, patterns),
         )
         .and_then(
@@ -3802,10 +3804,10 @@
                     String,
                     String,
                     String,
-                    dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                    dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                     u32,
                     String,
-                    dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                    dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                 )&gt;,
             )| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>),
         )
@@ -3822,16 +3824,16 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
             u32,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ListUnitsByNames&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ListUnitsByNames"</span>,
             (names,),
         )
         .and_then(
@@ -3843,10 +3845,10 @@
                     String,
                     String,
                     String,
-                    dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                    dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                     u32,
                     String,
-                    dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                    dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                 )&gt;,
             )| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>),
         )
@@ -3860,12 +3862,12 @@
             String,
             String,
             String,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
-            dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+            dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         )&gt;,
         dbus::Error,
     &gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;ListJobs&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"ListJobs"</span>, ())
             .and_then(
                 |r: (
                     Vec&lt;(
@@ -3873,83 +3875,83 @@
                         String,
                         String,
                         String,
-                        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
-                        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+                        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+                        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
                     )&gt;,
                 )| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>),
             )
     }
 
     <span class="kw">fn </span>subscribe(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;Subscribe&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"Subscribe"</span>, ())
     }
 
     <span class="kw">fn </span>unsubscribe(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;Unsubscribe&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"Unsubscribe"</span>, ())
     }
 
     <span class="kw">fn </span>dump(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;Dump&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"Dump"</span>, ())
             .and_then(|r: (String,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>dump_by_file_descriptor(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;arg::OwnedFd, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DumpByFileDescriptor&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DumpByFileDescriptor"</span>,
             (),
         )
         .and_then(|r: (arg::OwnedFd,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>reload(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;Reload&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"Reload"</span>, ())
     }
 
     <span class="kw">fn </span>reexecute(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;Reexecute&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"Reexecute"</span>, ())
     }
 
     <span class="kw">fn </span>exit(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;Exit&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"Exit"</span>, ())
     }
 
     <span class="kw">fn </span>reboot(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;Reboot&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"Reboot"</span>, ())
     }
 
     <span class="kw">fn </span>power_off(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;PowerOff&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"PowerOff"</span>, ())
     }
 
     <span class="kw">fn </span>halt(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;Halt&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"Halt"</span>, ())
     }
 
     <span class="kw">fn </span>kexec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;KExec&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"KExec"</span>, ())
     }
 
     <span class="kw">fn </span>switch_root(<span class="kw-2">&amp;</span><span class="self">self</span>, new_root: <span class="kw-2">&amp;</span>str, init: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;SwitchRoot&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"SwitchRoot"</span>,
             (new_root, init),
         )
     }
 
     <span class="kw">fn </span>set_environment_(<span class="kw-2">&amp;</span><span class="self">self</span>, assignments: Vec&lt;<span class="kw-2">&amp;</span>str&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;SetEnvironment&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"SetEnvironment"</span>,
             (assignments,),
         )
     }
 
     <span class="kw">fn </span>unset_environment(<span class="kw-2">&amp;</span><span class="self">self</span>, names: Vec&lt;<span class="kw-2">&amp;</span>str&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UnsetEnvironment&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UnsetEnvironment"</span>,
             (names,),
         )
     }
@@ -3960,19 +3962,19 @@
         assignments: Vec&lt;<span class="kw-2">&amp;</span>str&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UnsetAndSetEnvironment&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UnsetAndSetEnvironment"</span>,
             (names, assignments),
         )
     }
 
-    <span class="kw">fn </span>enqueue_marked_jobs(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;&gt;, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;EnqueueMarkedJobs&quot;</span>, ())
-            .and_then(|r: (Vec&lt;dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
+    <span class="kw">fn </span>enqueue_marked_jobs(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;&gt;, dbus::Error&gt; {
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"EnqueueMarkedJobs"</span>, ())
+            .and_then(|r: (Vec&lt;dbus::Path&lt;<span class="lifetime">'static</span>&gt;&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>list_unit_files(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String)&gt;, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;ListUnitFiles&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"ListUnitFiles"</span>, ())
             .and_then(|r: (Vec&lt;(String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
@@ -3982,8 +3984,8 @@
         patterns: Vec&lt;<span class="kw-2">&amp;</span>str&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ListUnitFilesByPatterns&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ListUnitFilesByPatterns"</span>,
             (states, patterns),
         )
         .and_then(|r: (Vec&lt;(String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -3991,8 +3993,8 @@
 
     <span class="kw">fn </span>get_unit_file_state(<span class="kw-2">&amp;</span><span class="self">self</span>, file: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;GetUnitFileState&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"GetUnitFileState"</span>,
             (file,),
         )
         .and_then(|r: (String,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4005,8 +4007,8 @@
         force: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(bool, Vec&lt;(String, String, String)&gt;), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;EnableUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"EnableUnitFiles"</span>,
             (files, runtime, force),
         )
     }
@@ -4017,8 +4019,8 @@
         runtime: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DisableUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DisableUnitFiles"</span>,
             (files, runtime),
         )
         .and_then(|r: (Vec&lt;(String, String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4030,8 +4032,8 @@
         flags: u64,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(bool, Vec&lt;(String, String, String)&gt;), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;EnableUnitFilesWithFlags&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"EnableUnitFilesWithFlags"</span>,
             (files, flags),
         )
     }
@@ -4042,8 +4044,8 @@
         flags: u64,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DisableUnitFilesWithFlags&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DisableUnitFilesWithFlags"</span>,
             (files, flags),
         )
         .and_then(|r: (Vec&lt;(String, String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4056,8 +4058,8 @@
         force: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(bool, Vec&lt;(String, String, String)&gt;), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ReenableUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ReenableUnitFiles"</span>,
             (files, runtime, force),
         )
     }
@@ -4069,8 +4071,8 @@
         force: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;LinkUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"LinkUnitFiles"</span>,
             (files, runtime, force),
         )
         .and_then(|r: (Vec&lt;(String, String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4083,8 +4085,8 @@
         force: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(bool, Vec&lt;(String, String, String)&gt;), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;PresetUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"PresetUnitFiles"</span>,
             (files, runtime, force),
         )
     }
@@ -4097,8 +4099,8 @@
         force: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(bool, Vec&lt;(String, String, String)&gt;), dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;PresetUnitFilesWithMode&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"PresetUnitFilesWithMode"</span>,
             (files, mode, runtime, force),
         )
     }
@@ -4110,8 +4112,8 @@
         force: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;MaskUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"MaskUnitFiles"</span>,
             (files, runtime, force),
         )
         .and_then(|r: (Vec&lt;(String, String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4123,8 +4125,8 @@
         runtime: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UnmaskUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UnmaskUnitFiles"</span>,
             (files, runtime),
         )
         .and_then(|r: (Vec&lt;(String, String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4135,8 +4137,8 @@
         files: Vec&lt;<span class="kw-2">&amp;</span>str&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;RevertUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"RevertUnitFiles"</span>,
             (files,),
         )
         .and_then(|r: (Vec&lt;(String, String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4148,15 +4150,15 @@
         force: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;SetDefaultTarget&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"SetDefaultTarget"</span>,
             (name, force),
         )
         .and_then(|r: (Vec&lt;(String, String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>get_default_target(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;GetDefaultTarget&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"GetDefaultTarget"</span>, ())
             .and_then(|r: (String,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
@@ -4167,8 +4169,8 @@
         force: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;PresetAllUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"PresetAllUnitFiles"</span>,
             (mode, runtime, force),
         )
         .and_then(|r: (Vec&lt;(String, String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4183,8 +4185,8 @@
         force: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(String, String, String)&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;AddDependencyUnitFiles&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"AddDependencyUnitFiles"</span>,
             (files, target, type_, runtime, force),
         )
         .and_then(|r: (Vec&lt;(String, String, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4192,21 +4194,21 @@
 
     <span class="kw">fn </span>get_unit_file_links(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str, runtime: bool) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;String&gt;, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;GetUnitFileLinks&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"GetUnitFileLinks"</span>,
             (name, runtime),
         )
         .and_then(|r: (Vec&lt;String&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>set_exit_code_(<span class="kw-2">&amp;</span><span class="self">self</span>, number: u8) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;SetExitCode&quot;</span>, (number,))
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"SetExitCode"</span>, (number,))
     }
 
     <span class="kw">fn </span>lookup_dynamic_user_by_name(<span class="kw-2">&amp;</span><span class="self">self</span>, name: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;u32, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;LookupDynamicUserByName&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"LookupDynamicUserByName"</span>,
             (name,),
         )
         .and_then(|r: (u32,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
@@ -4214,895 +4216,895 @@
 
     <span class="kw">fn </span>lookup_dynamic_user_by_uid(<span class="kw-2">&amp;</span><span class="self">self</span>, uid: u32) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         <span class="self">self</span>.method_call(
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;LookupDynamicUserByUID&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"LookupDynamicUserByUID"</span>,
             (uid,),
         )
         .and_then(|r: (String,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>get_dynamic_users(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;(u32, String)&gt;, dbus::Error&gt; {
-        <span class="self">self</span>.method_call(<span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>, <span class="string">&quot;GetDynamicUsers&quot;</span>, ())
+        <span class="self">self</span>.method_call(<span class="string">"org.freedesktop.systemd1.Manager"</span>, <span class="string">"GetDynamicUsers"</span>, ())
             .and_then(|r: (Vec&lt;(u32, String)&gt;,)| <span class="prelude-val">Ok</span>(r.<span class="number">0</span>))
     }
 
     <span class="kw">fn </span>version(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;Version&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"Version"</span>,
         )
     }
 
     <span class="kw">fn </span>features(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;Features&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"Features"</span>,
         )
     }
 
     <span class="kw">fn </span>virtualization(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;Virtualization&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"Virtualization"</span>,
         )
     }
 
     <span class="kw">fn </span>architecture(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;Architecture&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"Architecture"</span>,
         )
     }
 
     <span class="kw">fn </span>tainted(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;Tainted&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"Tainted"</span>,
         )
     }
 
     <span class="kw">fn </span>firmware_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;FirmwareTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"FirmwareTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>firmware_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;FirmwareTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"FirmwareTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>loader_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;LoaderTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"LoaderTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>loader_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;LoaderTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"LoaderTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>kernel_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;KernelTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"KernelTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>kernel_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;KernelTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"KernelTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdtimestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdtimestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>userspace_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UserspaceTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UserspaceTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>userspace_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UserspaceTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UserspaceTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>finish_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;FinishTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"FinishTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>finish_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;FinishTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"FinishTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>security_start_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;SecurityStartTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"SecurityStartTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>security_start_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;SecurityStartTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"SecurityStartTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>security_finish_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;SecurityFinishTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"SecurityFinishTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>security_finish_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;SecurityFinishTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"SecurityFinishTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>generators_start_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;GeneratorsStartTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"GeneratorsStartTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>generators_start_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;GeneratorsStartTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"GeneratorsStartTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>generators_finish_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;GeneratorsFinishTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"GeneratorsFinishTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>generators_finish_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;GeneratorsFinishTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"GeneratorsFinishTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>units_load_start_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UnitsLoadStartTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UnitsLoadStartTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>units_load_start_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UnitsLoadStartTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UnitsLoadStartTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>units_load_finish_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UnitsLoadFinishTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UnitsLoadFinishTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>units_load_finish_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UnitsLoadFinishTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UnitsLoadFinishTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdsecurity_start_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDSecurityStartTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDSecurityStartTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdsecurity_start_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDSecurityStartTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDSecurityStartTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdsecurity_finish_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDSecurityFinishTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDSecurityFinishTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdsecurity_finish_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDSecurityFinishTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDSecurityFinishTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdgenerators_start_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDGeneratorsStartTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDGeneratorsStartTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdgenerators_start_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDGeneratorsStartTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDGeneratorsStartTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdgenerators_finish_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDGeneratorsFinishTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDGeneratorsFinishTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdgenerators_finish_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDGeneratorsFinishTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDGeneratorsFinishTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdunits_load_start_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDUnitsLoadStartTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDUnitsLoadStartTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdunits_load_start_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDUnitsLoadStartTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDUnitsLoadStartTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdunits_load_finish_timestamp(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDUnitsLoadFinishTimestamp&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDUnitsLoadFinishTimestamp"</span>,
         )
     }
 
     <span class="kw">fn </span>init_rdunits_load_finish_timestamp_monotonic(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;InitRDUnitsLoadFinishTimestampMonotonic&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"InitRDUnitsLoadFinishTimestampMonotonic"</span>,
         )
     }
 
     <span class="kw">fn </span>log_level(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;LogLevel&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"LogLevel"</span>,
         )
     }
 
     <span class="kw">fn </span>log_target(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;LogTarget&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"LogTarget"</span>,
         )
     }
 
     <span class="kw">fn </span>nnames(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u32, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;NNames&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"NNames"</span>,
         )
     }
 
     <span class="kw">fn </span>nfailed_units(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u32, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;NFailedUnits&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"NFailedUnits"</span>,
         )
     }
 
     <span class="kw">fn </span>njobs(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u32, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;NJobs&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"NJobs"</span>,
         )
     }
 
     <span class="kw">fn </span>ninstalled_jobs(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u32, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;NInstalledJobs&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"NInstalledJobs"</span>,
         )
     }
 
     <span class="kw">fn </span>nfailed_jobs(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u32, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;NFailedJobs&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"NFailedJobs"</span>,
         )
     }
 
     <span class="kw">fn </span>progress(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;f64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;Progress&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"Progress"</span>,
         )
     }
 
     <span class="kw">fn </span>environment(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;String&gt;, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;Environment&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"Environment"</span>,
         )
     }
 
     <span class="kw">fn </span>confirm_spawn(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;bool, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ConfirmSpawn&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ConfirmSpawn"</span>,
         )
     }
 
     <span class="kw">fn </span>show_status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;bool, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ShowStatus&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ShowStatus"</span>,
         )
     }
 
     <span class="kw">fn </span>unit_path(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;String&gt;, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;UnitPath&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"UnitPath"</span>,
         )
     }
 
     <span class="kw">fn </span>default_standard_output(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultStandardOutput&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultStandardOutput"</span>,
         )
     }
 
     <span class="kw">fn </span>default_standard_error(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultStandardError&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultStandardError"</span>,
         )
     }
 
     <span class="kw">fn </span>runtime_watchdog_usec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;RuntimeWatchdogUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"RuntimeWatchdogUSec"</span>,
         )
     }
 
     <span class="kw">fn </span>reboot_watchdog_usec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;RebootWatchdogUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"RebootWatchdogUSec"</span>,
         )
     }
 
     <span class="kw">fn </span>kexec_watchdog_usec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;KExecWatchdogUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"KExecWatchdogUSec"</span>,
         )
     }
 
     <span class="kw">fn </span>service_watchdogs(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;bool, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ServiceWatchdogs&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ServiceWatchdogs"</span>,
         )
     }
 
     <span class="kw">fn </span>control_group(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ControlGroup&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ControlGroup"</span>,
         )
     }
 
     <span class="kw">fn </span>system_state(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;SystemState&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"SystemState"</span>,
         )
     }
 
     <span class="kw">fn </span>exit_code(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u8, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ExitCode&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ExitCode"</span>,
         )
     }
 
     <span class="kw">fn </span>default_timer_accuracy_usec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultTimerAccuracyUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultTimerAccuracyUSec"</span>,
         )
     }
 
     <span class="kw">fn </span>default_timeout_start_usec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultTimeoutStartUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultTimeoutStartUSec"</span>,
         )
     }
 
     <span class="kw">fn </span>default_timeout_stop_usec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultTimeoutStopUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultTimeoutStopUSec"</span>,
         )
     }
 
     <span class="kw">fn </span>default_timeout_abort_usec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultTimeoutAbortUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultTimeoutAbortUSec"</span>,
         )
     }
 
     <span class="kw">fn </span>default_restart_usec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultRestartUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultRestartUSec"</span>,
         )
     }
 
     <span class="kw">fn </span>default_start_limit_interval_usec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultStartLimitIntervalUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultStartLimitIntervalUSec"</span>,
         )
     }
 
     <span class="kw">fn </span>default_start_limit_burst(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u32, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultStartLimitBurst&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultStartLimitBurst"</span>,
         )
     }
 
     <span class="kw">fn </span>default_cpuaccounting(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;bool, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultCPUAccounting&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultCPUAccounting"</span>,
         )
     }
 
     <span class="kw">fn </span>default_block_ioaccounting(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;bool, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultBlockIOAccounting&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultBlockIOAccounting"</span>,
         )
     }
 
     <span class="kw">fn </span>default_memory_accounting(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;bool, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultMemoryAccounting&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultMemoryAccounting"</span>,
         )
     }
 
     <span class="kw">fn </span>default_tasks_accounting(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;bool, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultTasksAccounting&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultTasksAccounting"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_cpu(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitCPU&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitCPU"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_cpusoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitCPUSoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitCPUSoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_fsize(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitFSIZE&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitFSIZE"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_fsizesoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitFSIZESoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitFSIZESoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_data(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitDATA&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitDATA"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_datasoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitDATASoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitDATASoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_stack(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitSTACK&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitSTACK"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_stacksoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitSTACKSoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitSTACKSoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_core(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitCORE&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitCORE"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_coresoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitCORESoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitCORESoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_rss(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitRSS&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitRSS"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_rsssoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitRSSSoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitRSSSoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_nofile(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitNOFILE&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitNOFILE"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_nofilesoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitNOFILESoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitNOFILESoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_as(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitAS&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitAS"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_assoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitASSoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitASSoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_nproc(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitNPROC&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitNPROC"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_nprocsoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitNPROCSoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitNPROCSoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_memlock(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitMEMLOCK&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitMEMLOCK"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_memlocksoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitMEMLOCKSoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitMEMLOCKSoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_locks(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitLOCKS&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitLOCKS"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_lockssoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitLOCKSSoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitLOCKSSoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_sigpending(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitSIGPENDING&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitSIGPENDING"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_sigpendingsoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitSIGPENDINGSoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitSIGPENDINGSoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_msgqueue(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitMSGQUEUE&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitMSGQUEUE"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_msgqueuesoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitMSGQUEUESoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitMSGQUEUESoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_nice(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitNICE&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitNICE"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_nicesoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitNICESoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitNICESoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_rtprio(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitRTPRIO&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitRTPRIO"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_rtpriosoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitRTPRIOSoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitRTPRIOSoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_rttime(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitRTTIME&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitRTTIME"</span>,
         )
     }
 
     <span class="kw">fn </span>default_limit_rttimesoft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultLimitRTTIMESoft&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultLimitRTTIMESoft"</span>,
         )
     }
 
     <span class="kw">fn </span>default_tasks_max(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultTasksMax&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultTasksMax"</span>,
         )
     }
 
     <span class="kw">fn </span>timer_slack_nsec(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;u64, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;TimerSlackNSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"TimerSlackNSec"</span>,
         )
     }
 
     <span class="kw">fn </span>default_oompolicy(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;DefaultOOMPolicy&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"DefaultOOMPolicy"</span>,
         )
     }
 
     <span class="kw">fn </span>ctrl_alt_del_burst_action(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;String, dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::get(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;CtrlAltDelBurstAction&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"CtrlAltDelBurstAction"</span>,
         )
     }
 
     <span class="kw">fn </span>set_log_level(<span class="kw-2">&amp;</span><span class="self">self</span>, value: String) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::set(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;LogLevel&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"LogLevel"</span>,
             value,
         )
     }
@@ -5110,8 +5112,8 @@
     <span class="kw">fn </span>set_log_target(<span class="kw-2">&amp;</span><span class="self">self</span>, value: String) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::set(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;LogTarget&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"LogTarget"</span>,
             value,
         )
     }
@@ -5119,8 +5121,8 @@
     <span class="kw">fn </span>set_runtime_watchdog_usec(<span class="kw-2">&amp;</span><span class="self">self</span>, value: u64) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::set(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;RuntimeWatchdogUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"RuntimeWatchdogUSec"</span>,
             value,
         )
     }
@@ -5128,8 +5130,8 @@
     <span class="kw">fn </span>set_reboot_watchdog_usec(<span class="kw-2">&amp;</span><span class="self">self</span>, value: u64) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::set(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;RebootWatchdogUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"RebootWatchdogUSec"</span>,
             value,
         )
     }
@@ -5137,8 +5139,8 @@
     <span class="kw">fn </span>set_kexec_watchdog_usec(<span class="kw-2">&amp;</span><span class="self">self</span>, value: u64) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::set(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;KExecWatchdogUSec&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"KExecWatchdogUSec"</span>,
             value,
         )
     }
@@ -5146,8 +5148,8 @@
     <span class="kw">fn </span>set_service_watchdogs(<span class="kw-2">&amp;</span><span class="self">self</span>, value: bool) -&gt; <span class="prelude-ty">Result</span>&lt;(), dbus::Error&gt; {
         &lt;<span class="self">Self </span><span class="kw">as </span>blocking::stdintf::org_freedesktop_dbus::Properties&gt;::set(
             <span class="kw-2">&amp;</span><span class="self">self</span>,
-            <span class="string">&quot;org.freedesktop.systemd1.Manager&quot;</span>,
-            <span class="string">&quot;ServiceWatchdogs&quot;</span>,
+            <span class="string">"org.freedesktop.systemd1.Manager"</span>,
+            <span class="string">"ServiceWatchdogs"</span>,
             value,
         )
     }

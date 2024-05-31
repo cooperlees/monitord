@@ -1,4 +1,6 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/networkd.rs`."><title>networkd.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-fa3bb1812debf86c.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.74.1 (a28077b28 2023-12-04)" data-channel="1.74.1" data-search-js="search-8be46b629f5f14a8.js" data-settings-js="settings-74424d7eec62a23e.js" ><script src="../../static.files/storage-fec3eaa3851e447d.js"></script><script defer src="../../static.files/src-script-3280b574d94e47b4.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-c5bd66d33317d69f.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-5d8b3c7633ad77ba.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><nav class="sub"><a class="sub-logo-container" href="../../monitord/index.html"><img class="rust-logo" src="../../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/networkd.rs`."><title>networkd.rs - source</title><script> if (window.location.protocol !== "file:") document.write(`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2">`)</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-e935ef01ae1c1829.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.78.0 (9b00956e5 2024-04-29)" data-channel="1.78.0" data-search-js="search-42d8da7a6b9792c2.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-4c98445ec4002617.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-12cf3b4f4f9dc36d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title">
+            <h2>Files</h2></div></nav><div class="sidebar-resizer"></div>
+    <main><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../../monitord/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -566,17 +568,17 @@
 </span><span class="kw">pub enum </span>BoolState {
     unknown = u8::MAX,
     <span class="attr">#[strum(
-        serialize = <span class="string">&quot;false&quot;</span>,
-        serialize = <span class="string">&quot;False&quot;</span>,
-        serialize = <span class="string">&quot;no&quot;</span>,
-        serialize = <span class="string">&quot;No&quot;
+        serialize = <span class="string">"false"</span>,
+        serialize = <span class="string">"False"</span>,
+        serialize = <span class="string">"no"</span>,
+        serialize = <span class="string">"No"
     </span>)]
     </span>False = <span class="number">0</span>,
     <span class="attr">#[strum(
-        serialize = <span class="string">&quot;true&quot;</span>,
-        serialize = <span class="string">&quot;True&quot;</span>,
-        serialize = <span class="string">&quot;yes&quot;</span>,
-        serialize = <span class="string">&quot;Yes&quot;
+        serialize = <span class="string">"true"</span>,
+        serialize = <span class="string">"True"</span>,
+        serialize = <span class="string">"yes"</span>,
+        serialize = <span class="string">"Yes"
     </span>)]
     </span>True = <span class="number">1</span>,
 }
@@ -599,10 +601,10 @@
 </span><span class="kw">pub enum </span>CarrierState {
     unknown = <span class="number">0</span>,
     off = <span class="number">1</span>,
-    <span class="attr">#[strum(serialize = <span class="string">&quot;no-carrier&quot;</span>, serialize = <span class="string">&quot;no_carrier&quot;</span>)]
+    <span class="attr">#[strum(serialize = <span class="string">"no-carrier"</span>, serialize = <span class="string">"no_carrier"</span>)]
     </span>no_carrier = <span class="number">2</span>,
     dormant = <span class="number">3</span>,
-    <span class="attr">#[strum(serialize = <span class="string">&quot;degraded-carrier&quot;</span>, serialize = <span class="string">&quot;degraded_carrier&quot;</span>)]
+    <span class="attr">#[strum(serialize = <span class="string">"degraded-carrier"</span>, serialize = <span class="string">"degraded_carrier"</span>)]
     </span>degraded_carrier = <span class="number">4</span>,
     carrier = <span class="number">5</span>,
     enslaved = <span class="number">6</span>,
@@ -630,7 +632,7 @@
     online = <span class="number">3</span>,
 }
 
-<span class="doccomment">/// Enumeration of networkd&#39;s operational state
+<span class="doccomment">/// Enumeration of networkd's operational state
 </span><span class="attr">#[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -649,10 +651,10 @@
     unknown = <span class="number">0</span>,
     missing = <span class="number">1</span>,
     off = <span class="number">2</span>,
-    <span class="attr">#[strum(serialize = <span class="string">&quot;no-carrier&quot;</span>, serialize = <span class="string">&quot;no_carrier&quot;</span>)]
+    <span class="attr">#[strum(serialize = <span class="string">"no-carrier"</span>, serialize = <span class="string">"no_carrier"</span>)]
     </span>no_carrier = <span class="number">3</span>,
     dormant = <span class="number">4</span>,
-    <span class="attr">#[strum(serialize = <span class="string">&quot;degraded-carrier&quot;</span>, serialize = <span class="string">&quot;degraded_carrier&quot;</span>)]
+    <span class="attr">#[strum(serialize = <span class="string">"degraded-carrier"</span>, serialize = <span class="string">"degraded_carrier"</span>)]
     </span>degraded_carrier = <span class="number">5</span>,
     carrier = <span class="number">6</span>,
     degraded = <span class="number">7</span>,
@@ -678,11 +680,11 @@
 </span><span class="kw">fn </span>get_interface_links(
     dbus_address: <span class="kw-2">&amp;</span>str,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;HashMap&lt;i32, String&gt;, Box&lt;<span class="kw">dyn </span>std::error::Error + Send + Sync&gt;&gt; {
-    std::env::set_var(<span class="string">&quot;DBUS_SYSTEM_BUS_ADDRESS&quot;</span>, dbus_address);
+    std::env::set_var(<span class="string">"DBUS_SYSTEM_BUS_ADDRESS"</span>, dbus_address);
     <span class="kw">let </span>c = Connection::new_system()<span class="question-mark">?</span>;
     <span class="kw">let </span>p = c.with_proxy(
-        <span class="string">&quot;org.freedesktop.network1&quot;</span>,
-        <span class="string">&quot;/org/freedesktop/network1&quot;</span>,
+        <span class="string">"org.freedesktop.network1"</span>,
+        <span class="string">"/org/freedesktop/network1"</span>,
         Duration::new(<span class="number">5</span>, <span class="number">0</span>),
     );
     <span class="kw">use </span><span class="kw">crate</span>::dbus::networkd::OrgFreedesktopNetwork1Manager;
@@ -701,7 +703,7 @@
     <span class="kw">pub </span>managed_interfaces: u64,
 }
 
-<span class="kw">pub const </span>NETWORKD_STATE_FILES: <span class="kw-2">&amp;</span>str = <span class="string">&quot;/run/systemd/netif/links&quot;</span>;
+<span class="kw">pub const </span>NETWORKD_STATE_FILES: <span class="kw-2">&amp;</span>str = <span class="string">"/run/systemd/netif/links"</span>;
 
 <span class="doccomment">/// Parse a networkd state file contents + convert int ID to name via DBUS
 </span><span class="kw">pub fn </span>parse_interface_stats(
@@ -715,15 +717,15 @@
         carrier_state: CarrierState::unknown,
         ipv4_address_state: AddressState::unknown,
         ipv6_address_state: AddressState::unknown,
-        name: <span class="string">&quot;&quot;</span>.to_string(),
-        network_file: <span class="string">&quot;&quot;</span>.to_string(),
+        name: <span class="string">""</span>.to_string(),
+        network_file: <span class="string">""</span>.to_string(),
         oper_state: OperState::unknown,
         required_for_online: BoolState::False,
     };
 
     <span class="kw">for </span>line <span class="kw">in </span>interface_state_str.lines() {
         <span class="comment">// Skip comments + lines without =
-        </span><span class="kw">if </span>!line.contains(<span class="string">&#39;=&#39;</span>) {
+        </span><span class="kw">if </span>!line.contains(<span class="string">'='</span>) {
             <span class="kw">continue</span>;
         }
 
@@ -731,40 +733,40 @@
         </span><span class="kw">if </span>interface_id &gt; <span class="number">0 </span>{
             interface_state.name = interface_id_to_name
                 .get(<span class="kw-2">&amp;</span>interface_id)
-                .unwrap_or(<span class="kw-2">&amp;</span>String::from(<span class="string">&quot;&quot;</span>))
+                .unwrap_or(<span class="kw-2">&amp;</span>String::from(<span class="string">""</span>))
                 .to_string();
         }
 
         <span class="kw">let </span>(key, value) = line
-            .split_once(<span class="string">&#39;=&#39;</span>)
-            .expect(<span class="string">&quot;Unable to split a network state line&quot;</span>);
+            .split_once(<span class="string">'='</span>)
+            .expect(<span class="string">"Unable to split a network state line"</span>);
         <span class="kw">match </span>key {
-            <span class="string">&quot;ADDRESS_STATE&quot; </span>=&gt; {
+            <span class="string">"ADDRESS_STATE" </span>=&gt; {
                 interface_state.address_state =
                     AddressState::from_str(value).unwrap_or(AddressState::unknown)
             }
-            <span class="string">&quot;ADMIN_STATE&quot; </span>=&gt; {
+            <span class="string">"ADMIN_STATE" </span>=&gt; {
                 interface_state.admin_state =
                     AdminState::from_str(value).unwrap_or(AdminState::unknown)
             }
-            <span class="string">&quot;CARRIER_STATE&quot; </span>=&gt; {
+            <span class="string">"CARRIER_STATE" </span>=&gt; {
                 interface_state.carrier_state =
                     CarrierState::from_str(value).unwrap_or(CarrierState::unknown)
             }
-            <span class="string">&quot;IPV4_ADDRESS_STATE&quot; </span>=&gt; {
+            <span class="string">"IPV4_ADDRESS_STATE" </span>=&gt; {
                 interface_state.ipv4_address_state =
                     AddressState::from_str(value).unwrap_or(AddressState::unknown)
             }
-            <span class="string">&quot;IPV6_ADDRESS_STATE&quot; </span>=&gt; {
+            <span class="string">"IPV6_ADDRESS_STATE" </span>=&gt; {
                 interface_state.ipv6_address_state =
                     AddressState::from_str(value).unwrap_or(AddressState::unknown)
             }
-            <span class="string">&quot;NETWORK_FILE&quot; </span>=&gt; interface_state.network_file = value.to_string(),
-            <span class="string">&quot;OPER_STATE&quot; </span>=&gt; {
+            <span class="string">"NETWORK_FILE" </span>=&gt; interface_state.network_file = value.to_string(),
+            <span class="string">"OPER_STATE" </span>=&gt; {
                 interface_state.oper_state =
                     OperState::from_str(value).unwrap_or(OperState::unknown)
             }
-            <span class="string">&quot;REQUIRED_FOR_ONLINE&quot; </span>=&gt; {
+            <span class="string">"REQUIRED_FOR_ONLINE" </span>=&gt; {
                 interface_state.required_for_online =
                     BoolState::from_str(value).unwrap_or(BoolState::unknown)
             }
@@ -789,7 +791,7 @@
             <span class="prelude-val">Ok</span>(hashmap) =&gt; hashmap,
             <span class="prelude-val">Err</span>(err) =&gt; {
                 <span class="macro">error!</span>(
-                    <span class="string">&quot;Unable to get interface links via DBUS - is networkd running?: {:#?}&quot;</span>,
+                    <span class="string">"Unable to get interface links via DBUS - is networkd running?: {:#?}"</span>,
                     err
                 );
                 <span class="kw">return </span><span class="prelude-val">Ok</span>(NetworkdState::default());
@@ -802,7 +804,7 @@
         <span class="kw">let </span>state_file = <span class="kw">match </span>state_file_dir {
             <span class="prelude-val">Ok</span>(sf) =&gt; sf,
             <span class="prelude-val">Err</span>(err) =&gt; {
-                <span class="macro">error!</span>(<span class="string">&quot;Unable to read dir {:?}: {}&quot;</span>, states_path.as_os_str(), err);
+                <span class="macro">error!</span>(<span class="string">"Unable to read dir {:?}: {}"</span>, states_path.as_os_str(), err);
                 <span class="kw">break</span>;
             }
         };
@@ -810,17 +812,17 @@
             <span class="kw">continue</span>;
         }
         <span class="kw">let </span>interface_stats_file_str =
-            fs::read_to_string(state_file.path()).expect(<span class="string">&quot;Unable to read networkd state file&quot;</span>);
-        <span class="kw">if </span>!interface_stats_file_str.contains(<span class="string">&quot;NETWORK_FILE&quot;</span>) {
+            fs::read_to_string(state_file.path()).expect(<span class="string">"Unable to read networkd state file"</span>);
+        <span class="kw">if </span>!interface_stats_file_str.contains(<span class="string">"NETWORK_FILE"</span>) {
             <span class="kw">continue</span>;
         }
         managed_interface_count += <span class="number">1</span>;
         <span class="kw">let </span>fname = state_file.file_name();
-        <span class="kw">let </span>interface_id: i32 = i32::from_str(fname.to_str().unwrap_or(<span class="string">&quot;0&quot;</span>)).unwrap_or(<span class="number">0</span>);
+        <span class="kw">let </span>interface_id: i32 = i32::from_str(fname.to_str().unwrap_or(<span class="string">"0"</span>)).unwrap_or(<span class="number">0</span>);
         <span class="kw">match </span>parse_interface_stats(interface_stats_file_str, interface_id, <span class="kw-2">&amp;</span>network_int_to_name) {
             <span class="prelude-val">Ok</span>(interface_state) =&gt; interfaces_state.push(interface_state),
             <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(
-                <span class="string">&quot;Unable to parse interface statistics for {:?}: {}&quot;</span>,
+                <span class="string">"Unable to parse interface statistics for {:?}: {}"</span>,
                 state_file.path().into_os_string(),
                 err
             ),
@@ -839,7 +841,7 @@
     <span class="kw">use </span>std::io::Write;
     <span class="kw">use </span>tempfile::tempdir;
 
-    <span class="kw">const </span>MOCK_INTERFACE_STATE: <span class="kw-2">&amp;</span>str = <span class="string">r###&quot;# This is private data. Do not parse.
+    <span class="kw">const </span>MOCK_INTERFACE_STATE: <span class="kw-2">&amp;</span>str = <span class="string">r###"# This is private data. Do not parse.
 ADMIN_STATE=configured
 OPER_STATE=routable
 CARRIER_STATE=carrier
@@ -859,7 +861,7 @@ DOMAINS=
 ROUTE_DOMAINS=
 LLMNR=yes
 MDNS=no
-&quot;###</span>;
+"###</span>;
 
     <span class="kw">fn </span>return_expected_interface_state() -&gt; InterfaceState {
         InterfaceState {
@@ -868,8 +870,8 @@ MDNS=no
             carrier_state: CarrierState::carrier,
             ipv4_address_state: AddressState::routable,
             ipv6_address_state: AddressState::degraded,
-            name: <span class="string">&quot;eth0&quot;</span>.to_string(),
-            network_file: <span class="string">&quot;/etc/systemd/network/69-eno4.network&quot;</span>.to_string(),
+            name: <span class="string">"eth0"</span>.to_string(),
+            network_file: <span class="string">"/etc/systemd/network/69-eno4.network"</span>.to_string(),
             oper_state: OperState::routable,
             required_for_online: BoolState::True,
         }
@@ -877,8 +879,8 @@ MDNS=no
 
     <span class="kw">fn </span>return_mock_int_name_hashmap() -&gt; <span class="prelude-ty">Option</span>&lt;HashMap&lt;i32, String&gt;&gt; {
         <span class="kw">let </span><span class="kw-2">mut </span>h: HashMap&lt;i32, String&gt; = HashMap::new();
-        h.insert(<span class="number">2</span>, String::from(<span class="string">&quot;eth0&quot;</span>));
-        h.insert(<span class="number">69</span>, String::from(<span class="string">&quot;eth69&quot;</span>));
+        h.insert(<span class="number">2</span>, String::from(<span class="string">"eth0"</span>));
+        h.insert(<span class="number">69</span>, String::from(<span class="string">"eth69"</span>));
         <span class="prelude-val">Some</span>(h)
     }
 
@@ -897,8 +899,8 @@ MDNS=no
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_parse_interface_stats_json() {
-        <span class="comment">// &#39;name&#39; stays as an empty string cause we don&#39;t pass in networkctl json or an interface id
-        </span><span class="kw">let </span>expected_interface_state_json = <span class="string">r###&quot;{&quot;address_state&quot;:3,&quot;admin_state&quot;:4,&quot;carrier_state&quot;:5,&quot;ipv4_address_state&quot;:3,&quot;ipv6_address_state&quot;:2,&quot;name&quot;:&quot;&quot;,&quot;network_file&quot;:&quot;/etc/systemd/network/69-eno4.network&quot;,&quot;oper_state&quot;:9,&quot;required_for_online&quot;:1}&quot;###</span>;
+        <span class="comment">// 'name' stays as an empty string cause we don't pass in networkctl json or an interface id
+        </span><span class="kw">let </span>expected_interface_state_json = <span class="string">r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###</span>;
         <span class="kw">let </span>stats =
             parse_interface_stats(MOCK_INTERFACE_STATE.to_string(), <span class="number">0</span>, <span class="kw-2">&amp;</span>HashMap::new()).unwrap();
         <span class="kw">let </span>stats_json = serde_json::to_string(<span class="kw-2">&amp;</span>stats).unwrap();
@@ -913,10 +915,10 @@ MDNS=no
         };
 
         <span class="kw">let </span>temp_dir = tempdir()<span class="question-mark">?</span>;
-        <span class="comment">// Filename of &#39;2&#39; is important as it needs to correspond to the interface id / index
-        </span><span class="kw">let </span>file_path = temp_dir.path().join(<span class="string">&quot;2&quot;</span>);
+        <span class="comment">// Filename of '2' is important as it needs to correspond to the interface id / index
+        </span><span class="kw">let </span>file_path = temp_dir.path().join(<span class="string">"2"</span>);
         <span class="kw">let </span><span class="kw-2">mut </span>state_file = File::create(file_path)<span class="question-mark">?</span>;
-        <span class="macro">writeln!</span>(state_file, <span class="string">&quot;{}&quot;</span>, MOCK_INTERFACE_STATE)<span class="question-mark">?</span>;
+        <span class="macro">writeln!</span>(state_file, <span class="string">"{}"</span>, MOCK_INTERFACE_STATE)<span class="question-mark">?</span>;
 
         <span class="kw">let </span>path = PathBuf::from(temp_dir.path());
         <span class="macro">assert_eq!</span>(
@@ -933,13 +935,13 @@ MDNS=no
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_parse_interface_state_files_json() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-        <span class="kw">let </span>expected_interface_state_json = <span class="string">r###&quot;{&quot;interfaces_state&quot;:[{&quot;address_state&quot;:3,&quot;admin_state&quot;:4,&quot;carrier_state&quot;:5,&quot;ipv4_address_state&quot;:3,&quot;ipv6_address_state&quot;:2,&quot;name&quot;:&quot;eth69&quot;,&quot;network_file&quot;:&quot;/etc/systemd/network/69-eno4.network&quot;,&quot;oper_state&quot;:9,&quot;required_for_online&quot;:1}],&quot;managed_interfaces&quot;:1}&quot;###</span>;
+        <span class="kw">let </span>expected_interface_state_json = <span class="string">r###"{"interfaces_state":[{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"eth69","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###</span>;
 
         <span class="kw">let </span>temp_dir = tempdir()<span class="question-mark">?</span>;
         <span class="comment">// As the networkctl JSON has no interface with index 69 name gets no value ...
-        </span><span class="kw">let </span>file_path = temp_dir.path().join(<span class="string">&quot;69&quot;</span>);
+        </span><span class="kw">let </span>file_path = temp_dir.path().join(<span class="string">"69"</span>);
         <span class="kw">let </span><span class="kw-2">mut </span>state_file = File::create(file_path)<span class="question-mark">?</span>;
-        <span class="macro">writeln!</span>(state_file, <span class="string">&quot;{}&quot;</span>, MOCK_INTERFACE_STATE)<span class="question-mark">?</span>;
+        <span class="macro">writeln!</span>(state_file, <span class="string">"{}"</span>, MOCK_INTERFACE_STATE)<span class="question-mark">?</span>;
 
         <span class="kw">let </span>path = PathBuf::from(temp_dir.path());
         <span class="kw">let </span>interface_stats = parse_interface_state_files(

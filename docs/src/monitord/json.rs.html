@@ -1,4 +1,6 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/json.rs`."><title>json.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-fa3bb1812debf86c.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.74.1 (a28077b28 2023-12-04)" data-channel="1.74.1" data-search-js="search-8be46b629f5f14a8.js" data-settings-js="settings-74424d7eec62a23e.js" ><script src="../../static.files/storage-fec3eaa3851e447d.js"></script><script defer src="../../static.files/src-script-3280b574d94e47b4.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-c5bd66d33317d69f.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-5d8b3c7633ad77ba.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><nav class="sub"><a class="sub-logo-container" href="../../monitord/index.html"><img class="rust-logo" src="../../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/json.rs`."><title>json.rs - source</title><script> if (window.location.protocol !== "file:") document.write(`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2">`)</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-e935ef01ae1c1829.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.78.0 (9b00956e5 2024-04-29)" data-channel="1.78.0" data-search-js="search-42d8da7a6b9792c2.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-4c98445ec4002617.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-12cf3b4f4f9dc36d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title">
+            <h2>Files</h2></div></nav><div class="sidebar-resizer"></div>
+    <main><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../../monitord/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -539,7 +541,7 @@
     U32(u32),
 }
 
-<span class="doccomment">/// JSON escape a string and remove the &#39;&quot;&#39; chars
+<span class="doccomment">/// JSON escape a string and remove the '"' chars
 </span><span class="kw">fn </span>json_escape_string(s: <span class="kw-2">&amp;</span>str) -&gt; String {
     <span class="kw">let </span>full_json_str = <span class="macro">serde_json::json!</span>(s).to_string();
     full_json_str[<span class="number">1</span>..full_json_str.len() - <span class="number">1</span>].into()
@@ -549,7 +551,7 @@
 </span><span class="kw">fn </span>gen_base_metric_key(key_prefix: <span class="kw-2">&amp;</span>String, metric_name: <span class="kw-2">&amp;</span>str) -&gt; String {
     <span class="kw">match </span>key_prefix.is_empty() {
         <span class="bool-val">true </span>=&gt; String::from(metric_name),
-        <span class="bool-val">false </span>=&gt; <span class="macro">format!</span>(<span class="string">&quot;{}.{}&quot;</span>, key_prefix, metric_name),
+        <span class="bool-val">false </span>=&gt; <span class="macro">format!</span>(<span class="string">"{}.{}"</span>, key_prefix, metric_name),
     }
 }
 
@@ -558,47 +560,47 @@
     key_prefix: <span class="kw-2">&amp;</span>String,
 ) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
-    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;networkd&quot;</span>));
+    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"networkd"</span>));
 
-    <span class="kw">let </span>managed_interfaces_key = <span class="macro">format!</span>(<span class="string">&quot;{}.managed_interfaces&quot;</span>, base_metric_name);
+    <span class="kw">let </span>managed_interfaces_key = <span class="macro">format!</span>(<span class="string">"{}.managed_interfaces"</span>, base_metric_name);
     flat_stats.insert(
         managed_interfaces_key,
         JsonFlatValue::U64(networkd_stats.managed_interfaces),
     );
 
     <span class="kw">if </span>networkd_stats.interfaces_state.is_empty() {
-        <span class="macro">debug!</span>(<span class="string">&quot;No networkd interfaces to add to flat JSON&quot;</span>);
+        <span class="macro">debug!</span>(<span class="string">"No networkd interfaces to add to flat JSON"</span>);
         <span class="kw">return </span>flat_stats;
     }
 
     <span class="kw">for </span>interface <span class="kw">in </span><span class="kw-2">&amp;</span>networkd_stats.interfaces_state {
-        <span class="kw">let </span>interface_base = <span class="macro">format!</span>(<span class="string">&quot;{}.{}&quot;</span>, base_metric_name, interface.name);
+        <span class="kw">let </span>interface_base = <span class="macro">format!</span>(<span class="string">"{}.{}"</span>, base_metric_name, interface.name);
         flat_stats.insert(
-            <span class="macro">format!</span>(<span class="string">&quot;{interface_base}.address_state&quot;</span>),
+            <span class="macro">format!</span>(<span class="string">"{interface_base}.address_state"</span>),
             JsonFlatValue::U64(interface.address_state <span class="kw">as </span>u64),
         );
         flat_stats.insert(
-            <span class="macro">format!</span>(<span class="string">&quot;{interface_base}.admin_state&quot;</span>),
+            <span class="macro">format!</span>(<span class="string">"{interface_base}.admin_state"</span>),
             JsonFlatValue::U64(interface.admin_state <span class="kw">as </span>u64),
         );
         flat_stats.insert(
-            <span class="macro">format!</span>(<span class="string">&quot;{interface_base}.carrier_state&quot;</span>),
+            <span class="macro">format!</span>(<span class="string">"{interface_base}.carrier_state"</span>),
             JsonFlatValue::U64(interface.carrier_state <span class="kw">as </span>u64),
         );
         flat_stats.insert(
-            <span class="macro">format!</span>(<span class="string">&quot;{interface_base}.ipv4_address_state&quot;</span>),
+            <span class="macro">format!</span>(<span class="string">"{interface_base}.ipv4_address_state"</span>),
             JsonFlatValue::U64(interface.ipv4_address_state <span class="kw">as </span>u64),
         );
         flat_stats.insert(
-            <span class="macro">format!</span>(<span class="string">&quot;{interface_base}.ipv6_address_state&quot;</span>),
+            <span class="macro">format!</span>(<span class="string">"{interface_base}.ipv6_address_state"</span>),
             JsonFlatValue::U64(interface.ipv6_address_state <span class="kw">as </span>u64),
         );
         flat_stats.insert(
-            <span class="macro">format!</span>(<span class="string">&quot;{interface_base}.oper_state&quot;</span>),
+            <span class="macro">format!</span>(<span class="string">"{interface_base}.oper_state"</span>),
             JsonFlatValue::U64(interface.oper_state <span class="kw">as </span>u64),
         );
         flat_stats.insert(
-            <span class="macro">format!</span>(<span class="string">&quot;{interface_base}.required_for_online&quot;</span>),
+            <span class="macro">format!</span>(<span class="string">"{interface_base}.required_for_online"</span>),
             JsonFlatValue::U64(interface.required_for_online <span class="kw">as </span>u64),
         );
     }
@@ -610,35 +612,35 @@
     key_prefix: <span class="kw-2">&amp;</span>String,
 ) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
-    <span class="comment">// If we&#39;re not collcting pid1 stats don&#39;t add
+    <span class="comment">// If we're not collcting pid1 stats don't add
     </span><span class="kw">let </span>pid1_stats = <span class="kw">match </span>optional_pid1_stats {
         <span class="prelude-val">Some</span>(ps) =&gt; ps,
         <span class="prelude-val">None </span>=&gt; {
-            <span class="macro">debug!</span>(<span class="string">&quot;Skipping flatenning pid1 stats as we got None ...&quot;</span>);
+            <span class="macro">debug!</span>(<span class="string">"Skipping flatenning pid1 stats as we got None ..."</span>);
             <span class="kw">return </span>flat_stats;
         }
     };
 
-    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;pid1&quot;</span>));
+    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"pid1"</span>));
 
     flat_stats.insert(
-        <span class="macro">format!</span>(<span class="string">&quot;{}.cpu_time_kernel&quot;</span>, base_metric_name),
+        <span class="macro">format!</span>(<span class="string">"{}.cpu_time_kernel"</span>, base_metric_name),
         JsonFlatValue::U64(pid1_stats.cpu_time_kernel),
     );
     flat_stats.insert(
-        <span class="macro">format!</span>(<span class="string">&quot;{}.cpu_user_kernel&quot;</span>, base_metric_name),
+        <span class="macro">format!</span>(<span class="string">"{}.cpu_user_kernel"</span>, base_metric_name),
         JsonFlatValue::U64(pid1_stats.cpu_time_user),
     );
     flat_stats.insert(
-        <span class="macro">format!</span>(<span class="string">&quot;{}.memory_usage_bytes&quot;</span>, base_metric_name),
+        <span class="macro">format!</span>(<span class="string">"{}.memory_usage_bytes"</span>, base_metric_name),
         JsonFlatValue::U64(pid1_stats.memory_usage_bytes),
     );
     flat_stats.insert(
-        <span class="macro">format!</span>(<span class="string">&quot;{}.fd_count&quot;</span>, base_metric_name),
+        <span class="macro">format!</span>(<span class="string">"{}.fd_count"</span>, base_metric_name),
         JsonFlatValue::U64(pid1_stats.fd_count),
     );
     flat_stats.insert(
-        <span class="macro">format!</span>(<span class="string">&quot;{}.tasks&quot;</span>, base_metric_name),
+        <span class="macro">format!</span>(<span class="string">"{}.tasks"</span>, base_metric_name),
         JsonFlatValue::U64(pid1_stats.tasks),
     );
 
@@ -650,72 +652,72 @@
     key_prefix: <span class="kw-2">&amp;</span>String,
 ) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
-    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;services&quot;</span>));
+    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"services"</span>));
 
     <span class="kw">for </span>(service_name, service_stats) <span class="kw">in </span>service_stats_hash.iter() {
         <span class="kw">let </span>escaped_service_name = json_escape_string(service_name);
         <span class="kw">for </span>field_name <span class="kw">in </span>units::SERVICE_FIELD_NAMES {
-            <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">&quot;{base_metric_name}.{escaped_service_name}.{field_name}&quot;</span>);
+            <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">"{base_metric_name}.{escaped_service_name}.{field_name}"</span>);
             <span class="kw">match </span>field_name.to_string().as_str() {
-                <span class="string">&quot;active_enter_timestamp&quot; </span>=&gt; {
+                <span class="string">"active_enter_timestamp" </span>=&gt; {
                     flat_stats.insert(
                         key,
                         JsonFlatValue::U64(service_stats.active_enter_timestamp),
                     );
                 }
-                <span class="string">&quot;active_exit_timestamp&quot; </span>=&gt; {
+                <span class="string">"active_exit_timestamp" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.active_exit_timestamp));
                 }
-                <span class="string">&quot;cpuusage_nsec&quot; </span>=&gt; {
+                <span class="string">"cpuusage_nsec" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.cpuusage_nsec));
                 }
-                <span class="string">&quot;inactive_exit_timestamp&quot; </span>=&gt; {
+                <span class="string">"inactive_exit_timestamp" </span>=&gt; {
                     flat_stats.insert(
                         key,
                         JsonFlatValue::U64(service_stats.inactive_exit_timestamp),
                     );
                 }
-                <span class="string">&quot;ioread_bytes&quot; </span>=&gt; {
+                <span class="string">"ioread_bytes" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.ioread_bytes));
                 }
-                <span class="string">&quot;ioread_operations&quot; </span>=&gt; {
+                <span class="string">"ioread_operations" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.ioread_operations));
                 }
-                <span class="string">&quot;memory_available&quot; </span>=&gt; {
+                <span class="string">"memory_available" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.memory_available));
                 }
-                <span class="string">&quot;memory_current&quot; </span>=&gt; {
+                <span class="string">"memory_current" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.memory_current));
                 }
-                <span class="string">&quot;nrestarts&quot; </span>=&gt; {
+                <span class="string">"nrestarts" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U32(service_stats.nrestarts));
                 }
-                <span class="string">&quot;processes&quot; </span>=&gt; {
+                <span class="string">"processes" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U32(service_stats.processes));
                 }
-                <span class="string">&quot;restart_usec&quot; </span>=&gt; {
+                <span class="string">"restart_usec" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.restart_usec));
                 }
-                <span class="string">&quot;state_change_timestamp&quot; </span>=&gt; {
+                <span class="string">"state_change_timestamp" </span>=&gt; {
                     flat_stats.insert(
                         key,
                         JsonFlatValue::U64(service_stats.state_change_timestamp),
                     );
                 }
-                <span class="string">&quot;status_errno&quot; </span>=&gt; {
+                <span class="string">"status_errno" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::I32(service_stats.status_errno));
                 }
-                <span class="string">&quot;tasks_current&quot; </span>=&gt; {
+                <span class="string">"tasks_current" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.tasks_current));
                 }
-                <span class="string">&quot;timeout_clean_usec&quot; </span>=&gt; {
+                <span class="string">"timeout_clean_usec" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.timeout_clean_usec));
                 }
-                <span class="string">&quot;watchdog_usec&quot; </span>=&gt; {
+                <span class="string">"watchdog_usec" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(service_stats.watchdog_usec));
                 }
                 <span class="kw">_ </span>=&gt; {
-                    <span class="macro">debug!</span>(<span class="string">&quot;Got a unhandled stat: &#39;{}&#39;&quot;</span>, field_name);
+                    <span class="macro">debug!</span>(<span class="string">"Got a unhandled stat: '{}'"</span>, field_name);
                 }
             }
         }
@@ -728,23 +730,23 @@
     key_prefix: <span class="kw-2">&amp;</span>String,
 ) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
-    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;unit_states&quot;</span>));
+    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"unit_states"</span>));
 
     <span class="kw">for </span>(unit_name, unit_state_stats) <span class="kw">in </span>unit_states_hash.iter() {
         <span class="kw">let </span>escaped_unit_name = json_escape_string(unit_name);
         <span class="kw">for </span>field_name <span class="kw">in </span>units::UNIT_STATES_FIELD_NAMES {
-            <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">&quot;{base_metric_name}.{escaped_unit_name}.{field_name}&quot;</span>);
+            <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">"{base_metric_name}.{escaped_unit_name}.{field_name}"</span>);
             <span class="kw">match </span>field_name.to_string().as_str() {
-                <span class="string">&quot;active_state&quot; </span>=&gt; {
+                <span class="string">"active_state" </span>=&gt; {
                     flat_stats.insert(
                         key,
                         JsonFlatValue::U64(unit_state_stats.active_state <span class="kw">as </span>u64),
                     );
                 }
-                <span class="string">&quot;load_state&quot; </span>=&gt; {
+                <span class="string">"load_state" </span>=&gt; {
                     flat_stats.insert(key, JsonFlatValue::U64(unit_state_stats.load_state <span class="kw">as </span>u64));
                 }
-                <span class="string">&quot;unhealthy&quot; </span>=&gt; <span class="kw">match </span>unit_state_stats.unhealthy {
+                <span class="string">"unhealthy" </span>=&gt; <span class="kw">match </span>unit_state_stats.unhealthy {
                     <span class="bool-val">false </span>=&gt; {
                         flat_stats.insert(key, JsonFlatValue::U64(<span class="number">0</span>));
                     }
@@ -753,7 +755,7 @@
                     }
                 },
                 <span class="kw">_ </span>=&gt; {
-                    <span class="macro">debug!</span>(<span class="string">&quot;Got a unhandled unit state: &#39;{}&#39;&quot;</span>, field_name);
+                    <span class="macro">debug!</span>(<span class="string">"Got a unhandled unit state: '{}'"</span>, field_name);
                 }
             }
         }
@@ -766,73 +768,73 @@
     units_stats: <span class="kw-2">&amp;</span>units::SystemdUnitStats,
     key_prefix: <span class="kw-2">&amp;</span>String,
 ) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
-    <span class="comment">// fields of the SystemdUnitStats struct we know to ignore so don&#39;t log below
-    </span><span class="kw">let </span>fields_to_ignore = Vec::from([<span class="string">&quot;service_stats&quot;</span>]);
+    <span class="comment">// fields of the SystemdUnitStats struct we know to ignore so don't log below
+    </span><span class="kw">let </span>fields_to_ignore = Vec::from([<span class="string">"service_stats"</span>]);
 
     <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
-    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;units&quot;</span>));
+    <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"units"</span>));
 
     <span class="comment">// TODO: Work out a smarter way to do this rather than hard code mappings
     </span><span class="kw">for </span>field_name <span class="kw">in </span>units::UNIT_FIELD_NAMES {
-        <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">&quot;{base_metric_name}.{field_name}&quot;</span>);
+        <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">"{base_metric_name}.{field_name}"</span>);
         <span class="kw">match </span>field_name.to_string().as_str() {
-            <span class="string">&quot;active_units&quot; </span>=&gt; {
+            <span class="string">"active_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.active_units));
             }
-            <span class="string">&quot;automount_units&quot; </span>=&gt; {
+            <span class="string">"automount_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.automount_units));
             }
-            <span class="string">&quot;device_units&quot; </span>=&gt; {
+            <span class="string">"device_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.device_units));
             }
-            <span class="string">&quot;failed_units&quot; </span>=&gt; {
+            <span class="string">"failed_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.failed_units));
             }
-            <span class="string">&quot;inactive_units&quot; </span>=&gt; {
+            <span class="string">"inactive_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.inactive_units));
             }
-            <span class="string">&quot;jobs_queued&quot; </span>=&gt; {
+            <span class="string">"jobs_queued" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.jobs_queued));
             }
-            <span class="string">&quot;loaded_units&quot; </span>=&gt; {
+            <span class="string">"loaded_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.loaded_units));
             }
-            <span class="string">&quot;masked_units&quot; </span>=&gt; {
+            <span class="string">"masked_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.masked_units));
             }
-            <span class="string">&quot;mount_units&quot; </span>=&gt; {
+            <span class="string">"mount_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.mount_units));
             }
-            <span class="string">&quot;not_found_units&quot; </span>=&gt; {
+            <span class="string">"not_found_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.not_found_units));
             }
-            <span class="string">&quot;path_units&quot; </span>=&gt; {
+            <span class="string">"path_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.path_units));
             }
-            <span class="string">&quot;scope_units&quot; </span>=&gt; {
+            <span class="string">"scope_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.scope_units));
             }
-            <span class="string">&quot;service_units&quot; </span>=&gt; {
+            <span class="string">"service_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.service_units));
             }
-            <span class="string">&quot;slice_units&quot; </span>=&gt; {
+            <span class="string">"slice_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.slice_units));
             }
-            <span class="string">&quot;socket_units&quot; </span>=&gt; {
+            <span class="string">"socket_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.socket_units));
             }
-            <span class="string">&quot;target_units&quot; </span>=&gt; {
+            <span class="string">"target_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.target_units));
             }
-            <span class="string">&quot;timer_units&quot; </span>=&gt; {
+            <span class="string">"timer_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.timer_units));
             }
-            <span class="string">&quot;total_units&quot; </span>=&gt; {
+            <span class="string">"total_units" </span>=&gt; {
                 flat_stats.insert(key, JsonFlatValue::U64(units_stats.total_units));
             }
             <span class="kw">_ </span>=&gt; {
                 <span class="kw">if </span>!fields_to_ignore.contains(field_name) {
-                    <span class="macro">debug!</span>(<span class="string">&quot;Got a unhandled stat &#39;{}&#39;&quot;</span>, field_name);
+                    <span class="macro">debug!</span>(<span class="string">"Got a unhandled stat '{}'"</span>, field_name);
                 }
             }
         };
@@ -849,7 +851,7 @@
     flat_stats.extend(flatten_networkd(<span class="kw-2">&amp;</span>stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_pid1(<span class="kw-2">&amp;</span>stats_struct.pid1, key_prefix));
     flat_stats.insert(
-        gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;system-state&quot;</span>)),
+        gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"system-state"</span>)),
         JsonFlatValue::U64(stats_struct.system_state <span class="kw">as </span>u64),
     );
     flat_stats.extend(flatten_services(
@@ -868,18 +870,18 @@
 </span><span class="kw">pub fn </span>flatten(stats_struct: <span class="kw-2">&amp;</span>MonitordStats, key_prefix: <span class="kw-2">&amp;</span>String) -&gt; String {
     <span class="kw">let </span>flat_stats = flatten_hashmap(stats_struct, key_prefix);
 
-    <span class="kw">let </span><span class="kw-2">mut </span>json_str = String::from(<span class="string">&quot;{\n&quot;</span>);
+    <span class="kw">let </span><span class="kw-2">mut </span>json_str = String::from(<span class="string">"{\n"</span>);
     <span class="kw">for </span>(key, value) <span class="kw">in </span>flat_stats.iter().sorted() {
-        <span class="kw">let </span>new_kv_a = <span class="macro">format!</span>(<span class="string">&quot;  \&quot;{}\&quot;: &quot;</span>, key);
+        <span class="kw">let </span>new_kv_a = <span class="macro">format!</span>(<span class="string">"  \"{}\": "</span>, key);
         <span class="kw">let </span>new_kv = <span class="kw">match </span>value {
             JsonFlatValue::I32(an_int) =&gt; {
-                <span class="macro">format!</span>(<span class="string">&quot;{}{},\n&quot;</span>, new_kv_a, an_int)
+                <span class="macro">format!</span>(<span class="string">"{}{},\n"</span>, new_kv_a, an_int)
             }
             JsonFlatValue::U32(an_int) =&gt; {
-                <span class="macro">format!</span>(<span class="string">&quot;{}{},\n&quot;</span>, new_kv_a, an_int)
+                <span class="macro">format!</span>(<span class="string">"{}{},\n"</span>, new_kv_a, an_int)
             }
             JsonFlatValue::U64(an_int) =&gt; {
-                <span class="macro">format!</span>(<span class="string">&quot;{}{},\n&quot;</span>, new_kv_a, an_int)
+                <span class="macro">format!</span>(<span class="string">"{}{},\n"</span>, new_kv_a, an_int)
             }
         };
         json_str.push_str(new_kv.as_str());
@@ -887,7 +889,7 @@
     <span class="comment">// Remove last trailing comma to be valid JSON - Super lame but works ...
     </span>json_str.pop();
     json_str.pop();
-    json_str.push_str(<span class="string">&quot;\n}&quot;</span>);
+    json_str.push_str(<span class="string">"\n}"</span>);
     json_str
 }
 
@@ -898,62 +900,62 @@
     <span class="kw">use super</span>::<span class="kw-2">*</span>;
 
     <span class="comment">// This will always be sorted / deterministic ...
-    </span><span class="kw">const </span>EXPECTED_FLAT_JSON: <span class="kw-2">&amp;</span>str = <span class="string">r###&quot;{
-  &quot;networkd.eth0.address_state&quot;: 3,
-  &quot;networkd.eth0.admin_state&quot;: 4,
-  &quot;networkd.eth0.carrier_state&quot;: 5,
-  &quot;networkd.eth0.ipv4_address_state&quot;: 3,
-  &quot;networkd.eth0.ipv6_address_state&quot;: 2,
-  &quot;networkd.eth0.oper_state&quot;: 9,
-  &quot;networkd.eth0.required_for_online&quot;: 1,
-  &quot;networkd.managed_interfaces&quot;: 1,
-  &quot;pid1.cpu_time_kernel&quot;: 69,
-  &quot;pid1.cpu_user_kernel&quot;: 69,
-  &quot;pid1.fd_count&quot;: 69,
-  &quot;pid1.memory_usage_bytes&quot;: 69,
-  &quot;pid1.tasks&quot;: 1,
-  &quot;services.unittest.service.active_enter_timestamp&quot;: 0,
-  &quot;services.unittest.service.active_exit_timestamp&quot;: 0,
-  &quot;services.unittest.service.cpuusage_nsec&quot;: 0,
-  &quot;services.unittest.service.inactive_exit_timestamp&quot;: 0,
-  &quot;services.unittest.service.ioread_bytes&quot;: 0,
-  &quot;services.unittest.service.ioread_operations&quot;: 0,
-  &quot;services.unittest.service.memory_available&quot;: 0,
-  &quot;services.unittest.service.memory_current&quot;: 0,
-  &quot;services.unittest.service.nrestarts&quot;: 0,
-  &quot;services.unittest.service.processes&quot;: 0,
-  &quot;services.unittest.service.restart_usec&quot;: 0,
-  &quot;services.unittest.service.state_change_timestamp&quot;: 0,
-  &quot;services.unittest.service.status_errno&quot;: -69,
-  &quot;services.unittest.service.tasks_current&quot;: 0,
-  &quot;services.unittest.service.timeout_clean_usec&quot;: 0,
-  &quot;services.unittest.service.watchdog_usec&quot;: 0,
-  &quot;system-state&quot;: 3,
-  &quot;unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.active_state&quot;: 1,
-  &quot;unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.load_state&quot;: 1,
-  &quot;unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.unhealthy&quot;: 0,
-  &quot;unit_states.unittest.service.active_state&quot;: 1,
-  &quot;unit_states.unittest.service.load_state&quot;: 1,
-  &quot;unit_states.unittest.service.unhealthy&quot;: 0,
-  &quot;units.active_units&quot;: 0,
-  &quot;units.automount_units&quot;: 0,
-  &quot;units.device_units&quot;: 0,
-  &quot;units.failed_units&quot;: 0,
-  &quot;units.inactive_units&quot;: 0,
-  &quot;units.jobs_queued&quot;: 0,
-  &quot;units.loaded_units&quot;: 0,
-  &quot;units.masked_units&quot;: 0,
-  &quot;units.mount_units&quot;: 0,
-  &quot;units.not_found_units&quot;: 0,
-  &quot;units.path_units&quot;: 0,
-  &quot;units.scope_units&quot;: 0,
-  &quot;units.service_units&quot;: 0,
-  &quot;units.slice_units&quot;: 0,
-  &quot;units.socket_units&quot;: 0,
-  &quot;units.target_units&quot;: 0,
-  &quot;units.timer_units&quot;: 0,
-  &quot;units.total_units&quot;: 0
-}&quot;###</span>;
+    </span><span class="kw">const </span>EXPECTED_FLAT_JSON: <span class="kw-2">&amp;</span>str = <span class="string">r###"{
+  "networkd.eth0.address_state": 3,
+  "networkd.eth0.admin_state": 4,
+  "networkd.eth0.carrier_state": 5,
+  "networkd.eth0.ipv4_address_state": 3,
+  "networkd.eth0.ipv6_address_state": 2,
+  "networkd.eth0.oper_state": 9,
+  "networkd.eth0.required_for_online": 1,
+  "networkd.managed_interfaces": 1,
+  "pid1.cpu_time_kernel": 69,
+  "pid1.cpu_user_kernel": 69,
+  "pid1.fd_count": 69,
+  "pid1.memory_usage_bytes": 69,
+  "pid1.tasks": 1,
+  "services.unittest.service.active_enter_timestamp": 0,
+  "services.unittest.service.active_exit_timestamp": 0,
+  "services.unittest.service.cpuusage_nsec": 0,
+  "services.unittest.service.inactive_exit_timestamp": 0,
+  "services.unittest.service.ioread_bytes": 0,
+  "services.unittest.service.ioread_operations": 0,
+  "services.unittest.service.memory_available": 0,
+  "services.unittest.service.memory_current": 0,
+  "services.unittest.service.nrestarts": 0,
+  "services.unittest.service.processes": 0,
+  "services.unittest.service.restart_usec": 0,
+  "services.unittest.service.state_change_timestamp": 0,
+  "services.unittest.service.status_errno": -69,
+  "services.unittest.service.tasks_current": 0,
+  "services.unittest.service.timeout_clean_usec": 0,
+  "services.unittest.service.watchdog_usec": 0,
+  "system-state": 3,
+  "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.active_state": 1,
+  "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.load_state": 1,
+  "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.unhealthy": 0,
+  "unit_states.unittest.service.active_state": 1,
+  "unit_states.unittest.service.load_state": 1,
+  "unit_states.unittest.service.unhealthy": 0,
+  "units.active_units": 0,
+  "units.automount_units": 0,
+  "units.device_units": 0,
+  "units.failed_units": 0,
+  "units.inactive_units": 0,
+  "units.jobs_queued": 0,
+  "units.loaded_units": 0,
+  "units.masked_units": 0,
+  "units.mount_units": 0,
+  "units.not_found_units": 0,
+  "units.path_units": 0,
+  "units.scope_units": 0,
+  "units.service_units": 0,
+  "units.slice_units": 0,
+  "units.socket_units": 0,
+  "units.target_units": 0,
+  "units.timer_units": 0,
+  "units.total_units": 0
+}"###</span>;
 
     <span class="kw">fn </span>return_monitord_stats() -&gt; MonitordStats {
         <span class="kw">let </span><span class="kw-2">mut </span>stats = MonitordStats {
@@ -964,8 +966,8 @@
                     carrier_state: networkd::CarrierState::carrier,
                     ipv4_address_state: networkd::AddressState::routable,
                     ipv6_address_state: networkd::AddressState::degraded,
-                    name: <span class="string">&quot;eth0&quot;</span>.to_string(),
-                    network_file: <span class="string">&quot;/etc/systemd/network/69-eno4.network&quot;</span>.to_string(),
+                    name: <span class="string">"eth0"</span>.to_string(),
+                    network_file: <span class="string">"/etc/systemd/network/69-eno4.network"</span>.to_string(),
                     oper_state: networkd::OperState::routable,
                     required_for_online: networkd::BoolState::True,
                 }],
@@ -981,7 +983,7 @@
             system_state: <span class="kw">crate</span>::system::SystemdSystemState::running,
             units: <span class="kw">crate</span>::units::SystemdUnitStats::default(),
         };
-        <span class="kw">let </span>service_unit_name = String::from(<span class="string">&quot;unittest.service&quot;</span>);
+        <span class="kw">let </span>service_unit_name = String::from(<span class="string">"unittest.service"</span>);
         stats.units.service_stats.insert(
             service_unit_name.clone(),
             units::ServiceStats {
@@ -991,7 +993,7 @@
             },
         );
         stats.units.unit_states.insert(
-            String::from(<span class="string">&quot;unittest.service&quot;</span>),
+            String::from(<span class="string">"unittest.service"</span>),
             units::UnitStates {
                 active_state: units::SystemdUnitActiveState::active,
                 load_state: units::SystemdUnitLoadState::loaded,
@@ -1001,7 +1003,7 @@
         <span class="comment">// Ensure we escape keys correctly
         </span>stats.units.unit_states.insert(
             String::from(
-                <span class="string">r&quot;nvme\x2dWDC_CL_SN730_SDBQNTY\x2d512G\x2d2020_37222H80070511\x2dpart3.device&quot;</span>,
+                <span class="string">r"nvme\x2dWDC_CL_SN730_SDBQNTY\x2d512G\x2d2020_37222H80070511\x2dpart3.device"</span>,
             ),
             units::UnitStates {
                 active_state: units::SystemdUnitActiveState::active,
@@ -1014,23 +1016,23 @@
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_flatten_hashmap() {
-        <span class="kw">let </span>json_flat_map = flatten_hashmap(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;&quot;</span>));
+        <span class="kw">let </span>json_flat_map = flatten_hashmap(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">""</span>));
         <span class="macro">assert_eq!</span>(<span class="number">54</span>, json_flat_map.len());
     }
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_flatten() {
-        <span class="kw">let </span>json_flat = flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;&quot;</span>));
+        <span class="kw">let </span>json_flat = flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">""</span>));
         <span class="macro">assert_eq!</span>(EXPECTED_FLAT_JSON, json_flat);
         <span class="macro">assert!</span>(oxidized_json_checker::validate_str(<span class="kw-2">&amp;</span>json_flat).is_ok());
     }
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_flatten_prefixed() -&gt; anyhow::Result&lt;()&gt; {
-        <span class="kw">let </span>json_flat = flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">&quot;monitord&quot;</span>));
+        <span class="kw">let </span>json_flat = flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">"monitord"</span>));
         <span class="kw">let </span>json_flat_unserialized: HashMap&lt;String, i32&gt; = serde_json::from_str(<span class="kw-2">&amp;</span>json_flat)<span class="question-mark">?</span>;
         <span class="kw">for </span>(key, _value) <span class="kw">in </span>json_flat_unserialized.iter() {
-            <span class="macro">assert!</span>(key.starts_with(<span class="string">&quot;monitord.&quot;</span>));
+            <span class="macro">assert!</span>(key.starts_with(<span class="string">"monitord."</span>));
         }
         <span class="macro">assert!</span>(oxidized_json_checker::validate_str(<span class="kw-2">&amp;</span>json_flat).is_ok());
         <span class="prelude-val">Ok</span>(())

@@ -1,4 +1,6 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/units.rs`."><title>units.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-fa3bb1812debf86c.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.74.1 (a28077b28 2023-12-04)" data-channel="1.74.1" data-search-js="search-8be46b629f5f14a8.js" data-settings-js="settings-74424d7eec62a23e.js" ><script src="../../static.files/storage-fec3eaa3851e447d.js"></script><script defer src="../../static.files/src-script-3280b574d94e47b4.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-c5bd66d33317d69f.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-5d8b3c7633ad77ba.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><nav class="sub"><a class="sub-logo-container" href="../../monitord/index.html"><img class="rust-logo" src="../../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/units.rs`."><title>units.rs - source</title><script> if (window.location.protocol !== "file:") document.write(`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2">`)</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-e935ef01ae1c1829.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.78.0 (9b00956e5 2024-04-29)" data-channel="1.78.0" data-search-js="search-42d8da7a6b9792c2.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-4c98445ec4002617.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-12cf3b4f4f9dc36d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title">
+            <h2>Files</h2></div></nav><div class="sidebar-resizer"></div>
+    <main><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../../monitord/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -461,6 +463,9 @@
 <a href="#461" id="461">461</a>
 <a href="#462" id="462">462</a>
 <a href="#463" id="463">463</a>
+<a href="#464" id="464">464</a>
+<a href="#465" id="465">465</a>
+<a href="#466" id="466">466</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # units module
 //!
 //! All main systemd unit statistics. Counts of types of units, unit states and
@@ -544,7 +549,7 @@
 
 <span class="comment">// Declare state types
 // Reference: https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html
-// SubState can be unit-type-specific so can&#39;t enum
+// SubState can be unit-type-specific so can't enum
 
 </span><span class="doccomment">/// Possible systemd unit active states enumerated
 </span><span class="attr">#[allow(non_camel_case_types)]
@@ -595,6 +600,7 @@
     loaded = <span class="number">1</span>,
     error = <span class="number">2</span>,
     masked = <span class="number">3</span>,
+    not_found = <span class="number">4</span>,
 }
 
 <span class="kw">pub const </span>SERVICE_FIELD_NAMES: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = ServiceStats::FIELD_NAMES_AS_ARRAY;
@@ -603,8 +609,8 @@
 
 <span class="doccomment">/// Pull out selected systemd service statistics
 </span><span class="kw">fn </span>parse_service(c: <span class="kw-2">&amp;</span>Connection, name: <span class="kw-2">&amp;</span>str, path: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;ServiceStats, dbus::Error&gt; {
-    <span class="macro">debug!</span>(<span class="string">&quot;Parsing service {} stats&quot;</span>, name);
-    <span class="kw">let </span>p = c.with_proxy(<span class="string">&quot;org.freedesktop.systemd1&quot;</span>, path, Duration::new(<span class="number">2</span>, <span class="number">0</span>));
+    <span class="macro">debug!</span>(<span class="string">"Parsing service {} stats"</span>, name);
+    <span class="kw">let </span>p = c.with_proxy(<span class="string">"org.freedesktop.systemd1"</span>, path, Duration::new(<span class="number">2</span>, <span class="number">0</span>));
     <span class="kw">use </span><span class="kw">crate</span>::dbus::units::OrgFreedesktopSystemd1Service;
     <span class="kw">use </span><span class="kw">crate</span>::dbus::units::OrgFreedesktopSystemd1Unit;
 
@@ -612,7 +618,7 @@
         <span class="prelude-val">Ok</span>(procs) =&gt; procs,
         <span class="prelude-val">Err</span>(err) =&gt; {
             <span class="macro">error!</span>(
-                <span class="string">&quot;Unable to get process count for {} into u32: {:?}&quot;</span>,
+                <span class="string">"Unable to get process count for {} into u32: {:?}"</span>,
                 name, err
             );
             <span class="number">0
@@ -649,34 +655,36 @@
         </span>String, <span class="comment">// active state
         </span>String,
         String,
-        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         u32,
         String,
-        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
     ),
     allowlist: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>String],
     blocklist: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>String],
 ) {
     <span class="kw">let </span>unit_name = unit.<span class="number">0</span>;
     <span class="kw">if </span>blocklist.contains(&amp;&amp;unit_name) {
-        <span class="macro">debug!</span>(<span class="string">&quot;Skipping state stats for {} due to blocklist&quot;</span>, unit_name);
+        <span class="macro">debug!</span>(<span class="string">"Skipping state stats for {} due to blocklist"</span>, unit_name);
         <span class="kw">return</span>;
     }
     <span class="kw">if </span>!allowlist.is_empty() &amp;&amp; !allowlist.contains(&amp;&amp;unit_name) {
         <span class="macro">debug!</span>(
-            <span class="string">&quot;Skipping state stats for {} due to not being in allowlist&quot;</span>,
+            <span class="string">"Skipping state stats for {} due to not being in allowlist"</span>,
             unit_name
         );
         <span class="kw">return</span>;
     }
     <span class="kw">let </span>active_state =
         SystemdUnitActiveState::from_str(<span class="kw-2">&amp;</span>unit.<span class="number">3</span>).unwrap_or(SystemdUnitActiveState::unknown);
+    <span class="kw">let </span>load_state = SystemdUnitLoadState::from_str(<span class="kw-2">&amp;</span>unit.<span class="number">2</span>.replace(<span class="string">'-'</span>, <span class="string">"_"</span>))
+        .unwrap_or(SystemdUnitLoadState::unknown);
+
     stats.unit_states.insert(
         unit_name.clone(),
         UnitStates {
             active_state,
-            load_state: SystemdUnitLoadState::from_str(<span class="kw-2">&amp;</span>unit.<span class="number">2</span>)
-                .unwrap_or(SystemdUnitLoadState::unknown),
+            load_state,
             unhealthy: !<span class="macro">matches!</span>(active_state, SystemdUnitActiveState::active),
         },
     );
@@ -692,39 +700,39 @@
         </span>String, <span class="comment">// The active state (i.e. whether the unit is currently started or not)
         </span>String, <span class="comment">// The sub state (i.e. unit type more specific state)
         </span>String, <span class="comment">// A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
-        </span>dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, <span class="comment">// The unit object path
+        </span>dbus::Path&lt;<span class="lifetime">'static</span>&gt;, <span class="comment">// The unit object path
         </span>u32,    <span class="comment">// If there is a job queued for the job unit, the numeric job id, 0 otherwise
         </span>String, <span class="comment">// The job type as string
-        </span>dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;, <span class="comment">// The job object path
+        </span>dbus::Path&lt;<span class="lifetime">'static</span>&gt;, <span class="comment">// The job object path
     </span>),
 ) {
     <span class="comment">// Count unit type
-    </span><span class="kw">match </span>unit.<span class="number">0</span>.split(<span class="string">&#39;.&#39;</span>).collect::&lt;Vec&lt;<span class="kw-2">&amp;</span>str&gt;&gt;()[<span class="number">1</span>] {
-        <span class="string">&quot;automount&quot; </span>=&gt; stats.automount_units += <span class="number">1</span>,
-        <span class="string">&quot;device&quot; </span>=&gt; stats.device_units += <span class="number">1</span>,
-        <span class="string">&quot;mount&quot; </span>=&gt; stats.mount_units += <span class="number">1</span>,
-        <span class="string">&quot;path&quot; </span>=&gt; stats.path_units += <span class="number">1</span>,
-        <span class="string">&quot;scope&quot; </span>=&gt; stats.scope_units += <span class="number">1</span>,
-        <span class="string">&quot;service&quot; </span>=&gt; stats.service_units += <span class="number">1</span>,
-        <span class="string">&quot;slice&quot; </span>=&gt; stats.slice_units += <span class="number">1</span>,
-        <span class="string">&quot;socket&quot; </span>=&gt; stats.socket_units += <span class="number">1</span>,
-        <span class="string">&quot;target&quot; </span>=&gt; stats.target_units += <span class="number">1</span>,
-        <span class="string">&quot;timer&quot; </span>=&gt; stats.timer_units += <span class="number">1</span>,
-        unknown =&gt; <span class="macro">debug!</span>(<span class="string">&quot;Found unhandled &#39;{}&#39; unit type&quot;</span>, unknown),
+    </span><span class="kw">match </span>unit.<span class="number">0</span>.split(<span class="string">'.'</span>).collect::&lt;Vec&lt;<span class="kw-2">&amp;</span>str&gt;&gt;()[<span class="number">1</span>] {
+        <span class="string">"automount" </span>=&gt; stats.automount_units += <span class="number">1</span>,
+        <span class="string">"device" </span>=&gt; stats.device_units += <span class="number">1</span>,
+        <span class="string">"mount" </span>=&gt; stats.mount_units += <span class="number">1</span>,
+        <span class="string">"path" </span>=&gt; stats.path_units += <span class="number">1</span>,
+        <span class="string">"scope" </span>=&gt; stats.scope_units += <span class="number">1</span>,
+        <span class="string">"service" </span>=&gt; stats.service_units += <span class="number">1</span>,
+        <span class="string">"slice" </span>=&gt; stats.slice_units += <span class="number">1</span>,
+        <span class="string">"socket" </span>=&gt; stats.socket_units += <span class="number">1</span>,
+        <span class="string">"target" </span>=&gt; stats.target_units += <span class="number">1</span>,
+        <span class="string">"timer" </span>=&gt; stats.timer_units += <span class="number">1</span>,
+        unknown =&gt; <span class="macro">debug!</span>(<span class="string">"Found unhandled '{}' unit type"</span>, unknown),
     };
     <span class="comment">// Count load state
     </span><span class="kw">match </span>unit.<span class="number">2</span>.as_str() {
-        <span class="string">&quot;loaded&quot; </span>=&gt; stats.loaded_units += <span class="number">1</span>,
-        <span class="string">&quot;masked&quot; </span>=&gt; stats.masked_units += <span class="number">1</span>,
-        <span class="string">&quot;not-found&quot; </span>=&gt; stats.not_found_units += <span class="number">1</span>,
-        <span class="kw">_ </span>=&gt; <span class="macro">debug!</span>(<span class="string">&quot;{} is not loaded. It&#39;s {}&quot;</span>, unit.<span class="number">0</span>, unit.<span class="number">2</span>),
+        <span class="string">"loaded" </span>=&gt; stats.loaded_units += <span class="number">1</span>,
+        <span class="string">"masked" </span>=&gt; stats.masked_units += <span class="number">1</span>,
+        <span class="string">"not-found" </span>=&gt; stats.not_found_units += <span class="number">1</span>,
+        <span class="kw">_ </span>=&gt; <span class="macro">debug!</span>(<span class="string">"{} is not loaded. It's {}"</span>, unit.<span class="number">0</span>, unit.<span class="number">2</span>),
     };
     <span class="comment">// Count unit status
     </span><span class="kw">match </span>unit.<span class="number">3</span>.as_str() {
-        <span class="string">&quot;active&quot; </span>=&gt; stats.active_units += <span class="number">1</span>,
-        <span class="string">&quot;failed&quot; </span>=&gt; stats.failed_units += <span class="number">1</span>,
-        <span class="string">&quot;inactive&quot; </span>=&gt; stats.inactive_units += <span class="number">1</span>,
-        unknown =&gt; <span class="macro">debug!</span>(<span class="string">&quot;Found unhandled &#39;{}&#39; unit state&quot;</span>, unknown),
+        <span class="string">"active" </span>=&gt; stats.active_units += <span class="number">1</span>,
+        <span class="string">"failed" </span>=&gt; stats.failed_units += <span class="number">1</span>,
+        <span class="string">"inactive" </span>=&gt; stats.inactive_units += <span class="number">1</span>,
+        unknown =&gt; <span class="macro">debug!</span>(<span class="string">"Found unhandled '{}' unit state"</span>, unknown),
     };
     <span class="comment">// Count jobs queued
     </span><span class="kw">if </span>unit.<span class="number">7 </span>!= <span class="number">0 </span>{
@@ -738,31 +746,31 @@
     config_map: IndexMap&lt;String, IndexMap&lt;String, <span class="prelude-ty">Option</span>&lt;String&gt;&gt;&gt;,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;SystemdUnitStats, Box&lt;<span class="kw">dyn </span>std::error::Error + Send + Sync&gt;&gt; {
     <span class="comment">// Parse out some config
-    </span><span class="kw">let </span>services_to_get_stats: Vec&lt;<span class="kw-2">&amp;</span>String&gt; = <span class="kw">match </span>config_map.get(<span class="string">&quot;services&quot;</span>) {
+    </span><span class="kw">let </span>services_to_get_stats: Vec&lt;<span class="kw-2">&amp;</span>String&gt; = <span class="kw">match </span>config_map.get(<span class="string">"services"</span>) {
         <span class="prelude-val">Some</span>(services_hash) =&gt; services_hash.keys().collect(),
         <span class="prelude-val">None </span>=&gt; Vec::from([]),
     };
-    <span class="kw">let </span>state_stats_allowlist: Vec&lt;<span class="kw-2">&amp;</span>String&gt; = <span class="kw">match </span>config_map.get(<span class="string">&quot;units.state_stats.allowlist&quot;</span>) {
+    <span class="kw">let </span>state_stats_allowlist: Vec&lt;<span class="kw-2">&amp;</span>String&gt; = <span class="kw">match </span>config_map.get(<span class="string">"units.state_stats.allowlist"</span>) {
         <span class="prelude-val">Some</span>(services_hash) =&gt; services_hash.keys().collect(),
         <span class="prelude-val">None </span>=&gt; Vec::from([]),
     };
     <span class="kw">if </span>!state_stats_allowlist.is_empty() {
-        <span class="macro">debug!</span>(<span class="string">&quot;Using unit state allowlist: {:?}&quot;</span>, state_stats_allowlist);
+        <span class="macro">debug!</span>(<span class="string">"Using unit state allowlist: {:?}"</span>, state_stats_allowlist);
     }
-    <span class="kw">let </span>state_stats_blocklist: Vec&lt;<span class="kw-2">&amp;</span>String&gt; = <span class="kw">match </span>config_map.get(<span class="string">&quot;units.state_stats.blocklist&quot;</span>) {
+    <span class="kw">let </span>state_stats_blocklist: Vec&lt;<span class="kw-2">&amp;</span>String&gt; = <span class="kw">match </span>config_map.get(<span class="string">"units.state_stats.blocklist"</span>) {
         <span class="prelude-val">Some</span>(services_hash) =&gt; services_hash.keys().collect(),
         <span class="prelude-val">None </span>=&gt; Vec::from([]),
     };
     <span class="kw">if </span>!state_stats_allowlist.is_empty() {
-        <span class="macro">debug!</span>(<span class="string">&quot;Using unit state blocklist: {:?}&quot;</span>, state_stats_allowlist);
+        <span class="macro">debug!</span>(<span class="string">"Using unit state blocklist: {:?}"</span>, state_stats_allowlist);
     }
 
-    std::env::set_var(<span class="string">&quot;DBUS_SYSTEM_BUS_ADDRESS&quot;</span>, dbus_address);
+    std::env::set_var(<span class="string">"DBUS_SYSTEM_BUS_ADDRESS"</span>, dbus_address);
     <span class="kw">let </span><span class="kw-2">mut </span>stats = SystemdUnitStats::default();
     <span class="kw">let </span>c = Connection::new_system()<span class="question-mark">?</span>;
     <span class="kw">let </span>p = c.with_proxy(
-        <span class="string">&quot;org.freedesktop.systemd1&quot;</span>,
-        <span class="string">&quot;/org/freedesktop/systemd1&quot;</span>,
+        <span class="string">"org.freedesktop.systemd1"</span>,
+        <span class="string">"/org/freedesktop/systemd1"</span>,
         Duration::new(<span class="number">5</span>, <span class="number">0</span>),
     );
     <span class="kw">use </span><span class="kw">crate</span>::dbus::systemd::OrgFreedesktopSystemd1Manager;
@@ -774,8 +782,8 @@
 
         <span class="comment">// Collect per unit state stats - ActiveState + LoadState
         // Not collecting SubState (yet)
-        </span><span class="kw">if </span>config_map[<span class="string">&quot;units&quot;</span>].contains_key(<span class="string">&quot;state_stats&quot;</span>)
-            &amp;&amp; config_map[<span class="string">&quot;units&quot;</span>][<span class="string">&quot;state_stats&quot;</span>] == <span class="prelude-val">Some</span>(String::from(<span class="string">&quot;true&quot;</span>))
+        </span><span class="kw">if </span>config_map[<span class="string">"units"</span>].contains_key(<span class="string">"state_stats"</span>)
+            &amp;&amp; config_map[<span class="string">"units"</span>][<span class="string">"state_stats"</span>] == <span class="prelude-val">Some</span>(String::from(<span class="string">"true"</span>))
         {
             parse_state(
                 <span class="kw-2">&amp;mut </span>stats,
@@ -787,19 +795,19 @@
 
         <span class="comment">// Collect service stats
         </span><span class="kw">if </span>services_to_get_stats.contains(&amp;&amp;unit.<span class="number">0</span>) {
-            <span class="macro">debug!</span>(<span class="string">&quot;Collecting service stats for {:?}&quot;</span>, <span class="kw-2">&amp;</span>unit);
+            <span class="macro">debug!</span>(<span class="string">"Collecting service stats for {:?}"</span>, <span class="kw-2">&amp;</span>unit);
             <span class="kw">match </span>parse_service(<span class="kw-2">&amp;</span>c, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>, <span class="kw-2">&amp;</span>unit.<span class="number">6</span>) {
                 <span class="prelude-val">Ok</span>(service_stats) =&gt; {
                     stats.service_stats.insert(unit.<span class="number">0</span>.clone(), service_stats);
                 }
                 <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(
-                    <span class="string">&quot;Unable to get service stats for {} {}: {:#?}&quot;</span>,
+                    <span class="string">"Unable to get service stats for {} {}: {:#?}"</span>,
                     <span class="kw-2">&amp;</span>unit.<span class="number">0</span>, <span class="kw-2">&amp;</span>unit.<span class="number">6</span>, err
                 ),
             }
         }
     }
-    <span class="macro">debug!</span>(<span class="string">&quot;unit stats: {:?}&quot;</span>, stats);
+    <span class="macro">debug!</span>(<span class="string">"unit stats: {:?}"</span>, stats);
     <span class="prelude-val">Ok</span>(stats)
 }
 
@@ -814,29 +822,29 @@
         </span>String, <span class="comment">// active state
         </span>String,
         String,
-        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
         u32,
         String,
-        dbus::Path&lt;<span class="lifetime">&#39;static</span>&gt;,
+        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
     ) {
         (
-            String::from(<span class="string">&quot;apport-autoreport.timer&quot;</span>),
-            String::from(<span class="string">&quot;Process error reports when automatic reporting is enabled (timer based)&quot;</span>),
-            String::from(<span class="string">&quot;loaded&quot;</span>),
-            String::from(<span class="string">&quot;inactive&quot;</span>),
-            String::from(<span class="string">&quot;dead&quot;</span>),
-            String::from(<span class="string">&quot;&quot;</span>),
-            dbus::Path::new(<span class="string">&quot;/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer\0&quot;</span>)
+            String::from(<span class="string">"apport-autoreport.timer"</span>),
+            String::from(<span class="string">"Process error reports when automatic reporting is enabled (timer based)"</span>),
+            String::from(<span class="string">"loaded"</span>),
+            String::from(<span class="string">"inactive"</span>),
+            String::from(<span class="string">"dead"</span>),
+            String::from(<span class="string">""</span>),
+            dbus::Path::new(<span class="string">"/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer\0"</span>)
                 .unwrap(),
             <span class="number">0 </span><span class="kw">as </span>u32,
-            String::from(<span class="string">&quot;&quot;</span>),
-            dbus::Path::new(<span class="string">&quot;/\0&quot;</span>).unwrap(),
+            String::from(<span class="string">""</span>),
+            dbus::Path::new(<span class="string">"/\0"</span>).unwrap(),
         )
     }
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_state_parse() {
-        <span class="kw">let </span>test_unit_name = String::from(<span class="string">&quot;apport-autoreport.timer&quot;</span>);
+        <span class="kw">let </span>test_unit_name = String::from(<span class="string">"apport-autoreport.timer"</span>);
         <span class="kw">let </span>expected_stats = SystemdUnitStats {
             active_units: <span class="number">0</span>,
             automount_units: <span class="number">0</span>,
@@ -887,7 +895,7 @@
         );
         <span class="macro">assert_eq!</span>(expected_stats, allowlist_stats);
 
-        <span class="comment">// test blocklist with allow list (show it&#39;s preferred)
+        <span class="comment">// test blocklist with allow list (show it's preferred)
         </span><span class="kw">let </span><span class="kw-2">mut </span>blocklist_stats = SystemdUnitStats::default();
         <span class="kw">let </span>expected_blocklist_stats = SystemdUnitStats::default();
         parse_state(<span class="kw-2">&amp;mut </span>blocklist_stats, systemd_unit, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist);
