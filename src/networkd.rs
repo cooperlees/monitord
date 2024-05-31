@@ -28,7 +28,7 @@ use tracing::error;
     PartialEq,
     EnumString,
     IntEnum,
-    strum_macros::ToString,
+    strum_macros::Display,
 )]
 #[repr(u8)]
 pub enum AddressState {
@@ -50,7 +50,7 @@ pub enum AddressState {
     PartialEq,
     EnumString,
     IntEnum,
-    strum_macros::ToString,
+    strum_macros::Display,
 )]
 #[repr(u8)]
 pub enum AdminState {
@@ -75,7 +75,7 @@ pub enum AdminState {
     PartialEq,
     EnumString,
     IntEnum,
-    strum_macros::ToString,
+    strum_macros::Display,
 )]
 #[repr(u8)]
 pub enum BoolState {
@@ -108,7 +108,7 @@ pub enum BoolState {
     PartialEq,
     EnumString,
     IntEnum,
-    strum_macros::ToString,
+    strum_macros::Display,
 )]
 #[repr(u8)]
 pub enum CarrierState {
@@ -135,7 +135,7 @@ pub enum CarrierState {
     PartialEq,
     EnumString,
     IntEnum,
-    strum_macros::ToString,
+    strum_macros::Display,
 )]
 #[repr(u8)]
 pub enum OnlineState {
@@ -157,7 +157,7 @@ pub enum OnlineState {
     PartialEq,
     EnumString,
     IntEnum,
-    strum_macros::ToString,
+    strum_macros::Display,
 )]
 #[repr(u8)]
 pub enum OperState {
