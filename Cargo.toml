@@ -33,7 +33,6 @@ tracing-glog = "0.4"
 tracing-subscriber = "0.3"
 
 [dev-dependencies]
-oxidized-json-checker = "0.3.2"
 tempfile = "3.3.0"
 
 [profile]

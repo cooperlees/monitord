@@ -1,30 +1,17 @@
 //! # json module
 //!
-//! `json` is in charge of generating a flat hashmap like . serperated hierarchical
+//! `json` is in charge of generating a flat BTreeMap like . serperated hierarchical
 //! JSON output. This is used by some metric parsing systems when running a command.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use itertools::Itertools;
 use tracing::debug;
 
 use crate::networkd;
 use crate::pid1;
 use crate::units;
 use crate::MonitordStats;
-
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub enum JsonFlatValue {
-    U64(u64),
-    I32(i32),
-    U32(u32),
-}
-
-/// JSON escape a string and remove the '"' chars
-fn json_escape_string(s: &str) -> String {
-    let full_json_str = serde_json::json!(s).to_string();
-    full_json_str[1..full_json_str.len() - 1].into()
-}
 
 /// Add a prefix if config wants contains one
 fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
@@ -37,14 +24,14 @@ fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
 fn flatten_networkd(
     networkd_stats: &networkd::NetworkdState,
     key_prefix: &String,
-) -> HashMap<String, JsonFlatValue> {
-    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("networkd"));
 
     let managed_interfaces_key = format!("{}.managed_interfaces", base_metric_name);
     flat_stats.insert(
         managed_interfaces_key,
-        JsonFlatValue::U64(networkd_stats.managed_interfaces),
+        networkd_stats.managed_interfaces.into(),
     );
 
     if networkd_stats.interfaces_state.is_empty() {
@@ -56,31 +43,31 @@ fn flatten_networkd(
         let interface_base = format!("{}.{}", base_metric_name, interface.name);
         flat_stats.insert(
             format!("{interface_base}.address_state"),
-            JsonFlatValue::U64(interface.address_state as u64),
+            (interface.address_state as u64).into(),
         );
         flat_stats.insert(
             format!("{interface_base}.admin_state"),
-            JsonFlatValue::U64(interface.admin_state as u64),
+            (interface.admin_state as u64).into(),
         );
         flat_stats.insert(
             format!("{interface_base}.carrier_state"),
-            JsonFlatValue::U64(interface.carrier_state as u64),
+            (interface.carrier_state as u64).into(),
         );
         flat_stats.insert(
             format!("{interface_base}.ipv4_address_state"),
-            JsonFlatValue::U64(interface.ipv4_address_state as u64),
+            (interface.ipv4_address_state as u64).into(),
         );
         flat_stats.insert(
             format!("{interface_base}.ipv6_address_state"),
-            JsonFlatValue::U64(interface.ipv6_address_state as u64),
+            (interface.ipv6_address_state as u64).into(),
         );
         flat_stats.insert(
             format!("{interface_base}.oper_state"),
-            JsonFlatValue::U64(interface.oper_state as u64),
+            (interface.oper_state as u64).into(),
         );
         flat_stats.insert(
             format!("{interface_base}.required_for_online"),
-            JsonFlatValue::U64(interface.required_for_online as u64),
+            (interface.required_for_online as u64).into(),
         );
     }
     flat_stats
@@ -89,8 +76,8 @@ fn flatten_networkd(
 fn flatten_pid1(
     optional_pid1_stats: &Option<pid1::Pid1Stats>,
     key_prefix: &String,
-) -> HashMap<String, JsonFlatValue> {
-    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
     // If we're not collcting pid1 stats don't add
     let pid1_stats = match optional_pid1_stats {
         Some(ps) => ps,
@@ -104,23 +91,23 @@ fn flatten_pid1(
 
     flat_stats.insert(
         format!("{}.cpu_time_kernel", base_metric_name),
-        JsonFlatValue::U64(pid1_stats.cpu_time_kernel),
+        pid1_stats.cpu_time_kernel.into(),
     );
     flat_stats.insert(
         format!("{}.cpu_user_kernel", base_metric_name),
-        JsonFlatValue::U64(pid1_stats.cpu_time_user),
+        pid1_stats.cpu_time_user.into(),
     );
     flat_stats.insert(
         format!("{}.memory_usage_bytes", base_metric_name),
-        JsonFlatValue::U64(pid1_stats.memory_usage_bytes),
+        pid1_stats.memory_usage_bytes.into(),
     );
     flat_stats.insert(
         format!("{}.fd_count", base_metric_name),
-        JsonFlatValue::U64(pid1_stats.fd_count),
+        pid1_stats.fd_count.into(),
     );
     flat_stats.insert(
         format!("{}.tasks", base_metric_name),
-        JsonFlatValue::U64(pid1_stats.tasks),
+        pid1_stats.tasks.into(),
     );
 
     flat_stats
@@ -129,71 +116,61 @@ fn flatten_pid1(
 fn flatten_services(
     service_stats_hash: &HashMap<String, units::ServiceStats>,
     key_prefix: &String,
-) -> HashMap<String, JsonFlatValue> {
-    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("services"));
 
     for (service_name, service_stats) in service_stats_hash.iter() {
-        let escaped_service_name = json_escape_string(service_name);
         for field_name in units::SERVICE_FIELD_NAMES {
-            let key = format!("{base_metric_name}.{escaped_service_name}.{field_name}");
+            let key = format!("{base_metric_name}.{service_name}.{field_name}");
             match field_name.to_string().as_str() {
                 "active_enter_timestamp" => {
-                    flat_stats.insert(
-                        key,
-                        JsonFlatValue::U64(service_stats.active_enter_timestamp),
-                    );
+                    flat_stats.insert(key, service_stats.active_enter_timestamp.into());
                 }
                 "active_exit_timestamp" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.active_exit_timestamp));
+                    flat_stats.insert(key, service_stats.active_exit_timestamp.into());
                 }
                 "cpuusage_nsec" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.cpuusage_nsec));
+                    flat_stats.insert(key, service_stats.cpuusage_nsec.into());
                 }
                 "inactive_exit_timestamp" => {
-                    flat_stats.insert(
-                        key,
-                        JsonFlatValue::U64(service_stats.inactive_exit_timestamp),
-                    );
+                    flat_stats.insert(key, service_stats.inactive_exit_timestamp.into());
                 }
                 "ioread_bytes" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.ioread_bytes));
+                    flat_stats.insert(key, service_stats.ioread_bytes.into());
                 }
                 "ioread_operations" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.ioread_operations));
+                    flat_stats.insert(key, service_stats.ioread_operations.into());
                 }
                 "memory_available" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.memory_available));
+                    flat_stats.insert(key, service_stats.memory_available.into());
                 }
                 "memory_current" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.memory_current));
+                    flat_stats.insert(key, service_stats.memory_current.into());
                 }
                 "nrestarts" => {
-                    flat_stats.insert(key, JsonFlatValue::U32(service_stats.nrestarts));
+                    flat_stats.insert(key, service_stats.nrestarts.into());
                 }
                 "processes" => {
-                    flat_stats.insert(key, JsonFlatValue::U32(service_stats.processes));
+                    flat_stats.insert(key, service_stats.processes.into());
                 }
                 "restart_usec" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.restart_usec));
+                    flat_stats.insert(key, service_stats.restart_usec.into());
                 }
                 "state_change_timestamp" => {
-                    flat_stats.insert(
-                        key,
-                        JsonFlatValue::U64(service_stats.state_change_timestamp),
-                    );
+                    flat_stats.insert(key, service_stats.state_change_timestamp.into());
                 }
                 "status_errno" => {
-                    flat_stats.insert(key, JsonFlatValue::I32(service_stats.status_errno));
+                    flat_stats.insert(key, service_stats.status_errno.into());
                 }
                 "tasks_current" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.tasks_current));
+                    flat_stats.insert(key, service_stats.tasks_current.into());
                 }
                 "timeout_clean_usec" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.timeout_clean_usec));
+                    flat_stats.insert(key, service_stats.timeout_clean_usec.into());
                 }
                 "watchdog_usec" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.watchdog_usec));
+                    flat_stats.insert(key, service_stats.watchdog_usec.into());
                 }
                 _ => {
                     debug!("Got a unhandled stat: '{}'", field_name);
@@ -207,30 +184,26 @@ fn flatten_services(
 fn flatten_unit_states(
     unit_states_hash: &HashMap<String, units::UnitStates>,
     key_prefix: &String,
-) -> HashMap<String, JsonFlatValue> {
-    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("unit_states"));
 
     for (unit_name, unit_state_stats) in unit_states_hash.iter() {
-        let escaped_unit_name = json_escape_string(unit_name);
         for field_name in units::UNIT_STATES_FIELD_NAMES {
-            let key = format!("{base_metric_name}.{escaped_unit_name}.{field_name}");
+            let key = format!("{base_metric_name}.{unit_name}.{field_name}");
             match field_name.to_string().as_str() {
                 "active_state" => {
-                    flat_stats.insert(
-                        key,
-                        JsonFlatValue::U64(unit_state_stats.active_state as u64),
-                    );
+                    flat_stats.insert(key, (unit_state_stats.active_state as u64).into());
                 }
                 "load_state" => {
-                    flat_stats.insert(key, JsonFlatValue::U64(unit_state_stats.load_state as u64));
+                    flat_stats.insert(key, (unit_state_stats.load_state as u64).into());
                 }
                 "unhealthy" => match unit_state_stats.unhealthy {
                     false => {
-                        flat_stats.insert(key, JsonFlatValue::U64(0));
+                        flat_stats.insert(key, 0.into());
                     }
                     true => {
-                        flat_stats.insert(key, JsonFlatValue::U64(1));
+                        flat_stats.insert(key, 1.into());
                     }
                 },
                 _ => {
@@ -246,11 +219,11 @@ fn flatten_unit_states(
 fn flatten_units(
     units_stats: &units::SystemdUnitStats,
     key_prefix: &String,
-) -> HashMap<String, JsonFlatValue> {
+) -> BTreeMap<String, serde_json::Value> {
     // fields of the SystemdUnitStats struct we know to ignore so don't log below
     let fields_to_ignore = Vec::from(["service_stats"]);
 
-    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("units"));
 
     // TODO: Work out a smarter way to do this rather than hard code mappings
@@ -258,58 +231,58 @@ fn flatten_units(
         let key = format!("{base_metric_name}.{field_name}");
         match field_name.to_string().as_str() {
             "active_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.active_units));
+                flat_stats.insert(key, units_stats.active_units.into());
             }
             "automount_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.automount_units));
+                flat_stats.insert(key, units_stats.automount_units.into());
             }
             "device_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.device_units));
+                flat_stats.insert(key, units_stats.device_units.into());
             }
             "failed_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.failed_units));
+                flat_stats.insert(key, units_stats.failed_units.into());
             }
             "inactive_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.inactive_units));
+                flat_stats.insert(key, units_stats.inactive_units.into());
             }
             "jobs_queued" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.jobs_queued));
+                flat_stats.insert(key, units_stats.jobs_queued.into());
             }
             "loaded_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.loaded_units));
+                flat_stats.insert(key, units_stats.loaded_units.into());
             }
             "masked_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.masked_units));
+                flat_stats.insert(key, units_stats.masked_units.into());
             }
             "mount_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.mount_units));
+                flat_stats.insert(key, units_stats.mount_units.into());
             }
             "not_found_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.not_found_units));
+                flat_stats.insert(key, units_stats.not_found_units.into());
             }
             "path_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.path_units));
+                flat_stats.insert(key, units_stats.path_units.into());
             }
             "scope_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.scope_units));
+                flat_stats.insert(key, units_stats.scope_units.into());
             }
             "service_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.service_units));
+                flat_stats.insert(key, units_stats.service_units.into());
             }
             "slice_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.slice_units));
+                flat_stats.insert(key, units_stats.slice_units.into());
             }
             "socket_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.socket_units));
+                flat_stats.insert(key, units_stats.socket_units.into());
             }
             "target_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.target_units));
+                flat_stats.insert(key, units_stats.target_units.into());
             }
             "timer_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.timer_units));
+                flat_stats.insert(key, units_stats.timer_units.into());
             }
             "total_units" => {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.total_units));
+                flat_stats.insert(key, units_stats.total_units.into());
             }
             _ => {
                 if !fields_to_ignore.contains(field_name) {
@@ -321,17 +294,17 @@ fn flatten_units(
     flat_stats
 }
 
-/// Take the standard returned structs and move all to a flat HashMap<str, float|int> like JSON
-fn flatten_hashmap(
+/// Take the standard returned structs and move all to a flat BTreeMap<str, float|int> like JSON
+fn flatten_stats(
     stats_struct: &MonitordStats,
     key_prefix: &String,
-) -> HashMap<String, JsonFlatValue> {
-    let mut flat_stats: HashMap<String, JsonFlatValue> = HashMap::new();
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
     flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_pid1(&stats_struct.pid1, key_prefix));
     flat_stats.insert(
         gen_base_metric_key(key_prefix, &String::from("system-state")),
-        JsonFlatValue::U64(stats_struct.system_state as u64),
+        (stats_struct.system_state as u64).into(),
     );
     flat_stats.extend(flatten_services(
         &stats_struct.units.service_stats,
@@ -346,35 +319,16 @@ fn flatten_hashmap(
 }
 
 /// Take the standard returned structs and move all to a flat JSON str
-pub fn flatten(stats_struct: &MonitordStats, key_prefix: &String) -> String {
-    let flat_stats = flatten_hashmap(stats_struct, key_prefix);
-
-    let mut json_str = String::from("{\n");
-    for (key, value) in flat_stats.iter().sorted() {
-        let new_kv_a = format!("  \"{}\": ", key);
-        let new_kv = match value {
-            JsonFlatValue::I32(an_int) => {
-                format!("{}{},\n", new_kv_a, an_int)
-            }
-            JsonFlatValue::U32(an_int) => {
-                format!("{}{},\n", new_kv_a, an_int)
-            }
-            JsonFlatValue::U64(an_int) => {
-                format!("{}{},\n", new_kv_a, an_int)
-            }
-        };
-        json_str.push_str(new_kv.as_str());
-    }
-    // Remove last trailing comma to be valid JSON - Super lame but works ...
-    json_str.pop();
-    json_str.pop();
-    json_str.push_str("\n}");
-    json_str
+pub fn flatten(
+    stats_struct: &MonitordStats,
+    key_prefix: &String,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&flatten_stats(stats_struct, key_prefix))
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     use super::*;
 
@@ -494,26 +448,29 @@ mod tests {
     }
 
     #[test]
-    fn test_flatten_hashmap() {
-        let json_flat_map = flatten_hashmap(&return_monitord_stats(), &String::from(""));
+    fn test_flatten_map() {
+        let json_flat_map = flatten_stats(
+            &return_monitord_stats(),
+            &String::from("JSON serialize failed"),
+        );
         assert_eq!(54, json_flat_map.len());
     }
 
     #[test]
     fn test_flatten() {
-        let json_flat = flatten(&return_monitord_stats(), &String::from(""));
+        let json_flat =
+            flatten(&return_monitord_stats(), &String::from("")).expect("JSON serialize failed");
         assert_eq!(EXPECTED_FLAT_JSON, json_flat);
-        assert!(oxidized_json_checker::validate_str(&json_flat).is_ok());
     }
 
     #[test]
-    fn test_flatten_prefixed() -> anyhow::Result<()> {
-        let json_flat = flatten(&return_monitord_stats(), &String::from("monitord"));
-        let json_flat_unserialized: HashMap<String, i32> = serde_json::from_str(&json_flat)?;
+    fn test_flatten_prefixed() {
+        let json_flat = flatten(&return_monitord_stats(), &String::from("monitord"))
+            .expect("JSON serialize failed");
+        let json_flat_unserialized: BTreeMap<String, i32> =
+            serde_json::from_str(&json_flat).expect("JSON from_str failed");
         for (key, _value) in json_flat_unserialized.iter() {
             assert!(key.starts_with("monitord."));
         }
-        assert!(oxidized_json_checker::validate_str(&json_flat).is_ok());
-        Ok(())
     }
 }
