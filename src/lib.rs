@@ -65,9 +65,18 @@ pub fn print_stats(config: Ini, stats: &MonitordStats) {
         .unwrap_or_else(|| String::from(""));
 
     match output_format.as_str() {
-        "json" => println!("{}", serde_json::to_string(&stats).expect("Invalid JSON serialization")),
-        "json-flat" => println!("{}", json::flatten(stats, &key_prefix).expect("Invalid JSON serialization")),
-        "json-pretty" => println!("{}", serde_json::to_string_pretty(&stats).expect("Invalid JSON serialization")),
+        "json" => println!(
+            "{}",
+            serde_json::to_string(&stats).expect("Invalid JSON serialization")
+        ),
+        "json-flat" => println!(
+            "{}",
+            json::flatten(stats, &key_prefix).expect("Invalid JSON serialization")
+        ),
+        "json-pretty" => println!(
+            "{}",
+            serde_json::to_string_pretty(&stats).expect("Invalid JSON serialization")
+        ),
         err => error!(
             "Unable to print output in {} format ... fix config ...",
             err
