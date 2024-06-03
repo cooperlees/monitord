@@ -172,6 +172,15 @@
 <a href="#170" id="170">170</a>
 <a href="#171" id="171">171</a>
 <a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # monitord Crate
 //!
 //! `monitord` is a library to gather statistics about systemd.
@@ -239,9 +248,18 @@
         .unwrap_or_else(|| String::from(<span class="string">""</span>));
 
     <span class="kw">match </span>output_format.as_str() {
-        <span class="string">"json" </span>=&gt; <span class="macro">println!</span>(<span class="string">"{}"</span>, serde_json::to_string(<span class="kw-2">&amp;</span>stats).unwrap()),
-        <span class="string">"json-flat" </span>=&gt; <span class="macro">println!</span>(<span class="string">"{}"</span>, json::flatten(stats, <span class="kw-2">&amp;</span>key_prefix)),
-        <span class="string">"json-pretty" </span>=&gt; <span class="macro">println!</span>(<span class="string">"{}"</span>, serde_json::to_string_pretty(<span class="kw-2">&amp;</span>stats).unwrap()),
+        <span class="string">"json" </span>=&gt; <span class="macro">println!</span>(
+            <span class="string">"{}"</span>,
+            serde_json::to_string(<span class="kw-2">&amp;</span>stats).expect(<span class="string">"Invalid JSON serialization"</span>)
+        ),
+        <span class="string">"json-flat" </span>=&gt; <span class="macro">println!</span>(
+            <span class="string">"{}"</span>,
+            json::flatten(stats, <span class="kw-2">&amp;</span>key_prefix).expect(<span class="string">"Invalid JSON serialization"</span>)
+        ),
+        <span class="string">"json-pretty" </span>=&gt; <span class="macro">println!</span>(
+            <span class="string">"{}"</span>,
+            serde_json::to_string_pretty(<span class="kw-2">&amp;</span>stats).expect(<span class="string">"Invalid JSON serialization"</span>)
+        ),
         err =&gt; <span class="macro">error!</span>(
             <span class="string">"Unable to print output in {} format ... fix config ..."</span>,
             err

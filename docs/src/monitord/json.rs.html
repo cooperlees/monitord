@@ -476,76 +476,20 @@
 <a href="#474" id="474">474</a>
 <a href="#475" id="475">475</a>
 <a href="#476" id="476">476</a>
-<a href="#477" id="477">477</a>
-<a href="#478" id="478">478</a>
-<a href="#479" id="479">479</a>
-<a href="#480" id="480">480</a>
-<a href="#481" id="481">481</a>
-<a href="#482" id="482">482</a>
-<a href="#483" id="483">483</a>
-<a href="#484" id="484">484</a>
-<a href="#485" id="485">485</a>
-<a href="#486" id="486">486</a>
-<a href="#487" id="487">487</a>
-<a href="#488" id="488">488</a>
-<a href="#489" id="489">489</a>
-<a href="#490" id="490">490</a>
-<a href="#491" id="491">491</a>
-<a href="#492" id="492">492</a>
-<a href="#493" id="493">493</a>
-<a href="#494" id="494">494</a>
-<a href="#495" id="495">495</a>
-<a href="#496" id="496">496</a>
-<a href="#497" id="497">497</a>
-<a href="#498" id="498">498</a>
-<a href="#499" id="499">499</a>
-<a href="#500" id="500">500</a>
-<a href="#501" id="501">501</a>
-<a href="#502" id="502">502</a>
-<a href="#503" id="503">503</a>
-<a href="#504" id="504">504</a>
-<a href="#505" id="505">505</a>
-<a href="#506" id="506">506</a>
-<a href="#507" id="507">507</a>
-<a href="#508" id="508">508</a>
-<a href="#509" id="509">509</a>
-<a href="#510" id="510">510</a>
-<a href="#511" id="511">511</a>
-<a href="#512" id="512">512</a>
-<a href="#513" id="513">513</a>
-<a href="#514" id="514">514</a>
-<a href="#515" id="515">515</a>
-<a href="#516" id="516">516</a>
-<a href="#517" id="517">517</a>
-<a href="#518" id="518">518</a>
-<a href="#519" id="519">519</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # json module
 //!
-//! `json` is in charge of generating a flat hashmap like . serperated hierarchical
+//! `json` is in charge of generating a flat BTreeMap like . serperated hierarchical
 //! JSON output. This is used by some metric parsing systems when running a command.
 
-</span><span class="kw">use </span>std::collections::HashMap;
+</span><span class="kw">use </span>std::collections::BTreeMap;
+<span class="kw">use </span>std::collections::HashMap;
 
-<span class="kw">use </span>itertools::Itertools;
 <span class="kw">use </span>tracing::debug;
 
 <span class="kw">use </span><span class="kw">crate</span>::networkd;
 <span class="kw">use </span><span class="kw">crate</span>::pid1;
 <span class="kw">use </span><span class="kw">crate</span>::units;
 <span class="kw">use </span><span class="kw">crate</span>::MonitordStats;
-
-<span class="attr">#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
-</span><span class="kw">pub enum </span>JsonFlatValue {
-    U64(u64),
-    I32(i32),
-    U32(u32),
-}
-
-<span class="doccomment">/// JSON escape a string and remove the '"' chars
-</span><span class="kw">fn </span>json_escape_string(s: <span class="kw-2">&amp;</span>str) -&gt; String {
-    <span class="kw">let </span>full_json_str = <span class="macro">serde_json::json!</span>(s).to_string();
-    full_json_str[<span class="number">1</span>..full_json_str.len() - <span class="number">1</span>].into()
-}
 
 <span class="doccomment">/// Add a prefix if config wants contains one
 </span><span class="kw">fn </span>gen_base_metric_key(key_prefix: <span class="kw-2">&amp;</span>String, metric_name: <span class="kw-2">&amp;</span>str) -&gt; String {
@@ -558,14 +502,14 @@
 <span class="kw">fn </span>flatten_networkd(
     networkd_stats: <span class="kw-2">&amp;</span>networkd::NetworkdState,
     key_prefix: <span class="kw-2">&amp;</span>String,
-) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
-    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
+) -&gt; BTreeMap&lt;String, serde_json::Value&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: BTreeMap&lt;String, serde_json::Value&gt; = BTreeMap::new();
     <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"networkd"</span>));
 
     <span class="kw">let </span>managed_interfaces_key = <span class="macro">format!</span>(<span class="string">"{}.managed_interfaces"</span>, base_metric_name);
     flat_stats.insert(
         managed_interfaces_key,
-        JsonFlatValue::U64(networkd_stats.managed_interfaces),
+        networkd_stats.managed_interfaces.into(),
     );
 
     <span class="kw">if </span>networkd_stats.interfaces_state.is_empty() {
@@ -577,31 +521,31 @@
         <span class="kw">let </span>interface_base = <span class="macro">format!</span>(<span class="string">"{}.{}"</span>, base_metric_name, interface.name);
         flat_stats.insert(
             <span class="macro">format!</span>(<span class="string">"{interface_base}.address_state"</span>),
-            JsonFlatValue::U64(interface.address_state <span class="kw">as </span>u64),
+            (interface.address_state <span class="kw">as </span>u64).into(),
         );
         flat_stats.insert(
             <span class="macro">format!</span>(<span class="string">"{interface_base}.admin_state"</span>),
-            JsonFlatValue::U64(interface.admin_state <span class="kw">as </span>u64),
+            (interface.admin_state <span class="kw">as </span>u64).into(),
         );
         flat_stats.insert(
             <span class="macro">format!</span>(<span class="string">"{interface_base}.carrier_state"</span>),
-            JsonFlatValue::U64(interface.carrier_state <span class="kw">as </span>u64),
+            (interface.carrier_state <span class="kw">as </span>u64).into(),
         );
         flat_stats.insert(
             <span class="macro">format!</span>(<span class="string">"{interface_base}.ipv4_address_state"</span>),
-            JsonFlatValue::U64(interface.ipv4_address_state <span class="kw">as </span>u64),
+            (interface.ipv4_address_state <span class="kw">as </span>u64).into(),
         );
         flat_stats.insert(
             <span class="macro">format!</span>(<span class="string">"{interface_base}.ipv6_address_state"</span>),
-            JsonFlatValue::U64(interface.ipv6_address_state <span class="kw">as </span>u64),
+            (interface.ipv6_address_state <span class="kw">as </span>u64).into(),
         );
         flat_stats.insert(
             <span class="macro">format!</span>(<span class="string">"{interface_base}.oper_state"</span>),
-            JsonFlatValue::U64(interface.oper_state <span class="kw">as </span>u64),
+            (interface.oper_state <span class="kw">as </span>u64).into(),
         );
         flat_stats.insert(
             <span class="macro">format!</span>(<span class="string">"{interface_base}.required_for_online"</span>),
-            JsonFlatValue::U64(interface.required_for_online <span class="kw">as </span>u64),
+            (interface.required_for_online <span class="kw">as </span>u64).into(),
         );
     }
     flat_stats
@@ -610,8 +554,8 @@
 <span class="kw">fn </span>flatten_pid1(
     optional_pid1_stats: <span class="kw-2">&amp;</span><span class="prelude-ty">Option</span>&lt;pid1::Pid1Stats&gt;,
     key_prefix: <span class="kw-2">&amp;</span>String,
-) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
-    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
+) -&gt; BTreeMap&lt;String, serde_json::Value&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: BTreeMap&lt;String, serde_json::Value&gt; = BTreeMap::new();
     <span class="comment">// If we're not collcting pid1 stats don't add
     </span><span class="kw">let </span>pid1_stats = <span class="kw">match </span>optional_pid1_stats {
         <span class="prelude-val">Some</span>(ps) =&gt; ps,
@@ -625,23 +569,23 @@
 
     flat_stats.insert(
         <span class="macro">format!</span>(<span class="string">"{}.cpu_time_kernel"</span>, base_metric_name),
-        JsonFlatValue::U64(pid1_stats.cpu_time_kernel),
+        pid1_stats.cpu_time_kernel.into(),
     );
     flat_stats.insert(
         <span class="macro">format!</span>(<span class="string">"{}.cpu_user_kernel"</span>, base_metric_name),
-        JsonFlatValue::U64(pid1_stats.cpu_time_user),
+        pid1_stats.cpu_time_user.into(),
     );
     flat_stats.insert(
         <span class="macro">format!</span>(<span class="string">"{}.memory_usage_bytes"</span>, base_metric_name),
-        JsonFlatValue::U64(pid1_stats.memory_usage_bytes),
+        pid1_stats.memory_usage_bytes.into(),
     );
     flat_stats.insert(
         <span class="macro">format!</span>(<span class="string">"{}.fd_count"</span>, base_metric_name),
-        JsonFlatValue::U64(pid1_stats.fd_count),
+        pid1_stats.fd_count.into(),
     );
     flat_stats.insert(
         <span class="macro">format!</span>(<span class="string">"{}.tasks"</span>, base_metric_name),
-        JsonFlatValue::U64(pid1_stats.tasks),
+        pid1_stats.tasks.into(),
     );
 
     flat_stats
@@ -650,71 +594,61 @@
 <span class="kw">fn </span>flatten_services(
     service_stats_hash: <span class="kw-2">&amp;</span>HashMap&lt;String, units::ServiceStats&gt;,
     key_prefix: <span class="kw-2">&amp;</span>String,
-) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
-    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
+) -&gt; BTreeMap&lt;String, serde_json::Value&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: BTreeMap&lt;String, serde_json::Value&gt; = BTreeMap::new();
     <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"services"</span>));
 
     <span class="kw">for </span>(service_name, service_stats) <span class="kw">in </span>service_stats_hash.iter() {
-        <span class="kw">let </span>escaped_service_name = json_escape_string(service_name);
         <span class="kw">for </span>field_name <span class="kw">in </span>units::SERVICE_FIELD_NAMES {
-            <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">"{base_metric_name}.{escaped_service_name}.{field_name}"</span>);
+            <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">"{base_metric_name}.{service_name}.{field_name}"</span>);
             <span class="kw">match </span>field_name.to_string().as_str() {
                 <span class="string">"active_enter_timestamp" </span>=&gt; {
-                    flat_stats.insert(
-                        key,
-                        JsonFlatValue::U64(service_stats.active_enter_timestamp),
-                    );
+                    flat_stats.insert(key, service_stats.active_enter_timestamp.into());
                 }
                 <span class="string">"active_exit_timestamp" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.active_exit_timestamp));
+                    flat_stats.insert(key, service_stats.active_exit_timestamp.into());
                 }
                 <span class="string">"cpuusage_nsec" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.cpuusage_nsec));
+                    flat_stats.insert(key, service_stats.cpuusage_nsec.into());
                 }
                 <span class="string">"inactive_exit_timestamp" </span>=&gt; {
-                    flat_stats.insert(
-                        key,
-                        JsonFlatValue::U64(service_stats.inactive_exit_timestamp),
-                    );
+                    flat_stats.insert(key, service_stats.inactive_exit_timestamp.into());
                 }
                 <span class="string">"ioread_bytes" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.ioread_bytes));
+                    flat_stats.insert(key, service_stats.ioread_bytes.into());
                 }
                 <span class="string">"ioread_operations" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.ioread_operations));
+                    flat_stats.insert(key, service_stats.ioread_operations.into());
                 }
                 <span class="string">"memory_available" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.memory_available));
+                    flat_stats.insert(key, service_stats.memory_available.into());
                 }
                 <span class="string">"memory_current" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.memory_current));
+                    flat_stats.insert(key, service_stats.memory_current.into());
                 }
                 <span class="string">"nrestarts" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U32(service_stats.nrestarts));
+                    flat_stats.insert(key, service_stats.nrestarts.into());
                 }
                 <span class="string">"processes" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U32(service_stats.processes));
+                    flat_stats.insert(key, service_stats.processes.into());
                 }
                 <span class="string">"restart_usec" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.restart_usec));
+                    flat_stats.insert(key, service_stats.restart_usec.into());
                 }
                 <span class="string">"state_change_timestamp" </span>=&gt; {
-                    flat_stats.insert(
-                        key,
-                        JsonFlatValue::U64(service_stats.state_change_timestamp),
-                    );
+                    flat_stats.insert(key, service_stats.state_change_timestamp.into());
                 }
                 <span class="string">"status_errno" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::I32(service_stats.status_errno));
+                    flat_stats.insert(key, service_stats.status_errno.into());
                 }
                 <span class="string">"tasks_current" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.tasks_current));
+                    flat_stats.insert(key, service_stats.tasks_current.into());
                 }
                 <span class="string">"timeout_clean_usec" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.timeout_clean_usec));
+                    flat_stats.insert(key, service_stats.timeout_clean_usec.into());
                 }
                 <span class="string">"watchdog_usec" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(service_stats.watchdog_usec));
+                    flat_stats.insert(key, service_stats.watchdog_usec.into());
                 }
                 <span class="kw">_ </span>=&gt; {
                     <span class="macro">debug!</span>(<span class="string">"Got a unhandled stat: '{}'"</span>, field_name);
@@ -728,30 +662,26 @@
 <span class="kw">fn </span>flatten_unit_states(
     unit_states_hash: <span class="kw-2">&amp;</span>HashMap&lt;String, units::UnitStates&gt;,
     key_prefix: <span class="kw-2">&amp;</span>String,
-) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
-    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
+) -&gt; BTreeMap&lt;String, serde_json::Value&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: BTreeMap&lt;String, serde_json::Value&gt; = BTreeMap::new();
     <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"unit_states"</span>));
 
     <span class="kw">for </span>(unit_name, unit_state_stats) <span class="kw">in </span>unit_states_hash.iter() {
-        <span class="kw">let </span>escaped_unit_name = json_escape_string(unit_name);
         <span class="kw">for </span>field_name <span class="kw">in </span>units::UNIT_STATES_FIELD_NAMES {
-            <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">"{base_metric_name}.{escaped_unit_name}.{field_name}"</span>);
+            <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">"{base_metric_name}.{unit_name}.{field_name}"</span>);
             <span class="kw">match </span>field_name.to_string().as_str() {
                 <span class="string">"active_state" </span>=&gt; {
-                    flat_stats.insert(
-                        key,
-                        JsonFlatValue::U64(unit_state_stats.active_state <span class="kw">as </span>u64),
-                    );
+                    flat_stats.insert(key, (unit_state_stats.active_state <span class="kw">as </span>u64).into());
                 }
                 <span class="string">"load_state" </span>=&gt; {
-                    flat_stats.insert(key, JsonFlatValue::U64(unit_state_stats.load_state <span class="kw">as </span>u64));
+                    flat_stats.insert(key, (unit_state_stats.load_state <span class="kw">as </span>u64).into());
                 }
                 <span class="string">"unhealthy" </span>=&gt; <span class="kw">match </span>unit_state_stats.unhealthy {
                     <span class="bool-val">false </span>=&gt; {
-                        flat_stats.insert(key, JsonFlatValue::U64(<span class="number">0</span>));
+                        flat_stats.insert(key, <span class="number">0</span>.into());
                     }
                     <span class="bool-val">true </span>=&gt; {
-                        flat_stats.insert(key, JsonFlatValue::U64(<span class="number">1</span>));
+                        flat_stats.insert(key, <span class="number">1</span>.into());
                     }
                 },
                 <span class="kw">_ </span>=&gt; {
@@ -767,11 +697,11 @@
 <span class="kw">fn </span>flatten_units(
     units_stats: <span class="kw-2">&amp;</span>units::SystemdUnitStats,
     key_prefix: <span class="kw-2">&amp;</span>String,
-) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
+) -&gt; BTreeMap&lt;String, serde_json::Value&gt; {
     <span class="comment">// fields of the SystemdUnitStats struct we know to ignore so don't log below
     </span><span class="kw">let </span>fields_to_ignore = Vec::from([<span class="string">"service_stats"</span>]);
 
-    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
+    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: BTreeMap&lt;String, serde_json::Value&gt; = BTreeMap::new();
     <span class="kw">let </span>base_metric_name = gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"units"</span>));
 
     <span class="comment">// TODO: Work out a smarter way to do this rather than hard code mappings
@@ -779,58 +709,58 @@
         <span class="kw">let </span>key = <span class="macro">format!</span>(<span class="string">"{base_metric_name}.{field_name}"</span>);
         <span class="kw">match </span>field_name.to_string().as_str() {
             <span class="string">"active_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.active_units));
+                flat_stats.insert(key, units_stats.active_units.into());
             }
             <span class="string">"automount_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.automount_units));
+                flat_stats.insert(key, units_stats.automount_units.into());
             }
             <span class="string">"device_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.device_units));
+                flat_stats.insert(key, units_stats.device_units.into());
             }
             <span class="string">"failed_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.failed_units));
+                flat_stats.insert(key, units_stats.failed_units.into());
             }
             <span class="string">"inactive_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.inactive_units));
+                flat_stats.insert(key, units_stats.inactive_units.into());
             }
             <span class="string">"jobs_queued" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.jobs_queued));
+                flat_stats.insert(key, units_stats.jobs_queued.into());
             }
             <span class="string">"loaded_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.loaded_units));
+                flat_stats.insert(key, units_stats.loaded_units.into());
             }
             <span class="string">"masked_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.masked_units));
+                flat_stats.insert(key, units_stats.masked_units.into());
             }
             <span class="string">"mount_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.mount_units));
+                flat_stats.insert(key, units_stats.mount_units.into());
             }
             <span class="string">"not_found_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.not_found_units));
+                flat_stats.insert(key, units_stats.not_found_units.into());
             }
             <span class="string">"path_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.path_units));
+                flat_stats.insert(key, units_stats.path_units.into());
             }
             <span class="string">"scope_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.scope_units));
+                flat_stats.insert(key, units_stats.scope_units.into());
             }
             <span class="string">"service_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.service_units));
+                flat_stats.insert(key, units_stats.service_units.into());
             }
             <span class="string">"slice_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.slice_units));
+                flat_stats.insert(key, units_stats.slice_units.into());
             }
             <span class="string">"socket_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.socket_units));
+                flat_stats.insert(key, units_stats.socket_units.into());
             }
             <span class="string">"target_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.target_units));
+                flat_stats.insert(key, units_stats.target_units.into());
             }
             <span class="string">"timer_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.timer_units));
+                flat_stats.insert(key, units_stats.timer_units.into());
             }
             <span class="string">"total_units" </span>=&gt; {
-                flat_stats.insert(key, JsonFlatValue::U64(units_stats.total_units));
+                flat_stats.insert(key, units_stats.total_units.into());
             }
             <span class="kw">_ </span>=&gt; {
                 <span class="kw">if </span>!fields_to_ignore.contains(field_name) {
@@ -842,17 +772,17 @@
     flat_stats
 }
 
-<span class="doccomment">/// Take the standard returned structs and move all to a flat HashMap&lt;str, float|int&gt; like JSON
-</span><span class="kw">fn </span>flatten_hashmap(
+<span class="doccomment">/// Take the standard returned structs and move all to a flat BTreeMap&lt;str, float|int&gt; like JSON
+</span><span class="kw">fn </span>flatten_stats(
     stats_struct: <span class="kw-2">&amp;</span>MonitordStats,
     key_prefix: <span class="kw-2">&amp;</span>String,
-) -&gt; HashMap&lt;String, JsonFlatValue&gt; {
-    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: HashMap&lt;String, JsonFlatValue&gt; = HashMap::new();
+) -&gt; BTreeMap&lt;String, serde_json::Value&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>flat_stats: BTreeMap&lt;String, serde_json::Value&gt; = BTreeMap::new();
     flat_stats.extend(flatten_networkd(<span class="kw-2">&amp;</span>stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_pid1(<span class="kw-2">&amp;</span>stats_struct.pid1, key_prefix));
     flat_stats.insert(
         gen_base_metric_key(key_prefix, <span class="kw-2">&amp;</span>String::from(<span class="string">"system-state"</span>)),
-        JsonFlatValue::U64(stats_struct.system_state <span class="kw">as </span>u64),
+        (stats_struct.system_state <span class="kw">as </span>u64).into(),
     );
     flat_stats.extend(flatten_services(
         <span class="kw-2">&amp;</span>stats_struct.units.service_stats,
@@ -867,35 +797,16 @@
 }
 
 <span class="doccomment">/// Take the standard returned structs and move all to a flat JSON str
-</span><span class="kw">pub fn </span>flatten(stats_struct: <span class="kw-2">&amp;</span>MonitordStats, key_prefix: <span class="kw-2">&amp;</span>String) -&gt; String {
-    <span class="kw">let </span>flat_stats = flatten_hashmap(stats_struct, key_prefix);
-
-    <span class="kw">let </span><span class="kw-2">mut </span>json_str = String::from(<span class="string">"{\n"</span>);
-    <span class="kw">for </span>(key, value) <span class="kw">in </span>flat_stats.iter().sorted() {
-        <span class="kw">let </span>new_kv_a = <span class="macro">format!</span>(<span class="string">"  \"{}\": "</span>, key);
-        <span class="kw">let </span>new_kv = <span class="kw">match </span>value {
-            JsonFlatValue::I32(an_int) =&gt; {
-                <span class="macro">format!</span>(<span class="string">"{}{},\n"</span>, new_kv_a, an_int)
-            }
-            JsonFlatValue::U32(an_int) =&gt; {
-                <span class="macro">format!</span>(<span class="string">"{}{},\n"</span>, new_kv_a, an_int)
-            }
-            JsonFlatValue::U64(an_int) =&gt; {
-                <span class="macro">format!</span>(<span class="string">"{}{},\n"</span>, new_kv_a, an_int)
-            }
-        };
-        json_str.push_str(new_kv.as_str());
-    }
-    <span class="comment">// Remove last trailing comma to be valid JSON - Super lame but works ...
-    </span>json_str.pop();
-    json_str.pop();
-    json_str.push_str(<span class="string">"\n}"</span>);
-    json_str
+</span><span class="kw">pub fn </span>flatten(
+    stats_struct: <span class="kw-2">&amp;</span>MonitordStats,
+    key_prefix: <span class="kw-2">&amp;</span>String,
+) -&gt; <span class="prelude-ty">Result</span>&lt;String, serde_json::Error&gt; {
+    serde_json::to_string_pretty(<span class="kw-2">&amp;</span>flatten_stats(stats_struct, key_prefix))
 }
 
 <span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests {
-    <span class="kw">use </span>std::collections::HashMap;
+    <span class="kw">use </span>std::collections::BTreeMap;
 
     <span class="kw">use super</span>::<span class="kw-2">*</span>;
 
@@ -1015,27 +926,30 @@
     }
 
     <span class="attr">#[test]
-    </span><span class="kw">fn </span>test_flatten_hashmap() {
-        <span class="kw">let </span>json_flat_map = flatten_hashmap(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">""</span>));
+    </span><span class="kw">fn </span>test_flatten_map() {
+        <span class="kw">let </span>json_flat_map = flatten_stats(
+            <span class="kw-2">&amp;</span>return_monitord_stats(),
+            <span class="kw-2">&amp;</span>String::from(<span class="string">"JSON serialize failed"</span>),
+        );
         <span class="macro">assert_eq!</span>(<span class="number">54</span>, json_flat_map.len());
     }
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_flatten() {
-        <span class="kw">let </span>json_flat = flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">""</span>));
+        <span class="kw">let </span>json_flat =
+            flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">""</span>)).expect(<span class="string">"JSON serialize failed"</span>);
         <span class="macro">assert_eq!</span>(EXPECTED_FLAT_JSON, json_flat);
-        <span class="macro">assert!</span>(oxidized_json_checker::validate_str(<span class="kw-2">&amp;</span>json_flat).is_ok());
     }
 
     <span class="attr">#[test]
-    </span><span class="kw">fn </span>test_flatten_prefixed() -&gt; anyhow::Result&lt;()&gt; {
-        <span class="kw">let </span>json_flat = flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">"monitord"</span>));
-        <span class="kw">let </span>json_flat_unserialized: HashMap&lt;String, i32&gt; = serde_json::from_str(<span class="kw-2">&amp;</span>json_flat)<span class="question-mark">?</span>;
+    </span><span class="kw">fn </span>test_flatten_prefixed() {
+        <span class="kw">let </span>json_flat = flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="kw-2">&amp;</span>String::from(<span class="string">"monitord"</span>))
+            .expect(<span class="string">"JSON serialize failed"</span>);
+        <span class="kw">let </span>json_flat_unserialized: BTreeMap&lt;String, i32&gt; =
+            serde_json::from_str(<span class="kw-2">&amp;</span>json_flat).expect(<span class="string">"JSON from_str failed"</span>);
         <span class="kw">for </span>(key, _value) <span class="kw">in </span>json_flat_unserialized.iter() {
             <span class="macro">assert!</span>(key.starts_with(<span class="string">"monitord."</span>));
         }
-        <span class="macro">assert!</span>(oxidized_json_checker::validate_str(<span class="kw-2">&amp;</span>json_flat).is_ok());
-        <span class="prelude-val">Ok</span>(())
     }
 }
 </code></pre></div></section></main></body></html>
