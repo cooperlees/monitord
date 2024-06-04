@@ -474,10 +474,10 @@ MDNS=no
     #[test]
     fn test_enums_to_ints() -> Result<()> {
         assert_eq!(3, AddressState::routable as u64,);
-        let carrier_state_int: i64 = CarrierState::degraded_carrier.int_value().into();
+        let carrier_state_int: u8 = u8::from(CarrierState::degraded_carrier);
         assert_eq!(4, carrier_state_int);
         assert_eq!(1, BoolState::True as i64,);
-        let bool_state_false_int: u8 = BoolState::False.int_value().into();
+        let bool_state_false_int: u8 = u8::from(BoolState::False);
         assert_eq!(0, bool_state_false_int);
 
         Ok(())
