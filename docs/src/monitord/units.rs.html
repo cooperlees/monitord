@@ -603,9 +603,9 @@
     not_found = <span class="number">4</span>,
 }
 
-<span class="kw">pub const </span>SERVICE_FIELD_NAMES: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = ServiceStats::FIELD_NAMES_AS_ARRAY;
-<span class="kw">pub const </span>UNIT_FIELD_NAMES: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
-<span class="kw">pub const </span>UNIT_STATES_FIELD_NAMES: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = UnitStates::FIELD_NAMES_AS_ARRAY;
+<span class="kw">pub const </span>SERVICE_FIELD_NAMES: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = <span class="kw-2">&amp;</span>ServiceStats::FIELD_NAMES_AS_ARRAY;
+<span class="kw">pub const </span>UNIT_FIELD_NAMES: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = <span class="kw-2">&amp;</span>SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
+<span class="kw">pub const </span>UNIT_STATES_FIELD_NAMES: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = <span class="kw-2">&amp;</span>UnitStates::FIELD_NAMES_AS_ARRAY;
 
 <span class="doccomment">/// Pull out selected systemd service statistics
 </span><span class="kw">fn </span>parse_service(c: <span class="kw-2">&amp;</span>Connection, name: <span class="kw-2">&amp;</span>str, path: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;ServiceStats, dbus::Error&gt; {

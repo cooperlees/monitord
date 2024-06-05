@@ -961,10 +961,10 @@ MDNS=no
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_enums_to_ints() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
         <span class="macro">assert_eq!</span>(<span class="number">3</span>, AddressState::routable <span class="kw">as </span>u64,);
-        <span class="kw">let </span>carrier_state_int: i64 = CarrierState::degraded_carrier.int_value().into();
+        <span class="kw">let </span>carrier_state_int: u8 = u8::from(CarrierState::degraded_carrier);
         <span class="macro">assert_eq!</span>(<span class="number">4</span>, carrier_state_int);
         <span class="macro">assert_eq!</span>(<span class="number">1</span>, BoolState::True <span class="kw">as </span>i64,);
-        <span class="kw">let </span>bool_state_false_int: u8 = BoolState::False.int_value().into();
+        <span class="kw">let </span>bool_state_false_int: u8 = u8::from(BoolState::False);
         <span class="macro">assert_eq!</span>(<span class="number">0</span>, bool_state_false_int);
 
         <span class="prelude-val">Ok</span>(())
