@@ -87,10 +87,12 @@ pub fn print_stats(config: Ini, stats: &MonitordStats) {
 /// Main statictic collection function running what's required by configuration
 pub fn stat_collector(config: Ini) -> Result<(), String> {
     let daemon_mode = read_config_bool(&config, String::from("monitord"), String::from("daemon"));
-    let mut collect_interval_ms = 0;
+    let mut collect_interval_ms: u128 = 0;
     if daemon_mode {
         collect_interval_ms = match config.getuint("monitord", "daemon_stats_refresh_secs") {
-            Ok(daemon_stats_refresh_secs) => daemon_stats_refresh_secs.unwrap(),
+            Ok(daemon_stats_refresh_secs) => daemon_stats_refresh_secs
+                .expect("Unable to get daemon states refresh time from config")
+                .into(),
             Err(err) => {
                 return Err(format!(
                     "Daemon mode is true in config and no daemon_stats_refresh_secs is set: {}",
@@ -167,7 +169,7 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
             std::process::exit(1);
         }
 
-        let elapsed_runtime_ms: u64 = collect_start_time.elapsed().as_secs() * 1000;
+        let elapsed_runtime_ms = collect_start_time.elapsed().as_millis();
         info!("stat collection run took {}ms", elapsed_runtime_ms);
         print_stats(config.clone(), &monitord_stats);
         if !daemon_mode {
@@ -175,7 +177,11 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
         }
         let sleep_time_ms = collect_interval_ms - elapsed_runtime_ms;
         info!("stat collection sleeping for {}s 😴", sleep_time_ms / 1000);
-        thread::sleep(Duration::from_millis(sleep_time_ms));
+        thread::sleep(Duration::from_millis(
+            sleep_time_ms
+                .try_into()
+                .expect("Sleep time does not fit into a u64 :O"),
+        ));
     }
     Ok(())
 }
