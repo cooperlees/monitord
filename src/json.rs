@@ -315,6 +315,10 @@ fn flatten_stats(
         key_prefix,
     ));
     flat_stats.extend(flatten_units(&stats_struct.units, key_prefix));
+    flat_stats.insert(
+        gen_base_metric_key(key_prefix, &String::from("version")),
+        stats_struct.version.to_string().into(),
+    );
     flat_stats
 }
 
@@ -387,7 +391,8 @@ mod tests {
   "units.socket_units": 0,
   "units.target_units": 0,
   "units.timer_units": 0,
-  "units.total_units": 0
+  "units.total_units": 0,
+  "version": "255.7-1.fc40"
 }"###;
 
     fn return_monitord_stats() -> MonitordStats {
@@ -415,6 +420,7 @@ mod tests {
             }),
             system_state: crate::system::SystemdSystemState::running,
             units: crate::units::SystemdUnitStats::default(),
+            version: String::from("255.7-1.fc40").into(),
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
@@ -453,7 +459,7 @@ mod tests {
             &return_monitord_stats(),
             &String::from("JSON serialize failed"),
         );
-        assert_eq!(54, json_flat_map.len());
+        assert_eq!(55, json_flat_map.len());
     }
 
     #[test]
@@ -467,7 +473,7 @@ mod tests {
     fn test_flatten_prefixed() {
         let json_flat = flatten(&return_monitord_stats(), &String::from("monitord"))
             .expect("JSON serialize failed");
-        let json_flat_unserialized: BTreeMap<String, i32> =
+        let json_flat_unserialized: BTreeMap<String, serde_json::Value> =
             serde_json::from_str(&json_flat).expect("JSON from_str failed");
         for (key, _value) in json_flat_unserialized.iter() {
             assert!(key.starts_with("monitord."));
