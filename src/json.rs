@@ -420,7 +420,9 @@ mod tests {
             }),
             system_state: crate::system::SystemdSystemState::running,
             units: crate::units::SystemdUnitStats::default(),
-            version: String::from("255.7-1.fc40").into(),
+            version: String::from("255.7-1.fc40")
+                .try_into()
+                .expect("Unable to make SystemdVersion struct"),
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(

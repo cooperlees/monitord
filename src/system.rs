@@ -3,9 +3,11 @@
 //! Handle systemd's overall "system" state. Basically says if we've successfully
 //! booted, stated all units or have been asked to stop, be offline etc.
 
+use std::convert::TryInto;
 use std::fmt;
 use std::time::Duration;
 
+use anyhow::Context;
 use dbus::blocking::Connection;
 use int_enum::IntEnum;
 use serde_repr::Deserialize_repr;
@@ -65,32 +67,33 @@ impl fmt::Display for SystemdVersion {
         write!(f, "{}.{}.{}", self.major, self.minor, self.os)
     }
 }
-impl From<String> for SystemdVersion {
-    fn from(s: String) -> Self {
+impl TryFrom<String> for SystemdVersion {
+    type Error = anyhow::Error;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
         let mut parts = s.split('.');
         let split_count = parts.clone().count();
         let major = parts
             .next()
-            .unwrap_or("0")
+            .with_context(|| "No valid major version")?
             .parse::<u32>()
-            .expect("Major version element isn't a valid u32");
+            .with_context(|| format!("Failed to parse major version: {:?}", s))?;
         let minor = parts
             .next()
-            .unwrap_or("")
+            .with_context(|| "No valid minor version")?
             .parse::<String>()
-            .expect("Minor isn't a valid String");
+            .with_context(|| format!("Failed to parse minor version: {:?}", s))?;
         let mut revision = None;
         if split_count > 3 {
             revision = parts.next().and_then(|s| s.parse::<u32>().ok());
         }
         let remaining_elements: Vec<&str> = parts.collect();
         let os = remaining_elements.join(".").to_string();
-        SystemdVersion {
+        Ok(SystemdVersion {
             major,
             minor,
             revision,
             os,
-        }
+        })
     }
 }
 
@@ -122,7 +125,7 @@ pub fn get_system_state(dbus_address: &str) -> Result<SystemdSystemState, dbus::
     Ok(state)
 }
 
-pub fn get_version(dbus_address: &str) -> Result<SystemdVersion, dbus::Error> {
+pub fn get_version(dbus_address: &str) -> Result<SystemdVersion, anyhow::Error> {
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
     let c = Connection::new_system()?;
     let p = c.with_proxy(
@@ -131,13 +134,16 @@ pub fn get_version(dbus_address: &str) -> Result<SystemdVersion, dbus::Error> {
         Duration::new(5, 0),
     );
     use crate::dbus::systemd::OrgFreedesktopSystemd1Manager;
-    let version_string = p.version()?;
-    Ok(version_string.into())
+    let version_string = p
+        .version()
+        .with_context(|| format!("Unable to get systemd version string"))?;
+    version_string.try_into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Result;
 
     #[test]
     fn test_display_struct() {
@@ -148,25 +154,27 @@ mod tests {
     }
 
     #[test]
-    fn test_parsing_systemd_versions() {
-        let parsed: SystemdVersion = "969.1.69.fc69".to_string().into();
+    fn test_parsing_systemd_versions() -> Result<()> {
+        let parsed: SystemdVersion = "969.1.69.fc69".to_string().try_into()?;
         assert_eq!(
             SystemdVersion::new(969, String::from("1"), Some(69), String::from("fc69")),
             parsed
         );
 
         // No revision
-        let parsed: SystemdVersion = "969.1.fc69".to_string().into();
+        let parsed: SystemdVersion = "969.1.fc69".to_string().try_into()?;
         assert_eq!(
             SystemdVersion::new(969, String::from("1"), None, String::from("fc69")),
             parsed
         );
 
         // #bigCompany string
-        let parsed: SystemdVersion = "969.6-9.9.hs+fb.el9".to_string().into();
+        let parsed: SystemdVersion = "969.6-9.9.hs+fb.el9".to_string().try_into()?;
         assert_eq!(
             SystemdVersion::new(969, String::from("6-9"), Some(9), String::from("hs+fb.el9")),
             parsed
         );
+
+        Ok(())
     }
 }
