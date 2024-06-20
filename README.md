@@ -28,7 +28,7 @@ Install via cargo or use as a dependency in your `Cargo.toml`.
 
 ```console
 crl-linux:monitord cooper$ monitord --help
-monitord 0.8.3
+monitord 0.8.4
 Cooper Ry Lees <me@cooperlees.com>
 monitord: Know how happy your systemd is! 😊
 
@@ -205,7 +205,8 @@ Is semi pretty too + custom. All unittested ...
   "units.socket_units": 28,
   "units.target_units": 54,
   "units.timer_units": 20,
-  "units.total_units": 562
+  "units.total_units": 562,
+  "version": "255.7-1.fc40"
 }
 ```
 
