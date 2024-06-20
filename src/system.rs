@@ -13,7 +13,16 @@ use int_enum::IntEnum;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
 use strum_macros::EnumString;
+use thiserror::Error;
 use tracing::error;
+
+#[derive(Error, Debug)]
+pub enum MonitordSystemError {
+    #[error("monitord::system failed: {0:#}")]
+    GenericError(#[from] anyhow::Error),
+    #[error("Unable to connect to DBUS: {0:#}")]
+    DbusError(#[from] dbus::Error),
+}
 
 #[allow(non_camel_case_types)]
 #[derive(
@@ -68,7 +77,8 @@ impl fmt::Display for SystemdVersion {
     }
 }
 impl TryFrom<String> for SystemdVersion {
-    type Error = anyhow::Error;
+    type Error = MonitordSystemError;
+
     fn try_from(s: String) -> Result<Self, Self::Error> {
         let mut parts = s.split('.');
         let split_count = parts.clone().count();
@@ -97,7 +107,7 @@ impl TryFrom<String> for SystemdVersion {
     }
 }
 
-pub fn get_system_state(dbus_address: &str) -> Result<SystemdSystemState, dbus::Error> {
+pub fn get_system_state(dbus_address: &str) -> Result<SystemdSystemState, MonitordSystemError> {
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
     let c = Connection::new_system()?;
     let p = c.with_proxy(
@@ -125,7 +135,7 @@ pub fn get_system_state(dbus_address: &str) -> Result<SystemdSystemState, dbus::
     Ok(state)
 }
 
-pub fn get_version(dbus_address: &str) -> Result<SystemdVersion, anyhow::Error> {
+pub fn get_version(dbus_address: &str) -> Result<SystemdVersion, MonitordSystemError> {
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
     let c = Connection::new_system()?;
     let p = c.with_proxy(
@@ -136,7 +146,7 @@ pub fn get_version(dbus_address: &str) -> Result<SystemdVersion, anyhow::Error> 
     use crate::dbus::systemd::OrgFreedesktopSystemd1Manager;
     let version_string = p
         .version()
-        .with_context(|| format!("Unable to get systemd version string"))?;
+        .with_context(|| "Unable to get systemd version string".to_string())?;
     version_string.try_into()
 }
 
