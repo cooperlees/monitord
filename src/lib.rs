@@ -32,6 +32,7 @@ pub struct MonitordStats {
     pub pid1: Option<pid1::Pid1Stats>,
     pub system_state: system::SystemdSystemState,
     pub units: units::SystemdUnitStats,
+    pub version: system::SystemdVersion,
 }
 
 /// Helper function to read "bool" config options
@@ -153,6 +154,9 @@ pub fn stat_collector(config: Ini) -> Result<(), String> {
             monitord_stats.system_state = crate::system::get_system_state(&dbus_address)
                 .map_err(|e| format!("Error getting system state: {:?}", e))?;
         }
+        // Not incrementing the ran_collector_count on purpose as this is always on by default
+        monitord_stats.version = crate::system::get_version(&dbus_address)
+            .map_err(|e| format!("Error getting systemd versions: {:?}", e))?;
 
         // Run service collectors if there are services listed in config
         let config_map = config.get_map().expect("Unable to get a config map");
