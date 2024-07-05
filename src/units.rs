@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use dbus::blocking::Connection;
-use indexmap::map::IndexMap;
 use int_enum::IntEnum;
 use serde_repr::*;
 use struct_field_names_as_array::FieldNamesAsArray;
@@ -192,15 +191,15 @@ pub fn parse_state(
         String,
         dbus::Path<'static>,
     ),
-    allowlist: &[&String],
-    blocklist: &[&String],
+    allowlist: &[String],
+    blocklist: &[String],
 ) {
     let unit_name = unit.0;
-    if blocklist.contains(&&unit_name) {
+    if blocklist.contains(&unit_name) {
         debug!("Skipping state stats for {} due to blocklist", unit_name);
         return;
     }
-    if !allowlist.is_empty() && !allowlist.contains(&&unit_name) {
+    if !allowlist.is_empty() && !allowlist.contains(&unit_name) {
         debug!(
             "Skipping state stats for {} due to not being in allowlist",
             unit_name
@@ -274,30 +273,22 @@ fn parse_unit(
 
 /// Pull all units from dbus and count how system is setup and behaving
 pub fn parse_unit_state(
-    dbus_address: &str,
-    config_map: IndexMap<String, IndexMap<String, Option<String>>>,
+    config: &crate::config::Config,
 ) -> Result<SystemdUnitStats, Box<dyn std::error::Error + Send + Sync>> {
-    // Parse out some config
-    let services_to_get_stats: Vec<&String> = match config_map.get("services") {
-        Some(services_hash) => services_hash.keys().collect(),
-        None => Vec::from([]),
-    };
-    let state_stats_allowlist: Vec<&String> = match config_map.get("units.state_stats.allowlist") {
-        Some(services_hash) => services_hash.keys().collect(),
-        None => Vec::from([]),
-    };
-    if !state_stats_allowlist.is_empty() {
-        debug!("Using unit state allowlist: {:?}", state_stats_allowlist);
+    if !config.units.state_stats_allowlist.is_empty() {
+        debug!(
+            "Using unit state allowlist: {:?}",
+            config.units.state_stats_allowlist
+        );
     }
-    let state_stats_blocklist: Vec<&String> = match config_map.get("units.state_stats.blocklist") {
-        Some(services_hash) => services_hash.keys().collect(),
-        None => Vec::from([]),
-    };
-    if !state_stats_allowlist.is_empty() {
-        debug!("Using unit state blocklist: {:?}", state_stats_allowlist);
+    if !config.units.state_stats_allowlist.is_empty() {
+        debug!(
+            "Using unit state blocklist: {:?}",
+            config.units.state_stats_allowlist
+        );
     }
 
-    std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
+    std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
     let mut stats = SystemdUnitStats::default();
     let c = Connection::new_system()?;
     let p = c.with_proxy(
@@ -314,19 +305,17 @@ pub fn parse_unit_state(
 
         // Collect per unit state stats - ActiveState + LoadState
         // Not collecting SubState (yet)
-        if config_map["units"].contains_key("state_stats")
-            && config_map["units"]["state_stats"] == Some(String::from("true"))
-        {
+        if config.units.state_stats {
             parse_state(
                 &mut stats,
                 unit.clone(),
-                &state_stats_allowlist,
-                &state_stats_blocklist,
+                &config.units.state_stats_allowlist,
+                &config.units.state_stats_blocklist,
             );
         }
 
         // Collect service stats
-        if services_to_get_stats.contains(&&unit.0) {
+        if config.services.contains(&unit.0) {
             debug!("Collecting service stats for {:?}", &unit);
             match parse_service(&c, &unit.0, &unit.6) {
                 Ok(service_stats) => {
@@ -414,8 +403,8 @@ mod tests {
         assert_eq!(expected_stats, stats);
 
         // Create some allow/block lists
-        let allowlist = Vec::from([&test_unit_name]);
-        let blocklist = Vec::from([&test_unit_name]);
+        let allowlist = Vec::from([test_unit_name.clone()]);
+        let blocklist = Vec::from([test_unit_name]);
 
         // test no blocklist and only allow list - Should equal the same as no lists above
         let mut allowlist_stats = SystemdUnitStats::default();
