@@ -292,7 +292,7 @@ pub fn parse_interface_stats(
 
 /// Parse interface state files in directory supplied
 pub fn parse_interface_state_files(
-    states_path: PathBuf,
+    states_path: &PathBuf,
     maybe_network_int_to_name: Option<HashMap<i32, String>>,
     dbus_address: &str,
 ) -> Result<NetworkdState, std::io::Error> {
@@ -313,7 +313,7 @@ pub fn parse_interface_state_files(
         Some(valid_hashmap) => valid_hashmap,
     };
 
-    for state_file_dir in fs::read_dir(&states_path)? {
+    for state_file_dir in fs::read_dir(states_path)? {
         let state_file = match state_file_dir {
             Ok(sf) => sf,
             Err(err) => {
@@ -437,7 +437,7 @@ MDNS=no
         assert_eq!(
             expected_files,
             parse_interface_state_files(
-                path,
+                &path,
                 return_mock_int_name_hashmap(),
                 crate::DEFAULT_DBUS_ADDRESS
             )
@@ -458,7 +458,7 @@ MDNS=no
 
         let path = PathBuf::from(temp_dir.path());
         let interface_stats = parse_interface_state_files(
-            path,
+            &path,
             return_mock_int_name_hashmap(),
             crate::DEFAULT_DBUS_ADDRESS,
         )

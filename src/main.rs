@@ -31,5 +31,5 @@ fn main() -> Result<(), String> {
     let mut config = Ini::new();
     let _config_map = config.load(args.config)?;
 
-    monitord::stat_collector(config)
+    monitord::stat_collector(config.into())
 }
