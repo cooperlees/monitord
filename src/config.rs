@@ -214,10 +214,113 @@ fn read_config_bool(config: &Ini, section: String, key: String) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
+    use tempfile::NamedTempFile;
+
     use super::*;
+
+    const FULL_CONFIG: &str = r###"
+[monitord]
+dbus_address = unix:path=/system_bus_socket
+daemon = true
+daemon_stats_refresh_secs = 0
+key_prefix = unittest
+output_format = json-pretty
+
+[networkd]
+enabled = true
+link_state_dir = /links
+
+[pid1]
+enabled = true
+
+[services]
+foo.service
+bar.service
+
+[system-state]
+enabled = true
+
+[units]
+enabled = true
+state_stats = true
+
+[units.state_stats.allowlist]
+foo.service
+
+[units.state_stats.blocklist]
+bar.service
+"###;
+
+    const MINIMAL_CONFIG: &str = r###"
+[monitord]
+output_format = json-flat
+"###;
 
     #[test]
     fn test_default_config() {
         assert!(Config::default().units.enabled)
+    }
+
+    #[test]
+    fn test_minimal_config() {
+        let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
+        monitord_config
+            .write_all(MINIMAL_CONFIG.as_bytes())
+            .expect("Unable to write out temp config file");
+
+        let mut ini_config = Ini::new();
+        let _config_map = ini_config
+            .load(monitord_config.path())
+            .expect("Unable to load ini config");
+
+        let expected_config: Config = ini_config.into();
+        // See our one setting is not the default 'json' enum value
+        assert_eq!(
+            expected_config.monitord.output_format,
+            MonitordOutputFormat::JsonFlat,
+        );
+        // See that one of the enabled bools are false
+        assert!(!expected_config.networkd.enabled);
+    }
+
+    #[test]
+    fn test_full_config() {
+        let expected_config = Config {
+            monitord: MonitordConfig {
+                dbus_address: String::from("unix:path=/system_bus_socket"),
+                daemon: true,
+                daemon_stats_refresh_secs: u64::MIN,
+                key_prefix: String::from("unittest"),
+                output_format: MonitordOutputFormat::JsonPretty,
+            },
+            networkd: NetworkdConfig {
+                enabled: true,
+                link_state_dir: "/links".into(),
+            },
+            pid1: Pid1Config { enabled: true },
+            services: Vec::from([String::from("foo.service"), String::from("bar.service")]),
+            system_state: SystemStateConfig { enabled: true },
+            units: UnitsConfig {
+                enabled: true,
+                state_stats: true,
+                state_stats_allowlist: Vec::from([String::from("foo.service")]),
+                state_stats_blocklist: Vec::from([String::from("bar.service")]),
+            },
+        };
+
+        let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
+        monitord_config
+            .write_all(FULL_CONFIG.as_bytes())
+            .expect("Unable to write out temp config file");
+
+        let mut ini_config = Ini::new();
+        let _config_map = ini_config
+            .load(monitord_config.path())
+            .expect("Unable to load ini config");
+
+        // See everything set / overloaded ...
+        assert_eq!(expected_config, ini_config.into(),);
     }
 }
