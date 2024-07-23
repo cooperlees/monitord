@@ -1,6 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/lib.rs`."><title>lib.rs - source</title><script> if (window.location.protocol !== "file:") document.write(`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2">`)</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-e935ef01ae1c1829.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.78.0 (9b00956e5 2024-04-29)" data-channel="1.78.0" data-search-js="search-42d8da7a6b9792c2.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-4c98445ec4002617.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-12cf3b4f4f9dc36d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-04d5337699b92874.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title">
-            <h2>Files</h2></div></nav><div class="sidebar-resizer"></div>
-    <main><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../../monitord/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-081576b923113409.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.79.0 (129f3b996 2024-06-10)" data-channel="1.79.0" data-search-js="search-bf21c90c8c1d92b1.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-e32f0c247825364d.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-20a3ad099b048cf2.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-09095024cf37855e.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><nav class="sub"><form class="search-form"><span></span><div id="sidebar-button" tabindex="-1"><a href="../../monitord/all.html" title="show sidebar"></a></div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Type ‘S’ or ‘/’ to search, ‘?’ for more options…" type="search"><div id="help-button" tabindex="-1"><a href="../../help.html" title="help">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings">Settings</a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -141,63 +139,21 @@
 <a href="#139" id="139">139</a>
 <a href="#140" id="140">140</a>
 <a href="#141" id="141">141</a>
-<a href="#142" id="142">142</a>
-<a href="#143" id="143">143</a>
-<a href="#144" id="144">144</a>
-<a href="#145" id="145">145</a>
-<a href="#146" id="146">146</a>
-<a href="#147" id="147">147</a>
-<a href="#148" id="148">148</a>
-<a href="#149" id="149">149</a>
-<a href="#150" id="150">150</a>
-<a href="#151" id="151">151</a>
-<a href="#152" id="152">152</a>
-<a href="#153" id="153">153</a>
-<a href="#154" id="154">154</a>
-<a href="#155" id="155">155</a>
-<a href="#156" id="156">156</a>
-<a href="#157" id="157">157</a>
-<a href="#158" id="158">158</a>
-<a href="#159" id="159">159</a>
-<a href="#160" id="160">160</a>
-<a href="#161" id="161">161</a>
-<a href="#162" id="162">162</a>
-<a href="#163" id="163">163</a>
-<a href="#164" id="164">164</a>
-<a href="#165" id="165">165</a>
-<a href="#166" id="166">166</a>
-<a href="#167" id="167">167</a>
-<a href="#168" id="168">168</a>
-<a href="#169" id="169">169</a>
-<a href="#170" id="170">170</a>
-<a href="#171" id="171">171</a>
-<a href="#172" id="172">172</a>
-<a href="#173" id="173">173</a>
-<a href="#174" id="174">174</a>
-<a href="#175" id="175">175</a>
-<a href="#176" id="176">176</a>
-<a href="#177" id="177">177</a>
-<a href="#178" id="178">178</a>
-<a href="#179" id="179">179</a>
-<a href="#180" id="180">180</a>
-<a href="#181" id="181">181</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # monitord Crate
 //!
 //! `monitord` is a library to gather statistics about systemd.
 //! Some APIs are a little ugly due to being a configparser INI based configuration
 //! driven CLL at heart.
 
-</span><span class="kw">use </span>std::path::PathBuf;
-<span class="kw">use </span>std::str::FromStr;
-<span class="kw">use </span>std::thread;
+</span><span class="kw">use </span>std::thread;
 <span class="kw">use </span>std::time::Duration;
 <span class="kw">use </span>std::time::Instant;
 
 <span class="kw">use </span>anyhow::Result;
-<span class="kw">use </span>configparser::ini::Ini;
 <span class="kw">use </span>tracing::error;
 <span class="kw">use </span>tracing::info;
 
+<span class="kw">pub mod </span>config;
 <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">mod </span>dbus;
 <span class="kw">pub mod </span>json;
 <span class="kw">pub mod </span>logging;
@@ -215,78 +171,39 @@
     <span class="kw">pub </span>pid1: <span class="prelude-ty">Option</span>&lt;pid1::Pid1Stats&gt;,
     <span class="kw">pub </span>system_state: system::SystemdSystemState,
     <span class="kw">pub </span>units: units::SystemdUnitStats,
-}
-
-<span class="doccomment">/// Helper function to read "bool" config options
-</span><span class="kw">fn </span>read_config_bool(config: <span class="kw-2">&amp;</span>Ini, section: String, key: String) -&gt; bool {
-    <span class="kw">let </span>option_bool = <span class="kw">match </span>config.getbool(<span class="kw-2">&amp;</span>section, <span class="kw-2">&amp;</span>key) {
-        <span class="prelude-val">Ok</span>(config_option_bool) =&gt; config_option_bool,
-        <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">panic!</span>(
-            <span class="string">"Unable to find '{}' key in '{}' section in config file: {}"</span>,
-            key, section, err
-        ),
-    };
-    <span class="kw">match </span>option_bool {
-        <span class="prelude-val">Some</span>(bool_value) =&gt; bool_value,
-        <span class="prelude-val">None </span>=&gt; {
-            <span class="macro">error!</span>(
-                <span class="string">"No value for '{}' in '{}' section ... assuming false"</span>,
-                key, section
-            );
-            <span class="bool-val">false
-        </span>}
-    }
+    <span class="kw">pub </span>version: system::SystemdVersion,
 }
 
 <span class="doccomment">/// Print statistics in the format set in configuration
-</span><span class="kw">pub fn </span>print_stats(config: Ini, stats: <span class="kw-2">&amp;</span>MonitordStats) {
-    <span class="kw">let </span>output_format = config
-        .get(<span class="string">"monitord"</span>, <span class="string">"output_format"</span>)
-        .unwrap_or_else(|| <span class="string">"json"</span>.to_lowercase());
-    <span class="kw">let </span>key_prefix = config
-        .get(<span class="string">"monitord"</span>, <span class="string">"key_prefix"</span>)
-        .unwrap_or_else(|| String::from(<span class="string">""</span>));
-
-    <span class="kw">match </span>output_format.as_str() {
-        <span class="string">"json" </span>=&gt; <span class="macro">println!</span>(
+</span><span class="kw">pub fn </span>print_stats(
+    key_prefix: <span class="kw-2">&amp;</span>str,
+    output_format: <span class="kw-2">&amp;</span>config::MonitordOutputFormat,
+    stats: <span class="kw-2">&amp;</span>MonitordStats,
+) {
+    <span class="kw">match </span>output_format {
+        config::MonitordOutputFormat::Json =&gt; <span class="macro">println!</span>(
             <span class="string">"{}"</span>,
             serde_json::to_string(<span class="kw-2">&amp;</span>stats).expect(<span class="string">"Invalid JSON serialization"</span>)
         ),
-        <span class="string">"json-flat" </span>=&gt; <span class="macro">println!</span>(
+        config::MonitordOutputFormat::JsonFlat =&gt; <span class="macro">println!</span>(
             <span class="string">"{}"</span>,
-            json::flatten(stats, <span class="kw-2">&amp;</span>key_prefix).expect(<span class="string">"Invalid JSON serialization"</span>)
+            json::flatten(stats, <span class="kw-2">&amp;</span>key_prefix.to_string()).expect(<span class="string">"Invalid JSON serialization"</span>)
         ),
-        <span class="string">"json-pretty" </span>=&gt; <span class="macro">println!</span>(
+        config::MonitordOutputFormat::JsonPretty =&gt; <span class="macro">println!</span>(
             <span class="string">"{}"</span>,
             serde_json::to_string_pretty(<span class="kw-2">&amp;</span>stats).expect(<span class="string">"Invalid JSON serialization"</span>)
-        ),
-        err =&gt; <span class="macro">error!</span>(
-            <span class="string">"Unable to print output in {} format ... fix config ..."</span>,
-            err
         ),
     }
 }
 
 <span class="doccomment">/// Main statictic collection function running what's required by configuration
-</span><span class="kw">pub fn </span>stat_collector(config: Ini) -&gt; <span class="prelude-ty">Result</span>&lt;(), String&gt; {
-    <span class="kw">let </span>daemon_mode = read_config_bool(<span class="kw-2">&amp;</span>config, String::from(<span class="string">"monitord"</span>), String::from(<span class="string">"daemon"</span>));
-    <span class="kw">let </span><span class="kw-2">mut </span>collect_interval_ms = <span class="number">0</span>;
-    <span class="kw">if </span>daemon_mode {
-        collect_interval_ms = <span class="kw">match </span>config.getuint(<span class="string">"monitord"</span>, <span class="string">"daemon_stats_refresh_secs"</span>) {
-            <span class="prelude-val">Ok</span>(daemon_stats_refresh_secs) =&gt; daemon_stats_refresh_secs.unwrap(),
-            <span class="prelude-val">Err</span>(err) =&gt; {
-                <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">format!</span>(
-                    <span class="string">"Daemon mode is true in config and no daemon_stats_refresh_secs is set: {}"</span>,
-                    err
-                ))
-            }
-        };
+</span><span class="kw">pub fn </span>stat_collector(config: config::Config) -&gt; <span class="prelude-ty">Result</span>&lt;(), String&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>collect_interval_ms: u128 = <span class="number">0</span>;
+    <span class="kw">if </span>config.monitord.daemon {
+        collect_interval_ms = (config.monitord.daemon_stats_refresh_secs * <span class="number">1000</span>).into();
     }
 
     <span class="kw">let </span><span class="kw-2">mut </span>monitord_stats = MonitordStats::default();
-    <span class="kw">let </span>dbus_address = config
-        .get(<span class="string">"monitord"</span>, <span class="string">"dbus_address"</span>)
-        .unwrap_or(String::from(DEFAULT_DBUS_ADDRESS));
     <span class="kw">loop </span>{
         <span class="kw">let </span>collect_start_time = Instant::now();
         <span class="kw">let </span><span class="kw-2">mut </span>ran_collector_count: u8 = <span class="number">0</span>;
@@ -294,7 +211,7 @@
         <span class="macro">info!</span>(<span class="string">"Starting stat collection run"</span>);
 
         <span class="comment">// Collect pid1 procfs stas
-        </span><span class="kw">if </span>read_config_bool(<span class="kw-2">&amp;</span>config, String::from(<span class="string">"pid1"</span>), String::from(<span class="string">"enabled"</span>)) {
+        </span><span class="kw">if </span>config.pid1.enabled {
             monitord_stats.pid1 = <span class="kw">match </span><span class="kw">crate</span>::pid1::get_pid1_stats() {
                 <span class="prelude-val">Ok</span>(s) =&gt; <span class="prelude-val">Some</span>(s),
                 <span class="prelude-val">Err</span>(err) =&gt; {
@@ -306,18 +223,12 @@
 
         <span class="comment">// TODO: Move each collector into a function + thread
         // Run networkd collector if enabled
-        </span><span class="kw">if </span>read_config_bool(<span class="kw-2">&amp;</span>config, String::from(<span class="string">"networkd"</span>), String::from(<span class="string">"enabled"</span>)) {
+        </span><span class="kw">if </span>config.networkd.enabled {
             ran_collector_count += <span class="number">1</span>;
-            <span class="kw">let </span>networkd_start_path = PathBuf::from_str(
-                config
-                    .get(<span class="string">"networkd"</span>, <span class="string">"link_state_dir"</span>)
-                    .unwrap_or_else(|| String::from(networkd::NETWORKD_STATE_FILES))
-                    .as_str(),
-            );
             <span class="kw">match </span>networkd::parse_interface_state_files(
-                networkd_start_path.unwrap(),
+                <span class="kw-2">&amp;</span>config.networkd.link_state_dir,
                 <span class="prelude-val">None</span>,
-                <span class="kw-2">&amp;</span>dbus_address,
+                <span class="kw-2">&amp;</span>config.monitord.dbus_address,
             ) {
                 <span class="prelude-val">Ok</span>(networkd_stats) =&gt; monitord_stats.networkd = networkd_stats,
                 <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(<span class="string">"networkd stats failed: {:?}"</span>, err),
@@ -325,21 +236,20 @@
         }
 
         <span class="comment">// Run system running (SystemState) state collector
-        </span><span class="kw">if </span>read_config_bool(
-            <span class="kw-2">&amp;</span>config,
-            String::from(<span class="string">"system-state"</span>),
-            String::from(<span class="string">"enabled"</span>),
-        ) {
+        </span><span class="kw">if </span>config.system_state.enabled {
             ran_collector_count += <span class="number">1</span>;
-            monitord_stats.system_state = <span class="kw">crate</span>::system::get_system_state(<span class="kw-2">&amp;</span>dbus_address)
-                .map_err(|e| <span class="macro">format!</span>(<span class="string">"Error getting system state: {:?}"</span>, e))<span class="question-mark">?</span>;
+            monitord_stats.system_state =
+                <span class="kw">crate</span>::system::get_system_state(<span class="kw-2">&amp;</span>config.monitord.dbus_address)
+                    .map_err(|e| <span class="macro">format!</span>(<span class="string">"Error getting system state: {:?}"</span>, e))<span class="question-mark">?</span>;
         }
+        <span class="comment">// Not incrementing the ran_collector_count on purpose as this is always on by default
+        </span>monitord_stats.version = <span class="kw">crate</span>::system::get_version(<span class="kw-2">&amp;</span>config.monitord.dbus_address)
+            .map_err(|e| <span class="macro">format!</span>(<span class="string">"Error getting systemd versions: {:?}"</span>, e))<span class="question-mark">?</span>;
 
         <span class="comment">// Run service collectors if there are services listed in config
-        </span><span class="kw">let </span>config_map = config.get_map().expect(<span class="string">"Unable to get a config map"</span>);
-        <span class="kw">if </span>read_config_bool(<span class="kw-2">&amp;</span>config, String::from(<span class="string">"units"</span>), String::from(<span class="string">"enabled"</span>)) {
+        </span><span class="kw">if </span>config.units.enabled {
             ran_collector_count += <span class="number">1</span>;
-            <span class="kw">match </span>units::parse_unit_state(<span class="kw-2">&amp;</span>dbus_address, config_map) {
+            <span class="kw">match </span>units::parse_unit_state(<span class="kw-2">&amp;</span>config) {
                 <span class="prelude-val">Ok</span>(units_stats) =&gt; monitord_stats.units = units_stats,
                 <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(<span class="string">"units stats failed: {:?}"</span>, err),
             }
@@ -350,15 +260,23 @@
             std::process::exit(<span class="number">1</span>);
         }
 
-        <span class="kw">let </span>elapsed_runtime_ms: u64 = collect_start_time.elapsed().as_secs() * <span class="number">1000</span>;
+        <span class="kw">let </span>elapsed_runtime_ms = collect_start_time.elapsed().as_millis();
         <span class="macro">info!</span>(<span class="string">"stat collection run took {}ms"</span>, elapsed_runtime_ms);
-        print_stats(config.clone(), <span class="kw-2">&amp;</span>monitord_stats);
-        <span class="kw">if </span>!daemon_mode {
+        print_stats(
+            <span class="kw-2">&amp;</span>config.monitord.key_prefix,
+            <span class="kw-2">&amp;</span>config.monitord.output_format,
+            <span class="kw-2">&amp;</span>monitord_stats,
+        );
+        <span class="kw">if </span>!config.monitord.daemon {
             <span class="kw">break</span>;
         }
         <span class="kw">let </span>sleep_time_ms = collect_interval_ms - elapsed_runtime_ms;
         <span class="macro">info!</span>(<span class="string">"stat collection sleeping for {}s 😴"</span>, sleep_time_ms / <span class="number">1000</span>);
-        thread::sleep(Duration::from_millis(sleep_time_ms));
+        thread::sleep(Duration::from_millis(
+            sleep_time_ms
+                .try_into()
+                .expect(<span class="string">"Sleep time does not fit into a u64 :O"</span>),
+        ));
     }
     <span class="prelude-val">Ok</span>(())
 }
