@@ -176,6 +176,19 @@ fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats,
     })
 }
 
+/// Check if we're a loaded unit and if so evaluate if we're acitive or not
+/// !active == unhealthy
+/// Only potentially mark unhealthy for LOADED units that are not active
+pub fn is_unit_unhealthy(
+    active_state: SystemdUnitActiveState,
+    load_state: SystemdUnitLoadState,
+) -> bool {
+    if load_state == SystemdUnitLoadState::loaded {
+        return !matches!(active_state, SystemdUnitActiveState::active);
+    }
+    false
+}
+
 /// Parse state of a unit into our unit_states hash
 pub fn parse_state(
     stats: &mut SystemdUnitStats,
@@ -216,7 +229,7 @@ pub fn parse_state(
         UnitStates {
             active_state,
             load_state,
-            unhealthy: !matches!(active_state, SystemdUnitActiveState::active),
+            unhealthy: is_unit_unhealthy(active_state, load_state),
         },
     );
 }
@@ -361,6 +374,29 @@ mod tests {
             String::from(""),
             dbus::Path::new("/\0").unwrap(),
         )
+    }
+
+    #[test]
+    fn test_is_unit_healthy() {
+        // Obvious active/loaded is healthy
+        assert!(!is_unit_unhealthy(
+            SystemdUnitActiveState::active,
+            SystemdUnitLoadState::loaded
+        ));
+        // Not active + loaded is not healthy
+        assert!(is_unit_unhealthy(
+            SystemdUnitActiveState::activating,
+            SystemdUnitLoadState::loaded
+        ));
+        // Not loaded + anything is just marked healthy as we're not expecting it to ever be healthy
+        assert!(!is_unit_unhealthy(
+            SystemdUnitActiveState::activating,
+            SystemdUnitLoadState::masked
+        ));
+        assert!(!is_unit_unhealthy(
+            SystemdUnitActiveState::deactivating,
+            SystemdUnitLoadState::not_found
+        ));
     }
 
     #[test]
