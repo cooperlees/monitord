@@ -75,9 +75,8 @@ pub struct ServiceStats {
 pub struct UnitStates {
     pub active_state: SystemdUnitActiveState,
     pub load_state: SystemdUnitLoadState,
-    // Unhealthy is only calculated for SystemdUnitLoadState::loaded units based on state
-    // and SystemdUnitLoadState::[error||not_found]
-    // "unhealthy" here means ~active for loaded units - thus systemd should have the process running ...
+    // Unhealthy is only calculated for SystemdUnitLoadState::loaded units based on !SystemdActiveState::active
+    // and !SystemdUnitLoadState::masked
     pub unhealthy: bool,
 }
 
