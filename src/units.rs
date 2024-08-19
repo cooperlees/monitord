@@ -75,6 +75,9 @@ pub struct ServiceStats {
 pub struct UnitStates {
     pub active_state: SystemdUnitActiveState,
     pub load_state: SystemdUnitLoadState,
+    // Unhealthy is only calculated for SystemdUnitLoadState::loaded units based on state
+    // and SystemdUnitLoadState::[error||not_found]
+    // "unhealthy" here means ~active for loaded units - thus systemd should have the process running ...
     pub unhealthy: bool,
 }
 
@@ -177,16 +180,21 @@ fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats,
 }
 
 /// Check if we're a loaded unit and if so evaluate if we're acitive or not
-/// !active == unhealthy
+/// If we're not
 /// Only potentially mark unhealthy for LOADED units that are not active
 pub fn is_unit_unhealthy(
     active_state: SystemdUnitActiveState,
     load_state: SystemdUnitLoadState,
 ) -> bool {
-    if load_state == SystemdUnitLoadState::loaded {
-        return !matches!(active_state, SystemdUnitActiveState::active);
+    match load_state {
+        // We're loaded so let's see if we're active or not
+        SystemdUnitLoadState::loaded => !matches!(active_state, SystemdUnitActiveState::active),
+        // An admin can change a unit to be masked on purpose
+        // so we are going to ignore all masked units due to that
+        SystemdUnitLoadState::masked => false,
+        // Otherwise, we're unhealthy
+        _ => true,
     }
-    false
 }
 
 /// Parse state of a unit into our unit_states hash
@@ -393,9 +401,15 @@ mod tests {
             SystemdUnitActiveState::activating,
             SystemdUnitLoadState::masked
         ));
-        assert!(!is_unit_unhealthy(
+        // Make error + not_found unhealthy too
+        assert!(is_unit_unhealthy(
             SystemdUnitActiveState::deactivating,
             SystemdUnitLoadState::not_found
+        ));
+        assert!(is_unit_unhealthy(
+            // Can never really be active here with error, but check we ignore it
+            SystemdUnitActiveState::active,
+            SystemdUnitLoadState::error,
         ));
     }
 
