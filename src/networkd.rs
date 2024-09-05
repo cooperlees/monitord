@@ -13,6 +13,7 @@ use anyhow::Result;
 use dbus::blocking::Connection;
 use int_enum::IntEnum;
 use serde_repr::*;
+use strum_macros::EnumIter;
 use strum_macros::EnumString;
 use tracing::error;
 
@@ -26,6 +27,7 @@ use tracing::error;
     Debug,
     Eq,
     PartialEq,
+    EnumIter,
     EnumString,
     IntEnum,
     strum_macros::Display,
@@ -48,6 +50,7 @@ pub enum AddressState {
     Debug,
     Eq,
     PartialEq,
+    EnumIter,
     EnumString,
     IntEnum,
     strum_macros::Display,
@@ -73,6 +76,7 @@ pub enum AdminState {
     Debug,
     Eq,
     PartialEq,
+    EnumIter,
     EnumString,
     IntEnum,
     strum_macros::Display,
@@ -106,6 +110,7 @@ pub enum BoolState {
     Debug,
     Eq,
     PartialEq,
+    EnumIter,
     EnumString,
     IntEnum,
     strum_macros::Display,
@@ -133,6 +138,7 @@ pub enum CarrierState {
     Debug,
     Eq,
     PartialEq,
+    EnumIter,
     EnumString,
     IntEnum,
     strum_macros::Display,
@@ -155,6 +161,7 @@ pub enum OnlineState {
     Debug,
     Eq,
     PartialEq,
+    EnumIter,
     EnumString,
     IntEnum,
     strum_macros::Display,

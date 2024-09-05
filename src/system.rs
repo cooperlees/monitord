@@ -12,6 +12,7 @@ use dbus::blocking::Connection;
 use int_enum::IntEnum;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
+use strum_macros::EnumIter;
 use strum_macros::EnumString;
 use thiserror::Error;
 use tracing::error;
@@ -34,6 +35,7 @@ pub enum MonitordSystemError {
     Default,
     Eq,
     PartialEq,
+    EnumIter,
     EnumString,
     IntEnum,
     strum_macros::Display,
