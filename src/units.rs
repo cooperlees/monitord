@@ -13,6 +13,7 @@ use dbus::blocking::Connection;
 use int_enum::IntEnum;
 use serde_repr::*;
 use struct_field_names_as_array::FieldNamesAsArray;
+use strum_macros::EnumIter;
 use strum_macros::EnumString;
 use tracing::debug;
 use tracing::error;
@@ -95,6 +96,7 @@ pub struct UnitStates {
     Default,
     Eq,
     PartialEq,
+    EnumIter,
     EnumString,
     IntEnum,
     strum_macros::Display,
@@ -122,6 +124,7 @@ pub enum SystemdUnitActiveState {
     Default,
     Eq,
     PartialEq,
+    EnumIter,
     EnumString,
     IntEnum,
     strum_macros::Display,
@@ -355,6 +358,7 @@ pub fn parse_unit_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use strum::IntoEnumIterator;
 
     fn get_unit_file() -> (
         String, // unit name
@@ -500,5 +504,11 @@ mod tests {
         let systemd_unit = get_unit_file();
         parse_unit(&mut stats, systemd_unit);
         assert_eq!(expected_stats, stats);
+    }
+
+    #[test]
+    fn test_iterators() {
+        assert!(SystemdUnitActiveState::iter().collect::<Vec<_>>().len() > 0);
+        assert!(SystemdUnitLoadState::iter().collect::<Vec<_>>().len() > 0);
     }
 }
