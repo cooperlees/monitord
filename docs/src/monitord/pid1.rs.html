@@ -67,7 +67,7 @@
     <span class="kw">pub </span>tasks: u64,
 }
 
-<span class="doccomment">/// Get procfs info on pid 1 - https://manpages.debian.org/buster/manpages/procfs.5.en.html
+<span class="doccomment">/// Get procfs info on pid 1 - &lt;https://manpages.debian.org/buster/manpages/procfs.5.en.html&gt;
 </span><span class="kw">pub fn </span>get_pid1_stats() -&gt; anyhow::Result&lt;Pid1Stats&gt; {
     <span class="kw">let </span>bytes_per_page = procfs::page_size();
     <span class="kw">let </span>ticks_per_second = procfs::ticks_per_second();

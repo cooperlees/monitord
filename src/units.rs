@@ -69,7 +69,7 @@ pub struct ServiceStats {
     pub watchdog_usec: u64,
 }
 
-/// Collection of a Unit active and load state: https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html
+/// Collection of a Unit active and load state: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]

@@ -1,7 +1,7 @@
 //! # networkd module
 //!
 //! All structs, enums and methods specific to systemd-networkd.
-//! Enumerations were copied from https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h
+//! Enumerations were copied from <https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h>
 
 use std::collections::HashMap;
 use std::fs;
