@@ -23,11 +23,6 @@ jobs:
           command: fmt
           args: --check
 
-      - name: Cargo doc
-        uses: actions-rs/cargo@v1
-        with:
-          command: doc
-
       - name: Installing libdbus
         run: |
           sudo apt update
@@ -53,3 +48,8 @@ jobs:
         run: |
           ls -lh target/debug/
           ls -lh target/release/
+
+      - name: Cargo doc
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
