@@ -21,7 +21,8 @@ struct Cli {
     log_level: monitord::logging::LogLevels,
 }
 
-fn main() -> Result<(), String> {
+#[tokio::main]
+async fn main() -> Result<(), String> {
     let args = Cli::parse();
     monitord::logging::setup_logging(args.log_level.into());
 
@@ -31,5 +32,5 @@ fn main() -> Result<(), String> {
     let mut config = Ini::new();
     let _config_map = config.load(args.config)?;
 
-    monitord::stat_collector(config.into())
+    monitord::stat_collector(config.into()).await
 }

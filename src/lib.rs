@@ -56,22 +56,42 @@ pub fn print_stats(
 }
 
 /// Main statictic collection function running what's required by configuration
-pub fn stat_collector(config: config::Config) -> Result<(), String> {
+pub async fn stat_collector(config: config::Config) -> Result<(), String> {
     let mut collect_interval_ms: u128 = 0;
     if config.monitord.daemon {
         collect_interval_ms = (config.monitord.daemon_stats_refresh_secs * 1000).into();
     }
 
     let mut monitord_stats = MonitordStats::default();
+    std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
+    let sdc = match zbus::Connection::system().await {
+        Ok(sdc) => sdc,
+        Err(e) => {
+            return Err(format!(
+                "Unable to connect to system dbus via zbus: {:?}",
+                e
+            ))
+        }
+    };
     loop {
         let collect_start_time = Instant::now();
         let mut ran_collector_count: u8 = 0;
 
         info!("Starting stat collection run");
 
-        // Collect pid1 procfs stas
+        // TODO: Refactor to run all async methods in parallel
+        // Collect pid1 procfs stats
         if config.pid1.enabled {
-            monitord_stats.pid1 = match crate::pid1::get_pid1_stats() {
+            let pid1_stats = match tokio::task::spawn_blocking(crate::pid1::get_pid1_stats).await {
+                Ok(p1s) => p1s,
+                Err(err) => {
+                    return Err(format!(
+                        "Unable to spawn blocking around PID1 stats: {:?}",
+                        err
+                    ))
+                }
+            };
+            monitord_stats.pid1 = match pid1_stats {
                 Ok(s) => Some(s),
                 Err(err) => {
                     error!("Unable to set pid1 stats: {:?}", err);
@@ -80,15 +100,12 @@ pub fn stat_collector(config: config::Config) -> Result<(), String> {
             }
         }
 
-        // TODO: Move each collector into a function + thread
         // Run networkd collector if enabled
         if config.networkd.enabled {
             ran_collector_count += 1;
-            match networkd::parse_interface_state_files(
-                &config.networkd.link_state_dir,
-                None,
-                &config.monitord.dbus_address,
-            ) {
+            match networkd::parse_interface_state_files(&config.networkd.link_state_dir, None, &sdc)
+                .await
+            {
                 Ok(networkd_stats) => monitord_stats.networkd = networkd_stats,
                 Err(err) => error!("networkd stats failed: {:?}", err),
             }
@@ -97,18 +114,19 @@ pub fn stat_collector(config: config::Config) -> Result<(), String> {
         // Run system running (SystemState) state collector
         if config.system_state.enabled {
             ran_collector_count += 1;
-            monitord_stats.system_state =
-                crate::system::get_system_state(&config.monitord.dbus_address)
-                    .map_err(|e| format!("Error getting system state: {:?}", e))?;
+            monitord_stats.system_state = crate::system::get_system_state(&sdc)
+                .await
+                .map_err(|e| format!("Error getting system state: {:?}", e))?;
         }
         // Not incrementing the ran_collector_count on purpose as this is always on by default
-        monitord_stats.version = crate::system::get_version(&config.monitord.dbus_address)
+        monitord_stats.version = crate::system::get_version(&sdc)
+            .await
             .map_err(|e| format!("Error getting systemd versions: {:?}", e))?;
 
         // Run service collectors if there are services listed in config
         if config.units.enabled {
             ran_collector_count += 1;
-            match units::parse_unit_state(&config) {
+            match units::parse_unit_state(&config, &sdc).await {
                 Ok(units_stats) => monitord_stats.units = units_stats,
                 Err(err) => error!("units stats failed: {:?}", err),
             }
