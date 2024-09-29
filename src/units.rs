@@ -4,12 +4,9 @@
 //! queued jobs. We also house service specific statistics and system unit states.
 
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::str::FromStr;
-use std::time::Duration;
 
 use anyhow::Result;
-use dbus::blocking::Connection;
 use int_enum::IntEnum;
 use serde_repr::*;
 use struct_field_names_as_array::FieldNamesAsArray;
@@ -17,6 +14,8 @@ use strum_macros::EnumIter;
 use strum_macros::EnumString;
 use tracing::debug;
 use tracing::error;
+use zbus::zvariant::ObjectPath;
+use zbus::zvariant::OwnedObjectPath;
 
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
@@ -144,13 +143,23 @@ pub const UNIT_FIELD_NAMES: &[&str] = &SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_STATES_FIELD_NAMES: &[&str] = &UnitStates::FIELD_NAMES_AS_ARRAY;
 
 /// Pull out selected systemd service statistics
-fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats, dbus::Error> {
+async fn parse_service(
+    connection: &zbus::Connection,
+    name: &str,
+    path: &str,
+) -> Result<ServiceStats, zbus::Error> {
     debug!("Parsing service {} stats", name);
-    let p = c.with_proxy("org.freedesktop.systemd1", path, Duration::new(2, 0));
-    use crate::dbus::units::OrgFreedesktopSystemd1Service;
-    use crate::dbus::units::OrgFreedesktopSystemd1Unit;
 
-    let processes = match p.get_processes()?.len().try_into() {
+    let sp = crate::dbus::zbus_service::ServiceProxy::builder(connection)
+        .path(ObjectPath::try_from(path)?)?
+        .build()
+        .await?;
+    let up = crate::dbus::zbus_unit::UnitProxy::builder(connection)
+        .path(ObjectPath::try_from(path)?)?
+        .build()
+        .await?;
+
+    let processes = match sp.get_processes().await?.len().try_into() {
         Ok(procs) => procs,
         Err(err) => {
             error!(
@@ -162,22 +171,22 @@ fn parse_service(c: &Connection, name: &str, path: &str) -> Result<ServiceStats,
     };
 
     Ok(ServiceStats {
-        active_enter_timestamp: p.active_enter_timestamp()?,
-        active_exit_timestamp: p.active_exit_timestamp()?,
-        cpuusage_nsec: p.cpuusage_nsec()?,
-        inactive_exit_timestamp: p.inactive_exit_timestamp()?,
-        ioread_bytes: p.ioread_bytes()?,
-        ioread_operations: p.ioread_operations()?,
-        memory_current: p.memory_current()?,
-        memory_available: p.memory_available()?,
-        nrestarts: p.nrestarts()?,
+        active_enter_timestamp: up.active_enter_timestamp().await?,
+        active_exit_timestamp: up.active_exit_timestamp().await?,
+        cpuusage_nsec: sp.cpuusage_nsec().await?,
+        inactive_exit_timestamp: up.inactive_exit_timestamp().await?,
+        ioread_bytes: sp.ioread_bytes().await?,
+        ioread_operations: sp.ioread_operations().await?,
+        memory_current: sp.memory_current().await?,
+        memory_available: sp.memory_available().await?,
+        nrestarts: sp.nrestarts().await?,
         processes,
-        restart_usec: p.restart_usec()?,
-        state_change_timestamp: p.state_change_timestamp()?,
-        status_errno: p.status_errno()?,
-        tasks_current: p.tasks_current()?,
-        timeout_clean_usec: p.timeout_clean_usec()?,
-        watchdog_usec: p.watchdog_usec()?,
+        restart_usec: sp.restart_usec().await?,
+        state_change_timestamp: up.state_change_timestamp().await?,
+        status_errno: sp.status_errno().await?,
+        tasks_current: sp.tasks_current().await?,
+        timeout_clean_usec: sp.timeout_clean_usec().await?,
+        watchdog_usec: sp.watchdog_usec().await?,
     })
 }
 
@@ -209,10 +218,10 @@ pub fn parse_state(
         String, // active state
         String,
         String,
-        dbus::Path<'static>,
+        OwnedObjectPath,
         u32,
         String,
-        dbus::Path<'static>,
+        OwnedObjectPath,
     ),
     allowlist: &[String],
     blocklist: &[String],
@@ -248,16 +257,16 @@ pub fn parse_state(
 fn parse_unit(
     stats: &mut SystemdUnitStats,
     unit: (
-        String,              // The primary unit name as string
-        String,              // The human readable description string
-        String, // The load state (i.e. whether the unit file has been loaded successfully)
-        String, // The active state (i.e. whether the unit is currently started or not)
-        String, // The sub state (i.e. unit type more specific state)
+        String,          // The primary unit name as string
+        String,          // The human readable description string
+        String,          // The load state (i.e. whether the unit file has been loaded successfully)
+        String,          // The active state (i.e. whether the unit is currently started or not)
+        String,          // The sub state (i.e. unit type more specific state)
         String, // A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
-        dbus::Path<'static>, // The unit object path
+        OwnedObjectPath, // The unit object path
         u32,    // If there is a job queued for the job unit, the numeric job id, 0 otherwise
         String, // The job type as string
-        dbus::Path<'static>, // The job object path
+        OwnedObjectPath, // The job object path
     ),
 ) {
     // Count unit type
@@ -295,8 +304,9 @@ fn parse_unit(
 }
 
 /// Pull all units from dbus and count how system is setup and behaving
-pub fn parse_unit_state(
+pub async fn parse_unit_state(
     config: &crate::config::Config,
+    connection: &zbus::Connection,
 ) -> Result<SystemdUnitStats, Box<dyn std::error::Error + Send + Sync>> {
     if !config.units.state_stats_allowlist.is_empty() {
         debug!(
@@ -311,16 +321,9 @@ pub fn parse_unit_state(
         );
     }
 
-    std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
     let mut stats = SystemdUnitStats::default();
-    let c = Connection::new_system()?;
-    let p = c.with_proxy(
-        "org.freedesktop.systemd1",
-        "/org/freedesktop/systemd1",
-        Duration::new(5, 0),
-    );
-    use crate::dbus::systemd::OrgFreedesktopSystemd1Manager;
-    let units = p.list_units()?;
+    let p = crate::dbus::zbus_systemd::ManagerProxy::new(connection).await?;
+    let units = p.list_units().await?;
     stats.total_units = units.len() as u64;
     for unit in units {
         // Collect unit types + states counts
@@ -340,7 +343,7 @@ pub fn parse_unit_state(
         // Collect service stats
         if config.services.contains(&unit.0) {
             debug!("Collecting service stats for {:?}", &unit);
-            match parse_service(&c, &unit.0, &unit.6) {
+            match parse_service(connection, &unit.0, &unit.6).await {
                 Ok(service_stats) => {
                     stats.service_stats.insert(unit.0.clone(), service_stats);
                 }
@@ -367,10 +370,10 @@ mod tests {
         String, // active state
         String,
         String,
-        dbus::Path<'static>,
+        OwnedObjectPath,
         u32,
         String,
-        dbus::Path<'static>,
+        OwnedObjectPath,
     ) {
         (
             String::from("apport-autoreport.timer"),
@@ -379,11 +382,12 @@ mod tests {
             String::from("inactive"),
             String::from("dead"),
             String::from(""),
-            dbus::Path::new("/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer\0")
-                .unwrap(),
+            ObjectPath::try_from("/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer")
+                .unwrap()
+                .into(),
             0 as u32,
             String::from(""),
-            dbus::Path::new("/\0").unwrap(),
+            ObjectPath::try_from("/").unwrap().into(),
         )
     }
 

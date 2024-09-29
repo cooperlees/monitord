@@ -7,10 +7,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::time::Duration;
 
 use anyhow::Result;
-use dbus::blocking::Connection;
 use int_enum::IntEnum;
 use serde_repr::*;
 use strum_macros::EnumIter;
@@ -197,18 +195,11 @@ pub struct InterfaceState {
 }
 
 /// Get interface id + name from dbus list_links API
-fn get_interface_links(
-    dbus_address: &str,
+async fn get_interface_links(
+    connection: &zbus::Connection,
 ) -> Result<HashMap<i32, String>, Box<dyn std::error::Error + Send + Sync>> {
-    std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
-    let c = Connection::new_system()?;
-    let p = c.with_proxy(
-        "org.freedesktop.network1",
-        "/org/freedesktop/network1",
-        Duration::new(5, 0),
-    );
-    use crate::dbus::networkd::OrgFreedesktopNetwork1Manager;
-    let links = p.list_links()?;
+    let p = crate::dbus::zbus_networkd::ManagerProxy::new(connection).await?;
+    let links = p.list_links().await?;
     let mut link_int_to_name: HashMap<i32, String> = HashMap::new();
     for network_link in links {
         link_int_to_name.insert(network_link.0, network_link.1);
@@ -298,16 +289,16 @@ pub fn parse_interface_stats(
 }
 
 /// Parse interface state files in directory supplied
-pub fn parse_interface_state_files(
+pub async fn parse_interface_state_files(
     states_path: &PathBuf,
     maybe_network_int_to_name: Option<HashMap<i32, String>>,
-    dbus_address: &str,
+    connection: &zbus::Connection,
 ) -> Result<NetworkdState, std::io::Error> {
     let mut managed_interface_count: u64 = 0;
     let mut interfaces_state = vec![];
 
     let network_int_to_name = match maybe_network_int_to_name {
-        None => match get_interface_links(dbus_address) {
+        None => match get_interface_links(connection).await {
             Ok(hashmap) => hashmap,
             Err(err) => {
                 error!(
@@ -427,8 +418,8 @@ MDNS=no
         assert_eq!(expected_interface_state_json.to_string(), stats_json);
     }
 
-    #[test]
-    fn test_parse_interface_state_files() -> Result<()> {
+    #[tokio::test]
+    async fn test_parse_interface_state_files() -> Result<()> {
         let expected_files = NetworkdState {
             interfaces_state: vec![return_expected_interface_state()],
             managed_interfaces: 1,
@@ -446,15 +437,18 @@ MDNS=no
             parse_interface_state_files(
                 &path,
                 return_mock_int_name_hashmap(),
-                crate::DEFAULT_DBUS_ADDRESS
+                &zbus::Connection::system()
+                    .await
+                    .expect("Unable to get dbus connection via dbus"),
             )
-            .unwrap()
+            .await
+            .expect("Problem with parsing interface stte files")
         );
         Ok(())
     }
 
-    #[test]
-    fn test_parse_interface_state_files_json() -> Result<()> {
+    #[tokio::test]
+    async fn test_parse_interface_state_files_json() -> Result<()> {
         let expected_interface_state_json = r###"{"interfaces_state":[{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"eth69","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###;
 
         let temp_dir = tempdir()?;
@@ -467,8 +461,11 @@ MDNS=no
         let interface_stats = parse_interface_state_files(
             &path,
             return_mock_int_name_hashmap(),
-            crate::DEFAULT_DBUS_ADDRESS,
+            &zbus::Connection::system()
+                .await
+                .expect("Unable to get dbus connection via dbus"),
         )
+        .await
         .unwrap();
         let interface_stats_json = serde_json::to_string(&interface_stats).unwrap();
         assert_eq!(

@@ -5,10 +5,8 @@
 
 use std::convert::TryInto;
 use std::fmt;
-use std::time::Duration;
 
 use anyhow::Context;
-use dbus::blocking::Connection;
 use int_enum::IntEnum;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
@@ -21,8 +19,8 @@ use tracing::error;
 pub enum MonitordSystemError {
     #[error("monitord::system failed: {0:#}")]
     GenericError(#[from] anyhow::Error),
-    #[error("Unable to connect to DBUS: {0:#}")]
-    DbusError(#[from] dbus::Error),
+    #[error("Unable to connect to DBUS via zbus: {0:#}")]
+    ZbusError(#[from] zbus::Error),
 }
 
 #[allow(non_camel_case_types)]
@@ -109,16 +107,14 @@ impl TryFrom<String> for SystemdVersion {
     }
 }
 
-pub fn get_system_state(dbus_address: &str) -> Result<SystemdSystemState, MonitordSystemError> {
-    std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
-    let c = Connection::new_system()?;
-    let p = c.with_proxy(
-        "org.freedesktop.systemd1",
-        "/org/freedesktop/systemd1",
-        Duration::new(5, 0),
-    );
-    use crate::dbus::systemd::OrgFreedesktopSystemd1Manager;
-    let state = match p.system_state() {
+pub async fn get_system_state(
+    connection: &zbus::Connection,
+) -> Result<SystemdSystemState, MonitordSystemError> {
+    let p = crate::dbus::zbus_systemd::ManagerProxy::new(connection)
+        .await
+        .map_err(MonitordSystemError::ZbusError)?;
+
+    let state = match p.system_state().await {
         Ok(system_state) => match system_state.as_str() {
             "initializing" => crate::system::SystemdSystemState::initializing,
             "starting" => crate::system::SystemdSystemState::starting,
@@ -137,17 +133,15 @@ pub fn get_system_state(dbus_address: &str) -> Result<SystemdSystemState, Monito
     Ok(state)
 }
 
-pub fn get_version(dbus_address: &str) -> Result<SystemdVersion, MonitordSystemError> {
-    std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", dbus_address);
-    let c = Connection::new_system()?;
-    let p = c.with_proxy(
-        "org.freedesktop.systemd1",
-        "/org/freedesktop/systemd1",
-        Duration::new(5, 0),
-    );
-    use crate::dbus::systemd::OrgFreedesktopSystemd1Manager;
+pub async fn get_version(
+    connection: &zbus::Connection,
+) -> Result<SystemdVersion, MonitordSystemError> {
+    let p = crate::dbus::zbus_systemd::ManagerProxy::new(connection)
+        .await
+        .map_err(MonitordSystemError::ZbusError)?;
     let version_string = p
         .version()
+        .await
         .with_context(|| "Unable to get systemd version string".to_string())?;
     version_string.try_into()
 }

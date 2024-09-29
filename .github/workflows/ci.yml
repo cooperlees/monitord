@@ -23,11 +23,6 @@ jobs:
           command: fmt
           args: --check
 
-      - name: Installing libdbus
-        run: |
-          sudo apt update
-          sudo apt install libdbus-1-dev pkg-config
-
       - name: Cargo test
         uses: actions-rs/cargo@v1
         with:
