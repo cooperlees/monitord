@@ -4,7 +4,13 @@
 //! process pid1. These metrics can help ensure newer systemds don't regress
 //! or show stange behavior. E.g. more file descriptors without more units.
 
+use std::sync::Arc;
+
 use procfs::process::Process;
+use tokio::sync::RwLock;
+use tracing::error;
+
+use crate::MonitordStats;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct Pid1Stats {
@@ -37,6 +43,27 @@ pub fn get_pid1_stats() -> anyhow::Result<Pid1Stats> {
             .len()
             .try_into()?,
     })
+}
+
+/// Async wrapper than can update PID1 stats when passed a locked struct
+pub async fn update_pid1_stats(
+    locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+) -> anyhow::Result<()> {
+    let pid1_stats = match tokio::task::spawn_blocking(get_pid1_stats).await {
+        Ok(p1s) => p1s,
+        Err(err) => return Err(err.into()),
+    };
+    {
+        let mut monitord_stats = locked_monitord_stats.write().await;
+        monitord_stats.pid1 = match pid1_stats {
+            Ok(s) => Some(s),
+            Err(err) => {
+                error!("Unable to set pid1 stats: {:?}", err);
+                None
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

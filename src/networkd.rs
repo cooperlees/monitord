@@ -7,13 +7,17 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::Result;
 use int_enum::IntEnum;
 use serde_repr::*;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
+use tokio::sync::RwLock;
 use tracing::error;
+
+use crate::MonitordStats;
 
 /// Enumeration of networkd address states
 #[allow(non_camel_case_types)]
@@ -311,6 +315,7 @@ pub async fn parse_interface_state_files(
         Some(valid_hashmap) => valid_hashmap,
     };
 
+    // TODO: Make file IO async friendly
     for state_file_dir in fs::read_dir(states_path)? {
         let state_file = match state_file_dir {
             Ok(sf) => sf,
@@ -343,6 +348,23 @@ pub async fn parse_interface_state_files(
         interfaces_state,
         managed_interfaces: managed_interface_count,
     })
+}
+
+/// Async wrapper than can update networkd stats when passed a locked struct
+pub async fn update_networkd_stats(
+    states_path: PathBuf,
+    maybe_network_int_to_name: Option<HashMap<i32, String>>,
+    connection: zbus::Connection,
+    locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+) -> anyhow::Result<()> {
+    match parse_interface_state_files(&states_path, maybe_network_int_to_name, &connection).await {
+        Ok(networkd_stats) => {
+            let mut monitord_stats = locked_monitord_stats.write().await;
+            monitord_stats.networkd = networkd_stats;
+        }
+        Err(err) => error!("networkd stats failed: {:?}", err),
+    }
+    Ok(())
 }
 
 #[cfg(test)]
