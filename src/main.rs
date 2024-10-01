@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
 use clap::Parser;
 use configparser::ini::Ini;
 use tracing::debug;
@@ -22,7 +21,7 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), String> {
+async fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
     monitord::logging::setup_logging(args.log_level.into());
 
@@ -30,7 +29,9 @@ async fn main() -> Result<(), String> {
     debug!("CLI Args: {:?}", args);
     debug!("Loading {:?} config", args.config.as_os_str());
     let mut config = Ini::new();
-    let _config_map = config.load(args.config)?;
+    let _config_map = config
+        .load(args.config)
+        .map_err(|e| anyhow::anyhow!("Config error: {:?}", e))?;
 
     monitord::stat_collector(config.into()).await
 }

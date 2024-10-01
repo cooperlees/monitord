@@ -5,7 +5,9 @@
 
 use std::convert::TryInto;
 use std::fmt;
+use std::sync::Arc;
 
+use anyhow::anyhow;
 use anyhow::Context;
 use int_enum::IntEnum;
 use serde_repr::Deserialize_repr;
@@ -13,7 +15,10 @@ use serde_repr::Serialize_repr;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
 use thiserror::Error;
+use tokio::sync::RwLock;
 use tracing::error;
+
+use crate::MonitordStats;
 
 #[derive(Error, Debug)]
 pub enum MonitordSystemError {
@@ -133,6 +138,18 @@ pub async fn get_system_state(
     Ok(state)
 }
 
+/// Async wrapper than can update system stats when passed a locked struct
+pub async fn update_system_stats(
+    connection: zbus::Connection,
+    locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+) -> anyhow::Result<()> {
+    let mut monitord_stats = locked_monitord_stats.write().await;
+    monitord_stats.system_state = crate::system::get_system_state(&connection)
+        .await
+        .map_err(|e| anyhow!("Error getting system state: {:?}", e))?;
+    Ok(())
+}
+
 pub async fn get_version(
     connection: &zbus::Connection,
 ) -> Result<SystemdVersion, MonitordSystemError> {
@@ -144,6 +161,18 @@ pub async fn get_version(
         .await
         .with_context(|| "Unable to get systemd version string".to_string())?;
     version_string.try_into()
+}
+
+/// Async wrapper than can update system stats when passed a locked struct
+pub async fn update_version(
+    connection: zbus::Connection,
+    locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+) -> anyhow::Result<()> {
+    let mut monitord_stats = locked_monitord_stats.write().await;
+    monitord_stats.version = crate::system::get_version(&connection)
+        .await
+        .map_err(|e| anyhow!("Error getting systemd version: {:?}", e))?;
+    Ok(())
 }
 
 #[cfg(test)]

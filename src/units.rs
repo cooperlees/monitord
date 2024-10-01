@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::Result;
 use int_enum::IntEnum;
@@ -12,10 +13,13 @@ use serde_repr::*;
 use struct_field_names_as_array::FieldNamesAsArray;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
+use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::error;
 use zbus::zvariant::ObjectPath;
 use zbus::zvariant::OwnedObjectPath;
+
+use crate::MonitordStats;
 
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
@@ -356,6 +360,20 @@ pub async fn parse_unit_state(
     }
     debug!("unit stats: {:?}", stats);
     Ok(stats)
+}
+
+/// Async wrapper than can update uni stats when passed a locked struct
+pub async fn update_unit_stats(
+    config: crate::config::Config,
+    connection: zbus::Connection,
+    locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+) -> anyhow::Result<()> {
+    let mut monitord_stats = locked_monitord_stats.write().await;
+    match parse_unit_state(&config, &connection).await {
+        Ok(units_stats) => monitord_stats.units = units_stats,
+        Err(err) => error!("units stats failed: {:?}", err),
+    }
+    Ok(())
 }
 
 #[cfg(test)]
