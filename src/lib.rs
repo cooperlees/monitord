@@ -64,10 +64,7 @@ pub async fn stat_collector(config: config::Config) -> anyhow::Result<()> {
     let locked_monitord_stats: Arc<RwLock<MonitordStats>> =
         Arc::new(RwLock::new(MonitordStats::default()));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
-    let sdc = match zbus::Connection::system().await {
-        Ok(sdc) => sdc,
-        Err(e) => return Err(e.into()),
-    };
+    let sdc = zbus::Connection::system().await?;
     let mut join_set = tokio::task::JoinSet::new();
     loop {
         let collect_start_time = Instant::now();
