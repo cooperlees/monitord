@@ -4,7 +4,6 @@
 //! Enumerations were copied from <https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h>
 
 use std::collections::HashMap;
-use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -315,20 +314,12 @@ pub async fn parse_interface_state_files(
         Some(valid_hashmap) => valid_hashmap,
     };
 
-    // TODO: Make file IO async friendly
-    for state_file_dir in fs::read_dir(states_path)? {
-        let state_file = match state_file_dir {
-            Ok(sf) => sf,
-            Err(err) => {
-                error!("Unable to read dir {:?}: {}", states_path.as_os_str(), err);
-                break;
-            }
-        };
+    let mut state_file_dir_entries = tokio::fs::read_dir(states_path).await?;
+    while let Some(state_file) = state_file_dir_entries.next_entry().await? {
         if !state_file.path().is_file() {
             continue;
         }
-        let interface_stats_file_str =
-            fs::read_to_string(state_file.path()).expect("Unable to read networkd state file");
+        let interface_stats_file_str = tokio::fs::read_to_string(state_file.path()).await?;
         if !interface_stats_file_str.contains("NETWORK_FILE") {
             continue;
         }
@@ -488,7 +479,7 @@ MDNS=no
                 .expect("Unable to get dbus connection via dbus"),
         )
         .await
-        .unwrap();
+        .expect("Unable to parse interface state files");
         let interface_stats_json = serde_json::to_string(&interface_stats).unwrap();
         assert_eq!(
             expected_interface_state_json.to_string(),
