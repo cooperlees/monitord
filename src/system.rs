@@ -85,7 +85,12 @@ impl TryFrom<String> for SystemdVersion {
     type Error = MonitordSystemError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        let mut parts = s.split('.');
+        let no_v_version = if let Some(stripped_v) = s.strip_prefix('v') {
+            stripped_v.to_string()
+        } else {
+            s.clone()
+        };
+        let mut parts = no_v_version.split('.');
         let split_count = parts.clone().count();
         let major = parts
             .next()
@@ -203,10 +208,16 @@ mod tests {
             parsed
         );
 
-        // #bigCompany string
-        let parsed: SystemdVersion = "969.6-9.9.hs+fb.el9".to_string().try_into()?;
+        // #bigCompany strings
+        let parsed: SystemdVersion = String::from("969.6-9.9.hs+fb.el9").try_into()?;
         assert_eq!(
             SystemdVersion::new(969, String::from("6-9"), Some(9), String::from("hs+fb.el9")),
+            parsed
+        );
+
+        let parsed: SystemdVersion = String::from("v299.6-9.9.hs+fb.el9").try_into()?;
+        assert_eq!(
+            SystemdVersion::new(299, String::from("6-9"), Some(9), String::from("hs+fb.el9")),
             parsed
         );
 
