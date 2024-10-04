@@ -139,17 +139,35 @@
 <a href="#139" id="139">139</a>
 <a href="#140" id="140">140</a>
 <a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a>
+<a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a>
+<a href="#147" id="147">147</a>
+<a href="#148" id="148">148</a>
+<a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
+<a href="#152" id="152">152</a>
+<a href="#153" id="153">153</a>
+<a href="#154" id="154">154</a>
+<a href="#155" id="155">155</a>
+<a href="#156" id="156">156</a>
+<a href="#157" id="157">157</a>
+<a href="#158" id="158">158</a>
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # monitord Crate
 //!
 //! `monitord` is a library to gather statistics about systemd.
-//! Some APIs are a little ugly due to being a configparser INI based configuration
-//! driven CLL at heart.
 
-</span><span class="kw">use </span>std::thread;
+</span><span class="kw">use </span>std::sync::Arc;
+<span class="kw">use </span>std::thread;
 <span class="kw">use </span>std::time::Duration;
 <span class="kw">use </span>std::time::Instant;
 
-<span class="kw">use </span>anyhow::Result;
+<span class="kw">use </span>tokio::sync::RwLock;
 <span class="kw">use </span>tracing::error;
 <span class="kw">use </span>tracing::info;
 
@@ -197,76 +215,96 @@
 }
 
 <span class="doccomment">/// Main statictic collection function running what's required by configuration
-</span><span class="kw">pub fn </span>stat_collector(config: config::Config) -&gt; <span class="prelude-ty">Result</span>&lt;(), String&gt; {
+</span><span class="kw">pub async fn </span>stat_collector(config: config::Config, output_stats: bool) -&gt; anyhow::Result&lt;()&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>collect_interval_ms: u128 = <span class="number">0</span>;
     <span class="kw">if </span>config.monitord.daemon {
         collect_interval_ms = (config.monitord.daemon_stats_refresh_secs * <span class="number">1000</span>).into();
     }
 
-    <span class="kw">let </span><span class="kw-2">mut </span>monitord_stats = MonitordStats::default();
+    <span class="kw">let </span>locked_monitord_stats: Arc&lt;RwLock&lt;MonitordStats&gt;&gt; =
+        Arc::new(RwLock::new(MonitordStats::default()));
+    std::env::set_var(<span class="string">"DBUS_SYSTEM_BUS_ADDRESS"</span>, <span class="kw-2">&amp;</span>config.monitord.dbus_address);
+    <span class="kw">let </span>sdc = zbus::Connection::system().<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">let </span><span class="kw-2">mut </span>join_set = tokio::task::JoinSet::new();
     <span class="kw">loop </span>{
         <span class="kw">let </span>collect_start_time = Instant::now();
         <span class="kw">let </span><span class="kw-2">mut </span>ran_collector_count: u8 = <span class="number">0</span>;
 
         <span class="macro">info!</span>(<span class="string">"Starting stat collection run"</span>);
 
-        <span class="comment">// Collect pid1 procfs stas
+        <span class="comment">// Collect pid1 procfs stats
         </span><span class="kw">if </span>config.pid1.enabled {
-            monitord_stats.pid1 = <span class="kw">match </span><span class="kw">crate</span>::pid1::get_pid1_stats() {
-                <span class="prelude-val">Ok</span>(s) =&gt; <span class="prelude-val">Some</span>(s),
-                <span class="prelude-val">Err</span>(err) =&gt; {
-                    <span class="macro">error!</span>(<span class="string">"Unable to set pid1 stats: {:?}"</span>, err);
-                    <span class="prelude-val">None
-                </span>}
-            }
+            ran_collector_count += <span class="number">1</span>;
+            join_set.spawn(<span class="kw">crate</span>::pid1::update_pid1_stats(
+                locked_monitord_stats.clone(),
+            ));
         }
 
-        <span class="comment">// TODO: Move each collector into a function + thread
-        // Run networkd collector if enabled
+        <span class="comment">// Run networkd collector if enabled
         </span><span class="kw">if </span>config.networkd.enabled {
             ran_collector_count += <span class="number">1</span>;
-            <span class="kw">match </span>networkd::parse_interface_state_files(
-                <span class="kw-2">&amp;</span>config.networkd.link_state_dir,
+            join_set.spawn(<span class="kw">crate</span>::networkd::update_networkd_stats(
+                config.networkd.link_state_dir.clone(),
                 <span class="prelude-val">None</span>,
-                <span class="kw-2">&amp;</span>config.monitord.dbus_address,
-            ) {
-                <span class="prelude-val">Ok</span>(networkd_stats) =&gt; monitord_stats.networkd = networkd_stats,
-                <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(<span class="string">"networkd stats failed: {:?}"</span>, err),
-            }
+                sdc.clone(),
+                locked_monitord_stats.clone(),
+            ));
         }
 
         <span class="comment">// Run system running (SystemState) state collector
         </span><span class="kw">if </span>config.system_state.enabled {
             ran_collector_count += <span class="number">1</span>;
-            monitord_stats.system_state =
-                <span class="kw">crate</span>::system::get_system_state(<span class="kw-2">&amp;</span>config.monitord.dbus_address)
-                    .map_err(|e| <span class="macro">format!</span>(<span class="string">"Error getting system state: {:?}"</span>, e))<span class="question-mark">?</span>;
+            join_set.spawn(<span class="kw">crate</span>::system::update_system_stats(
+                sdc.clone(),
+                locked_monitord_stats.clone(),
+            ));
         }
         <span class="comment">// Not incrementing the ran_collector_count on purpose as this is always on by default
-        </span>monitord_stats.version = <span class="kw">crate</span>::system::get_version(<span class="kw-2">&amp;</span>config.monitord.dbus_address)
-            .map_err(|e| <span class="macro">format!</span>(<span class="string">"Error getting systemd versions: {:?}"</span>, e))<span class="question-mark">?</span>;
+        </span>join_set.spawn(<span class="kw">crate</span>::system::update_version(
+            sdc.clone(),
+            locked_monitord_stats.clone(),
+        ));
 
         <span class="comment">// Run service collectors if there are services listed in config
         </span><span class="kw">if </span>config.units.enabled {
             ran_collector_count += <span class="number">1</span>;
-            <span class="kw">match </span>units::parse_unit_state(<span class="kw-2">&amp;</span>config) {
-                <span class="prelude-val">Ok</span>(units_stats) =&gt; monitord_stats.units = units_stats,
-                <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(<span class="string">"units stats failed: {:?}"</span>, err),
-            }
+            join_set.spawn(<span class="kw">crate</span>::units::update_unit_stats(
+                config.clone(),
+                sdc.clone(),
+                locked_monitord_stats.clone(),
+            ));
         }
 
         <span class="kw">if </span>ran_collector_count &lt; <span class="number">1 </span>{
-            <span class="macro">error!</span>(<span class="string">"No collectors ran. Exiting"</span>);
+            <span class="macro">error!</span>(<span class="string">"No collectors scheduled to run. Exiting"</span>);
             std::process::exit(<span class="number">1</span>);
+        }
+
+        <span class="comment">// Check all collection for errors
+        </span><span class="kw">while let </span><span class="prelude-val">Some</span>(res) = join_set.join_next().<span class="kw">await </span>{
+            <span class="kw">match </span>res {
+                <span class="prelude-val">Ok</span>(r) =&gt; <span class="kw">match </span>r {
+                    <span class="prelude-val">Ok</span>(<span class="kw">_</span>) =&gt; (),
+                    <span class="prelude-val">Err</span>(e) =&gt; {
+                        <span class="macro">error!</span>(<span class="string">"Collection specific failure: {:?}"</span>, e);
+                    }
+                },
+                <span class="prelude-val">Err</span>(e) =&gt; {
+                    <span class="macro">error!</span>(<span class="string">"Join error: {:?}"</span>, e);
+                }
+            }
         }
 
         <span class="kw">let </span>elapsed_runtime_ms = collect_start_time.elapsed().as_millis();
         <span class="macro">info!</span>(<span class="string">"stat collection run took {}ms"</span>, elapsed_runtime_ms);
-        print_stats(
-            <span class="kw-2">&amp;</span>config.monitord.key_prefix,
-            <span class="kw-2">&amp;</span>config.monitord.output_format,
-            <span class="kw-2">&amp;</span>monitord_stats,
-        );
+        <span class="kw">if </span>output_stats {
+            <span class="kw">let </span>monitord_stats = locked_monitord_stats.read().<span class="kw">await</span>;
+            print_stats(
+                <span class="kw-2">&amp;</span>config.monitord.key_prefix,
+                <span class="kw-2">&amp;</span>config.monitord.output_format,
+                <span class="kw-2">&amp;</span>monitord_stats,
+            );
+        }
         <span class="kw">if </span>!config.monitord.daemon {
             <span class="kw">break</span>;
         }

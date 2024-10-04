@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["MonitordSystemError","SystemdSystemState"],"fn":["get_system_state","get_version"],"struct":["SystemdSystemStateIter","SystemdVersion"]};
+window.SIDEBAR_ITEMS = {"enum":["MonitordSystemError","SystemdSystemState"],"fn":["get_system_state","get_version","update_system_stats","update_version"],"struct":["SystemdSystemStateIter","SystemdVersion"]};

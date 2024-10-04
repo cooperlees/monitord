@@ -512,25 +512,50 @@
 <a href="#512" id="512">512</a>
 <a href="#513" id="513">513</a>
 <a href="#514" id="514">514</a>
+<a href="#515" id="515">515</a>
+<a href="#516" id="516">516</a>
+<a href="#517" id="517">517</a>
+<a href="#518" id="518">518</a>
+<a href="#519" id="519">519</a>
+<a href="#520" id="520">520</a>
+<a href="#521" id="521">521</a>
+<a href="#522" id="522">522</a>
+<a href="#523" id="523">523</a>
+<a href="#524" id="524">524</a>
+<a href="#525" id="525">525</a>
+<a href="#526" id="526">526</a>
+<a href="#527" id="527">527</a>
+<a href="#528" id="528">528</a>
+<a href="#529" id="529">529</a>
+<a href="#530" id="530">530</a>
+<a href="#531" id="531">531</a>
+<a href="#532" id="532">532</a>
+<a href="#533" id="533">533</a>
+<a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # units module
 //!
 //! All main systemd unit statistics. Counts of types of units, unit states and
 //! queued jobs. We also house service specific statistics and system unit states.
 
 </span><span class="kw">use </span>std::collections::HashMap;
-<span class="kw">use </span>std::convert::TryInto;
 <span class="kw">use </span>std::str::FromStr;
-<span class="kw">use </span>std::time::Duration;
+<span class="kw">use </span>std::sync::Arc;
 
 <span class="kw">use </span>anyhow::Result;
-<span class="kw">use </span>dbus::blocking::Connection;
 <span class="kw">use </span>int_enum::IntEnum;
 <span class="kw">use </span>serde_repr::<span class="kw-2">*</span>;
 <span class="kw">use </span>struct_field_names_as_array::FieldNamesAsArray;
 <span class="kw">use </span>strum_macros::EnumIter;
 <span class="kw">use </span>strum_macros::EnumString;
+<span class="kw">use </span>tokio::sync::RwLock;
 <span class="kw">use </span>tracing::debug;
 <span class="kw">use </span>tracing::error;
+<span class="kw">use </span>zbus::zvariant::ObjectPath;
+<span class="kw">use </span>zbus::zvariant::OwnedObjectPath;
+
+<span class="kw">use </span><span class="kw">crate</span>::MonitordStats;
 
 <span class="attr">#[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
@@ -658,13 +683,23 @@
 <span class="kw">pub const </span>UNIT_STATES_FIELD_NAMES: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = <span class="kw-2">&amp;</span>UnitStates::FIELD_NAMES_AS_ARRAY;
 
 <span class="doccomment">/// Pull out selected systemd service statistics
-</span><span class="kw">fn </span>parse_service(c: <span class="kw-2">&amp;</span>Connection, name: <span class="kw-2">&amp;</span>str, path: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;ServiceStats, dbus::Error&gt; {
+</span><span class="kw">async fn </span>parse_service(
+    connection: <span class="kw-2">&amp;</span>zbus::Connection,
+    name: <span class="kw-2">&amp;</span>str,
+    path: <span class="kw-2">&amp;</span>str,
+) -&gt; <span class="prelude-ty">Result</span>&lt;ServiceStats, zbus::Error&gt; {
     <span class="macro">debug!</span>(<span class="string">"Parsing service {} stats"</span>, name);
-    <span class="kw">let </span>p = c.with_proxy(<span class="string">"org.freedesktop.systemd1"</span>, path, Duration::new(<span class="number">2</span>, <span class="number">0</span>));
-    <span class="kw">use </span><span class="kw">crate</span>::dbus::units::OrgFreedesktopSystemd1Service;
-    <span class="kw">use </span><span class="kw">crate</span>::dbus::units::OrgFreedesktopSystemd1Unit;
 
-    <span class="kw">let </span>processes = <span class="kw">match </span>p.get_processes()<span class="question-mark">?</span>.len().try_into() {
+    <span class="kw">let </span>sp = <span class="kw">crate</span>::dbus::zbus_service::ServiceProxy::builder(connection)
+        .path(ObjectPath::try_from(path)<span class="question-mark">?</span>)<span class="question-mark">?
+        </span>.build()
+        .<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">let </span>up = <span class="kw">crate</span>::dbus::zbus_unit::UnitProxy::builder(connection)
+        .path(ObjectPath::try_from(path)<span class="question-mark">?</span>)<span class="question-mark">?
+        </span>.build()
+        .<span class="kw">await</span><span class="question-mark">?</span>;
+
+    <span class="kw">let </span>processes = <span class="kw">match </span>sp.get_processes().<span class="kw">await</span><span class="question-mark">?</span>.len().try_into() {
         <span class="prelude-val">Ok</span>(procs) =&gt; procs,
         <span class="prelude-val">Err</span>(err) =&gt; {
             <span class="macro">error!</span>(
@@ -676,22 +711,22 @@
     };
 
     <span class="prelude-val">Ok</span>(ServiceStats {
-        active_enter_timestamp: p.active_enter_timestamp()<span class="question-mark">?</span>,
-        active_exit_timestamp: p.active_exit_timestamp()<span class="question-mark">?</span>,
-        cpuusage_nsec: p.cpuusage_nsec()<span class="question-mark">?</span>,
-        inactive_exit_timestamp: p.inactive_exit_timestamp()<span class="question-mark">?</span>,
-        ioread_bytes: p.ioread_bytes()<span class="question-mark">?</span>,
-        ioread_operations: p.ioread_operations()<span class="question-mark">?</span>,
-        memory_current: p.memory_current()<span class="question-mark">?</span>,
-        memory_available: p.memory_available()<span class="question-mark">?</span>,
-        nrestarts: p.nrestarts()<span class="question-mark">?</span>,
+        active_enter_timestamp: up.active_enter_timestamp().<span class="kw">await</span><span class="question-mark">?</span>,
+        active_exit_timestamp: up.active_exit_timestamp().<span class="kw">await</span><span class="question-mark">?</span>,
+        cpuusage_nsec: sp.cpuusage_nsec().<span class="kw">await</span><span class="question-mark">?</span>,
+        inactive_exit_timestamp: up.inactive_exit_timestamp().<span class="kw">await</span><span class="question-mark">?</span>,
+        ioread_bytes: sp.ioread_bytes().<span class="kw">await</span><span class="question-mark">?</span>,
+        ioread_operations: sp.ioread_operations().<span class="kw">await</span><span class="question-mark">?</span>,
+        memory_current: sp.memory_current().<span class="kw">await</span><span class="question-mark">?</span>,
+        memory_available: sp.memory_available().<span class="kw">await</span><span class="question-mark">?</span>,
+        nrestarts: sp.nrestarts().<span class="kw">await</span><span class="question-mark">?</span>,
         processes,
-        restart_usec: p.restart_usec()<span class="question-mark">?</span>,
-        state_change_timestamp: p.state_change_timestamp()<span class="question-mark">?</span>,
-        status_errno: p.status_errno()<span class="question-mark">?</span>,
-        tasks_current: p.tasks_current()<span class="question-mark">?</span>,
-        timeout_clean_usec: p.timeout_clean_usec()<span class="question-mark">?</span>,
-        watchdog_usec: p.watchdog_usec()<span class="question-mark">?</span>,
+        restart_usec: sp.restart_usec().<span class="kw">await</span><span class="question-mark">?</span>,
+        state_change_timestamp: up.state_change_timestamp().<span class="kw">await</span><span class="question-mark">?</span>,
+        status_errno: sp.status_errno().<span class="kw">await</span><span class="question-mark">?</span>,
+        tasks_current: sp.tasks_current().<span class="kw">await</span><span class="question-mark">?</span>,
+        timeout_clean_usec: sp.timeout_clean_usec().<span class="kw">await</span><span class="question-mark">?</span>,
+        watchdog_usec: sp.watchdog_usec().<span class="kw">await</span><span class="question-mark">?</span>,
     })
 }
 
@@ -723,10 +758,10 @@
         </span>String, <span class="comment">// active state
         </span>String,
         String,
-        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+        OwnedObjectPath,
         u32,
         String,
-        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+        OwnedObjectPath,
     ),
     allowlist: <span class="kw-2">&amp;</span>[String],
     blocklist: <span class="kw-2">&amp;</span>[String],
@@ -762,16 +797,16 @@
 </span><span class="kw">fn </span>parse_unit(
     stats: <span class="kw-2">&amp;mut </span>SystemdUnitStats,
     unit: (
-        String,              <span class="comment">// The primary unit name as string
-        </span>String,              <span class="comment">// The human readable description string
-        </span>String, <span class="comment">// The load state (i.e. whether the unit file has been loaded successfully)
-        </span>String, <span class="comment">// The active state (i.e. whether the unit is currently started or not)
-        </span>String, <span class="comment">// The sub state (i.e. unit type more specific state)
+        String,          <span class="comment">// The primary unit name as string
+        </span>String,          <span class="comment">// The human readable description string
+        </span>String,          <span class="comment">// The load state (i.e. whether the unit file has been loaded successfully)
+        </span>String,          <span class="comment">// The active state (i.e. whether the unit is currently started or not)
+        </span>String,          <span class="comment">// The sub state (i.e. unit type more specific state)
         </span>String, <span class="comment">// A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
-        </span>dbus::Path&lt;<span class="lifetime">'static</span>&gt;, <span class="comment">// The unit object path
+        </span>OwnedObjectPath, <span class="comment">// The unit object path
         </span>u32,    <span class="comment">// If there is a job queued for the job unit, the numeric job id, 0 otherwise
         </span>String, <span class="comment">// The job type as string
-        </span>dbus::Path&lt;<span class="lifetime">'static</span>&gt;, <span class="comment">// The job object path
+        </span>OwnedObjectPath, <span class="comment">// The job object path
     </span>),
 ) {
     <span class="comment">// Count unit type
@@ -809,8 +844,9 @@
 }
 
 <span class="doccomment">/// Pull all units from dbus and count how system is setup and behaving
-</span><span class="kw">pub fn </span>parse_unit_state(
+</span><span class="kw">pub async fn </span>parse_unit_state(
     config: <span class="kw-2">&amp;</span><span class="kw">crate</span>::config::Config,
+    connection: <span class="kw-2">&amp;</span>zbus::Connection,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;SystemdUnitStats, Box&lt;<span class="kw">dyn </span>std::error::Error + Send + Sync&gt;&gt; {
     <span class="kw">if </span>!config.units.state_stats_allowlist.is_empty() {
         <span class="macro">debug!</span>(
@@ -825,16 +861,9 @@
         );
     }
 
-    std::env::set_var(<span class="string">"DBUS_SYSTEM_BUS_ADDRESS"</span>, <span class="kw-2">&amp;</span>config.monitord.dbus_address);
     <span class="kw">let </span><span class="kw-2">mut </span>stats = SystemdUnitStats::default();
-    <span class="kw">let </span>c = Connection::new_system()<span class="question-mark">?</span>;
-    <span class="kw">let </span>p = c.with_proxy(
-        <span class="string">"org.freedesktop.systemd1"</span>,
-        <span class="string">"/org/freedesktop/systemd1"</span>,
-        Duration::new(<span class="number">5</span>, <span class="number">0</span>),
-    );
-    <span class="kw">use </span><span class="kw">crate</span>::dbus::systemd::OrgFreedesktopSystemd1Manager;
-    <span class="kw">let </span>units = p.list_units()<span class="question-mark">?</span>;
+    <span class="kw">let </span>p = <span class="kw">crate</span>::dbus::zbus_systemd::ManagerProxy::new(connection).<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">let </span>units = p.list_units().<span class="kw">await</span><span class="question-mark">?</span>;
     stats.total_units = units.len() <span class="kw">as </span>u64;
     <span class="kw">for </span>unit <span class="kw">in </span>units {
         <span class="comment">// Collect unit types + states counts
@@ -854,7 +883,7 @@
         <span class="comment">// Collect service stats
         </span><span class="kw">if </span>config.services.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
             <span class="macro">debug!</span>(<span class="string">"Collecting service stats for {:?}"</span>, <span class="kw-2">&amp;</span>unit);
-            <span class="kw">match </span>parse_service(<span class="kw-2">&amp;</span>c, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>, <span class="kw-2">&amp;</span>unit.<span class="number">6</span>) {
+            <span class="kw">match </span>parse_service(connection, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>, <span class="kw-2">&amp;</span>unit.<span class="number">6</span>).<span class="kw">await </span>{
                 <span class="prelude-val">Ok</span>(service_stats) =&gt; {
                     stats.service_stats.insert(unit.<span class="number">0</span>.clone(), service_stats);
                 }
@@ -869,6 +898,20 @@
     <span class="prelude-val">Ok</span>(stats)
 }
 
+<span class="doccomment">/// Async wrapper than can update uni stats when passed a locked struct
+</span><span class="kw">pub async fn </span>update_unit_stats(
+    config: <span class="kw">crate</span>::config::Config,
+    connection: zbus::Connection,
+    locked_monitord_stats: Arc&lt;RwLock&lt;MonitordStats&gt;&gt;,
+) -&gt; anyhow::Result&lt;()&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>monitord_stats = locked_monitord_stats.write().<span class="kw">await</span>;
+    <span class="kw">match </span>parse_unit_state(<span class="kw-2">&amp;</span>config, <span class="kw-2">&amp;</span>connection).<span class="kw">await </span>{
+        <span class="prelude-val">Ok</span>(units_stats) =&gt; monitord_stats.units = units_stats,
+        <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(<span class="string">"units stats failed: {:?}"</span>, err),
+    }
+    <span class="prelude-val">Ok</span>(())
+}
+
 <span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests {
     <span class="kw">use super</span>::<span class="kw-2">*</span>;
@@ -881,10 +924,10 @@
         </span>String, <span class="comment">// active state
         </span>String,
         String,
-        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+        OwnedObjectPath,
         u32,
         String,
-        dbus::Path&lt;<span class="lifetime">'static</span>&gt;,
+        OwnedObjectPath,
     ) {
         (
             String::from(<span class="string">"apport-autoreport.timer"</span>),
@@ -893,11 +936,12 @@
             String::from(<span class="string">"inactive"</span>),
             String::from(<span class="string">"dead"</span>),
             String::from(<span class="string">""</span>),
-            dbus::Path::new(<span class="string">"/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer\0"</span>)
-                .unwrap(),
+            ObjectPath::try_from(<span class="string">"/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer"</span>)
+                .unwrap()
+                .into(),
             <span class="number">0 </span><span class="kw">as </span>u32,
             String::from(<span class="string">""</span>),
-            dbus::Path::new(<span class="string">"/\0"</span>).unwrap(),
+            ObjectPath::try_from(<span class="string">"/"</span>).unwrap().into(),
         )
     }
 

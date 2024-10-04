@@ -28,8 +28,6 @@ Install via cargo or use as a dependency in your `Cargo.toml`.
 
 ```console
 crl-linux:monitord cooper$ monitord --help
-monitord 0.8.4
-Cooper Ry Lees <me@cooperlees.com>
 monitord: Know how happy your systemd is! 😊
 
 Usage: monitord [OPTIONS]
@@ -37,12 +35,12 @@ Usage: monitord [OPTIONS]
 Options:
   -c, --config <CONFIG>
           Location of your monitord config
-
+          
           [default: /etc/monitord.conf]
 
   -l, --log-level <LOG_LEVEL>
           Adjust the console log-level
-
+          
           [default: Info]
           [possible values: error, warn, info, debug, trace]
 

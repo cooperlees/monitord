@@ -490,24 +490,35 @@
 <a href="#490" id="490">490</a>
 <a href="#491" id="491">491</a>
 <a href="#492" id="492">492</a>
+<a href="#493" id="493">493</a>
+<a href="#494" id="494">494</a>
+<a href="#495" id="495">495</a>
+<a href="#496" id="496">496</a>
+<a href="#497" id="497">497</a>
+<a href="#498" id="498">498</a>
+<a href="#499" id="499">499</a>
+<a href="#500" id="500">500</a>
+<a href="#501" id="501">501</a>
+<a href="#502" id="502">502</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # networkd module
 //!
 //! All structs, enums and methods specific to systemd-networkd.
 //! Enumerations were copied from &lt;https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h&gt;
 
 </span><span class="kw">use </span>std::collections::HashMap;
-<span class="kw">use </span>std::fs;
 <span class="kw">use </span>std::path::PathBuf;
 <span class="kw">use </span>std::str::FromStr;
-<span class="kw">use </span>std::time::Duration;
+<span class="kw">use </span>std::sync::Arc;
 
 <span class="kw">use </span>anyhow::Result;
-<span class="kw">use </span>dbus::blocking::Connection;
 <span class="kw">use </span>int_enum::IntEnum;
 <span class="kw">use </span>serde_repr::<span class="kw-2">*</span>;
 <span class="kw">use </span>strum_macros::EnumIter;
 <span class="kw">use </span>strum_macros::EnumString;
+<span class="kw">use </span>tokio::sync::RwLock;
 <span class="kw">use </span>tracing::error;
+
+<span class="kw">use </span><span class="kw">crate</span>::MonitordStats;
 
 <span class="doccomment">/// Enumeration of networkd address states
 </span><span class="attr">#[allow(non_camel_case_types)]
@@ -689,18 +700,11 @@
 }
 
 <span class="doccomment">/// Get interface id + name from dbus list_links API
-</span><span class="kw">fn </span>get_interface_links(
-    dbus_address: <span class="kw-2">&amp;</span>str,
+</span><span class="kw">async fn </span>get_interface_links(
+    connection: <span class="kw-2">&amp;</span>zbus::Connection,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;HashMap&lt;i32, String&gt;, Box&lt;<span class="kw">dyn </span>std::error::Error + Send + Sync&gt;&gt; {
-    std::env::set_var(<span class="string">"DBUS_SYSTEM_BUS_ADDRESS"</span>, dbus_address);
-    <span class="kw">let </span>c = Connection::new_system()<span class="question-mark">?</span>;
-    <span class="kw">let </span>p = c.with_proxy(
-        <span class="string">"org.freedesktop.network1"</span>,
-        <span class="string">"/org/freedesktop/network1"</span>,
-        Duration::new(<span class="number">5</span>, <span class="number">0</span>),
-    );
-    <span class="kw">use </span><span class="kw">crate</span>::dbus::networkd::OrgFreedesktopNetwork1Manager;
-    <span class="kw">let </span>links = p.list_links()<span class="question-mark">?</span>;
+    <span class="kw">let </span>p = <span class="kw">crate</span>::dbus::zbus_networkd::ManagerProxy::new(connection).<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">let </span>links = p.list_links().<span class="kw">await</span><span class="question-mark">?</span>;
     <span class="kw">let </span><span class="kw-2">mut </span>link_int_to_name: HashMap&lt;i32, String&gt; = HashMap::new();
     <span class="kw">for </span>network_link <span class="kw">in </span>links {
         link_int_to_name.insert(network_link.<span class="number">0</span>, network_link.<span class="number">1</span>);
@@ -790,16 +794,16 @@
 }
 
 <span class="doccomment">/// Parse interface state files in directory supplied
-</span><span class="kw">pub fn </span>parse_interface_state_files(
+</span><span class="kw">pub async fn </span>parse_interface_state_files(
     states_path: <span class="kw-2">&amp;</span>PathBuf,
     maybe_network_int_to_name: <span class="prelude-ty">Option</span>&lt;HashMap&lt;i32, String&gt;&gt;,
-    dbus_address: <span class="kw-2">&amp;</span>str,
+    connection: <span class="kw-2">&amp;</span>zbus::Connection,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;NetworkdState, std::io::Error&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>managed_interface_count: u64 = <span class="number">0</span>;
     <span class="kw">let </span><span class="kw-2">mut </span>interfaces_state = <span class="macro">vec!</span>[];
 
     <span class="kw">let </span>network_int_to_name = <span class="kw">match </span>maybe_network_int_to_name {
-        <span class="prelude-val">None </span>=&gt; <span class="kw">match </span>get_interface_links(dbus_address) {
+        <span class="prelude-val">None </span>=&gt; <span class="kw">match </span>get_interface_links(connection).<span class="kw">await </span>{
             <span class="prelude-val">Ok</span>(hashmap) =&gt; hashmap,
             <span class="prelude-val">Err</span>(err) =&gt; {
                 <span class="macro">error!</span>(
@@ -812,19 +816,12 @@
         <span class="prelude-val">Some</span>(valid_hashmap) =&gt; valid_hashmap,
     };
 
-    <span class="kw">for </span>state_file_dir <span class="kw">in </span>fs::read_dir(states_path)<span class="question-mark">? </span>{
-        <span class="kw">let </span>state_file = <span class="kw">match </span>state_file_dir {
-            <span class="prelude-val">Ok</span>(sf) =&gt; sf,
-            <span class="prelude-val">Err</span>(err) =&gt; {
-                <span class="macro">error!</span>(<span class="string">"Unable to read dir {:?}: {}"</span>, states_path.as_os_str(), err);
-                <span class="kw">break</span>;
-            }
-        };
+    <span class="kw">let </span><span class="kw-2">mut </span>state_file_dir_entries = tokio::fs::read_dir(states_path).<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">while let </span><span class="prelude-val">Some</span>(state_file) = state_file_dir_entries.next_entry().<span class="kw">await</span><span class="question-mark">? </span>{
         <span class="kw">if </span>!state_file.path().is_file() {
             <span class="kw">continue</span>;
         }
-        <span class="kw">let </span>interface_stats_file_str =
-            fs::read_to_string(state_file.path()).expect(<span class="string">"Unable to read networkd state file"</span>);
+        <span class="kw">let </span>interface_stats_file_str = tokio::fs::read_to_string(state_file.path()).<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="kw">if </span>!interface_stats_file_str.contains(<span class="string">"NETWORK_FILE"</span>) {
             <span class="kw">continue</span>;
         }
@@ -844,6 +841,23 @@
         interfaces_state,
         managed_interfaces: managed_interface_count,
     })
+}
+
+<span class="doccomment">/// Async wrapper than can update networkd stats when passed a locked struct
+</span><span class="kw">pub async fn </span>update_networkd_stats(
+    states_path: PathBuf,
+    maybe_network_int_to_name: <span class="prelude-ty">Option</span>&lt;HashMap&lt;i32, String&gt;&gt;,
+    connection: zbus::Connection,
+    locked_monitord_stats: Arc&lt;RwLock&lt;MonitordStats&gt;&gt;,
+) -&gt; anyhow::Result&lt;()&gt; {
+    <span class="kw">match </span>parse_interface_state_files(<span class="kw-2">&amp;</span>states_path, maybe_network_int_to_name, <span class="kw-2">&amp;</span>connection).<span class="kw">await </span>{
+        <span class="prelude-val">Ok</span>(networkd_stats) =&gt; {
+            <span class="kw">let </span><span class="kw-2">mut </span>monitord_stats = locked_monitord_stats.write().<span class="kw">await</span>;
+            monitord_stats.networkd = networkd_stats;
+        }
+        <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(<span class="string">"networkd stats failed: {:?}"</span>, err),
+    }
+    <span class="prelude-val">Ok</span>(())
 }
 
 <span class="attr">#[cfg(test)]
@@ -919,8 +933,8 @@ MDNS=no
         <span class="macro">assert_eq!</span>(expected_interface_state_json.to_string(), stats_json);
     }
 
-    <span class="attr">#[test]
-    </span><span class="kw">fn </span>test_parse_interface_state_files() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+    <span class="attr">#[tokio::test]
+    </span><span class="kw">async fn </span>test_parse_interface_state_files() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
         <span class="kw">let </span>expected_files = NetworkdState {
             interfaces_state: <span class="macro">vec!</span>[return_expected_interface_state()],
             managed_interfaces: <span class="number">1</span>,
@@ -938,15 +952,18 @@ MDNS=no
             parse_interface_state_files(
                 <span class="kw-2">&amp;</span>path,
                 return_mock_int_name_hashmap(),
-                <span class="kw">crate</span>::DEFAULT_DBUS_ADDRESS
+                <span class="kw-2">&amp;</span>zbus::Connection::system()
+                    .<span class="kw">await
+                    </span>.expect(<span class="string">"Unable to get dbus connection via dbus"</span>),
             )
-            .unwrap()
+            .<span class="kw">await
+            </span>.expect(<span class="string">"Problem with parsing interface stte files"</span>)
         );
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="attr">#[test]
-    </span><span class="kw">fn </span>test_parse_interface_state_files_json() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+    <span class="attr">#[tokio::test]
+    </span><span class="kw">async fn </span>test_parse_interface_state_files_json() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
         <span class="kw">let </span>expected_interface_state_json = <span class="string">r###"{"interfaces_state":[{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"eth69","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###</span>;
 
         <span class="kw">let </span>temp_dir = tempdir()<span class="question-mark">?</span>;
@@ -959,9 +976,12 @@ MDNS=no
         <span class="kw">let </span>interface_stats = parse_interface_state_files(
             <span class="kw-2">&amp;</span>path,
             return_mock_int_name_hashmap(),
-            <span class="kw">crate</span>::DEFAULT_DBUS_ADDRESS,
+            <span class="kw-2">&amp;</span>zbus::Connection::system()
+                .<span class="kw">await
+                </span>.expect(<span class="string">"Unable to get dbus connection via dbus"</span>),
         )
-        .unwrap();
+        .<span class="kw">await
+        </span>.expect(<span class="string">"Unable to parse interface state files"</span>);
         <span class="kw">let </span>interface_stats_json = serde_json::to_string(<span class="kw-2">&amp;</span>interface_stats).unwrap();
         <span class="macro">assert_eq!</span>(
             expected_interface_state_json.to_string(),
