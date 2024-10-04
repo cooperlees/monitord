@@ -55,7 +55,7 @@ pub fn print_stats(
 }
 
 /// Main statictic collection function running what's required by configuration
-pub async fn stat_collector(config: config::Config) -> anyhow::Result<()> {
+pub async fn stat_collector(config: config::Config, output_stats: bool) -> anyhow::Result<()> {
     let mut collect_interval_ms: u128 = 0;
     if config.monitord.daemon {
         collect_interval_ms = (config.monitord.daemon_stats_refresh_secs * 1000).into();
@@ -137,7 +137,7 @@ pub async fn stat_collector(config: config::Config) -> anyhow::Result<()> {
 
         let elapsed_runtime_ms = collect_start_time.elapsed().as_millis();
         info!("stat collection run took {}ms", elapsed_runtime_ms);
-        {
+        if output_stats {
             let monitord_stats = locked_monitord_stats.read().await;
             print_stats(
                 &config.monitord.key_prefix,
