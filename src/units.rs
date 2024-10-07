@@ -236,10 +236,6 @@ pub fn parse_state(
         return;
     }
     if !allowlist.is_empty() && !allowlist.contains(&unit_name) {
-        debug!(
-            "Skipping state stats for {} due to not being in allowlist",
-            unit_name
-        );
         return;
     }
     let active_state =
@@ -274,18 +270,18 @@ fn parse_unit(
     ),
 ) {
     // Count unit type
-    match unit.0.split('.').collect::<Vec<&str>>()[1] {
-        "automount" => stats.automount_units += 1,
-        "device" => stats.device_units += 1,
-        "mount" => stats.mount_units += 1,
-        "path" => stats.path_units += 1,
-        "scope" => stats.scope_units += 1,
-        "service" => stats.service_units += 1,
-        "slice" => stats.slice_units += 1,
-        "socket" => stats.socket_units += 1,
-        "target" => stats.target_units += 1,
-        "timer" => stats.timer_units += 1,
-        unknown => debug!("Found unhandled '{}' unit type", unknown),
+    match unit.0.rsplit('.').next() {
+        Some("automount") => stats.automount_units += 1,
+        Some("device") => stats.device_units += 1,
+        Some("mount") => stats.mount_units += 1,
+        Some("path") => stats.path_units += 1,
+        Some("scope") => stats.scope_units += 1,
+        Some("service") => stats.service_units += 1,
+        Some("slice") => stats.slice_units += 1,
+        Some("socket") => stats.socket_units += 1,
+        Some("target") => stats.target_units += 1,
+        Some("timer") => stats.timer_units += 1,
+        unknown => debug!("Found unhandled '{:?}' unit type", unknown),
     };
     // Count load state
     match unit.2.as_str() {
@@ -318,10 +314,10 @@ pub async fn parse_unit_state(
             config.units.state_stats_allowlist
         );
     }
-    if !config.units.state_stats_allowlist.is_empty() {
+    if !config.units.state_stats_blocklist.is_empty() {
         debug!(
             "Using unit state blocklist: {:?}",
-            config.units.state_stats_allowlist
+            config.units.state_stats_blocklist,
         );
     }
 
