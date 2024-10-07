@@ -54,15 +54,20 @@ pub fn print_stats(
     }
 }
 
-/// Main statictic collection function running what's required by configuration
-pub async fn stat_collector(config: config::Config, output_stats: bool) -> anyhow::Result<()> {
+/// Main statictic collection function running what's required by configuration in parallel
+/// Takes an optional locked stats struct to update and to output stats to STDOUT or not
+pub async fn stat_collector(
+    config: config::Config,
+    maybe_locked_stats: Option<Arc<RwLock<MonitordStats>>>,
+    output_stats: bool,
+) -> anyhow::Result<()> {
     let mut collect_interval_ms: u128 = 0;
     if config.monitord.daemon {
         collect_interval_ms = (config.monitord.daemon_stats_refresh_secs * 1000).into();
     }
 
     let locked_monitord_stats: Arc<RwLock<MonitordStats>> =
-        Arc::new(RwLock::new(MonitordStats::default()));
+        maybe_locked_stats.unwrap_or(Arc::new(RwLock::new(MonitordStats::default())));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
     let sdc = zbus::Connection::system().await?;
     let mut join_set = tokio::task::JoinSet::new();
@@ -120,7 +125,7 @@ pub async fn stat_collector(config: config::Config, output_stats: bool) -> anyho
             std::process::exit(1);
         }
 
-        // Check all collection for errors
+        // Check all collection for errors and log if one fails
         while let Some(res) = join_set.join_next().await {
             match res {
                 Ok(r) => match r {
