@@ -213,6 +213,17 @@
 <a href="#213" id="213">213</a>
 <a href="#214" id="214">214</a>
 <a href="#215" id="215">215</a>
+<a href="#216" id="216">216</a>
+<a href="#217" id="217">217</a>
+<a href="#218" id="218">218</a>
+<a href="#219" id="219">219</a>
+<a href="#220" id="220">220</a>
+<a href="#221" id="221">221</a>
+<a href="#222" id="222">222</a>
+<a href="#223" id="223">223</a>
+<a href="#224" id="224">224</a>
+<a href="#225" id="225">225</a>
+<a href="#226" id="226">226</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # system module
 //!
 //! Handle systemd's overall "system" state. Basically says if we've successfully
@@ -300,7 +311,12 @@
     <span class="kw">type </span>Error = MonitordSystemError;
 
     <span class="kw">fn </span>try_from(s: String) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="self">Self</span>::Error&gt; {
-        <span class="kw">let </span><span class="kw-2">mut </span>parts = s.split(<span class="string">'.'</span>);
+        <span class="kw">let </span>no_v_version = <span class="kw">if let </span><span class="prelude-val">Some</span>(stripped_v) = s.strip_prefix(<span class="string">'v'</span>) {
+            stripped_v.to_string()
+        } <span class="kw">else </span>{
+            s.clone()
+        };
+        <span class="kw">let </span><span class="kw-2">mut </span>parts = no_v_version.split(<span class="string">'.'</span>);
         <span class="kw">let </span>split_count = parts.clone().count();
         <span class="kw">let </span>major = parts
             .next()
@@ -418,10 +434,16 @@
             parsed
         );
 
-        <span class="comment">// #bigCompany string
-        </span><span class="kw">let </span>parsed: SystemdVersion = <span class="string">"969.6-9.9.hs+fb.el9"</span>.to_string().try_into()<span class="question-mark">?</span>;
+        <span class="comment">// #bigCompany strings
+        </span><span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"969.6-9.9.hs+fb.el9"</span>).try_into()<span class="question-mark">?</span>;
         <span class="macro">assert_eq!</span>(
             SystemdVersion::new(<span class="number">969</span>, String::from(<span class="string">"6-9"</span>), <span class="prelude-val">Some</span>(<span class="number">9</span>), String::from(<span class="string">"hs+fb.el9"</span>)),
+            parsed
+        );
+
+        <span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"v299.6-9.9.hs+fb.el9"</span>).try_into()<span class="question-mark">?</span>;
+        <span class="macro">assert_eq!</span>(
+            SystemdVersion::new(<span class="number">299</span>, String::from(<span class="string">"6-9"</span>), <span class="prelude-val">Some</span>(<span class="number">9</span>), String::from(<span class="string">"hs+fb.el9"</span>)),
             parsed
         );
 

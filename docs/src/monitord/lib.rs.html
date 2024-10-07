@@ -158,6 +158,11 @@
 <a href="#158" id="158">158</a>
 <a href="#159" id="159">159</a>
 <a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # monitord Crate
 //!
 //! `monitord` is a library to gather statistics about systemd.
@@ -214,15 +219,20 @@
     }
 }
 
-<span class="doccomment">/// Main statictic collection function running what's required by configuration
-</span><span class="kw">pub async fn </span>stat_collector(config: config::Config, output_stats: bool) -&gt; anyhow::Result&lt;()&gt; {
+<span class="doccomment">/// Main statictic collection function running what's required by configuration in parallel
+/// Takes an optional locked stats struct to update and to output stats to STDOUT or not
+</span><span class="kw">pub async fn </span>stat_collector(
+    config: config::Config,
+    maybe_locked_stats: <span class="prelude-ty">Option</span>&lt;Arc&lt;RwLock&lt;MonitordStats&gt;&gt;&gt;,
+    output_stats: bool,
+) -&gt; anyhow::Result&lt;()&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>collect_interval_ms: u128 = <span class="number">0</span>;
     <span class="kw">if </span>config.monitord.daemon {
         collect_interval_ms = (config.monitord.daemon_stats_refresh_secs * <span class="number">1000</span>).into();
     }
 
     <span class="kw">let </span>locked_monitord_stats: Arc&lt;RwLock&lt;MonitordStats&gt;&gt; =
-        Arc::new(RwLock::new(MonitordStats::default()));
+        maybe_locked_stats.unwrap_or(Arc::new(RwLock::new(MonitordStats::default())));
     std::env::set_var(<span class="string">"DBUS_SYSTEM_BUS_ADDRESS"</span>, <span class="kw-2">&amp;</span>config.monitord.dbus_address);
     <span class="kw">let </span>sdc = zbus::Connection::system().<span class="kw">await</span><span class="question-mark">?</span>;
     <span class="kw">let </span><span class="kw-2">mut </span>join_set = tokio::task::JoinSet::new();
@@ -280,7 +290,7 @@
             std::process::exit(<span class="number">1</span>);
         }
 
-        <span class="comment">// Check all collection for errors
+        <span class="comment">// Check all collection for errors and log if one fails
         </span><span class="kw">while let </span><span class="prelude-val">Some</span>(res) = join_set.join_next().<span class="kw">await </span>{
             <span class="kw">match </span>res {
                 <span class="prelude-val">Ok</span>(r) =&gt; <span class="kw">match </span>r {
