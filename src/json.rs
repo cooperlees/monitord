@@ -11,6 +11,7 @@ use tracing::debug;
 use crate::networkd;
 use crate::pid1;
 use crate::units;
+use crate::MachineStats;
 use crate::MonitordStats;
 
 /// Add a prefix if config wants contains one
@@ -294,6 +295,34 @@ fn flatten_units(
     flat_stats
 }
 
+fn flatten_machines(
+    machines_stats: &HashMap<String, MachineStats>,
+    key_prefix: &String,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats = BTreeMap::new();
+
+    if machines_stats.is_empty() {
+        return flat_stats;
+    }
+
+    for (machine, stats) in machines_stats {
+        let machine_key_prefix = format!("{}.machines.{}", key_prefix, machine);
+        flat_stats.extend(flatten_networkd(&stats.networkd, &machine_key_prefix));
+        flat_stats.extend(flatten_units(&stats.units, &machine_key_prefix));
+        flat_stats.extend(flatten_pid1(&stats.pid1, &machine_key_prefix));
+        flat_stats.insert(
+            gen_base_metric_key(&machine_key_prefix, &String::from("system-state")),
+            (stats.system_state as u64).into(),
+        );
+        flat_stats.extend(flatten_services(
+            &stats.units.service_stats,
+            &machine_key_prefix,
+        ));
+    }
+
+    flat_stats
+}
+
 /// Take the standard returned structs and move all to a flat BTreeMap<str, float|int> like JSON
 fn flatten_stats(
     stats_struct: &MonitordStats,
@@ -319,6 +348,7 @@ fn flatten_stats(
         gen_base_metric_key(key_prefix, &String::from("version")),
         stats_struct.version.to_string().into(),
     );
+    flat_stats.extend(flatten_machines(&stats_struct.machines, key_prefix));
     flat_stats
 }
 
@@ -423,6 +453,7 @@ mod tests {
             version: String::from("255.7-1.fc40")
                 .try_into()
                 .expect("Unable to make SystemdVersion struct"),
+            machines: HashMap::<String, MachineStats>::new(),
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(

@@ -16,7 +16,7 @@ use strum_macros::EnumString;
 use tokio::sync::RwLock;
 use tracing::error;
 
-use crate::MonitordStats;
+use crate::MachineStats;
 
 /// Enumeration of networkd address states
 #[allow(non_camel_case_types)]
@@ -211,7 +211,7 @@ async fn get_interface_links(
 }
 
 /// Main networkd structure with per interface state and a count of managed interfaces
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct NetworkdState {
     pub interfaces_state: Vec<InterfaceState>,
     pub managed_interfaces: u64,
@@ -346,12 +346,12 @@ pub async fn update_networkd_stats(
     states_path: PathBuf,
     maybe_network_int_to_name: Option<HashMap<i32, String>>,
     connection: zbus::Connection,
-    locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+    locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
     match parse_interface_state_files(&states_path, maybe_network_int_to_name, &connection).await {
         Ok(networkd_stats) => {
-            let mut monitord_stats = locked_monitord_stats.write().await;
-            monitord_stats.networkd = networkd_stats;
+            let mut machine_stats = locked_machine_stats.write().await;
+            machine_stats.networkd = networkd_stats;
         }
         Err(err) => error!("networkd stats failed: {:?}", err),
     }

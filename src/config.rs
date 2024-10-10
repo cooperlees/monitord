@@ -99,10 +99,27 @@ impl Default for UnitsConfig {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MachinesConfig {
+    pub enabled: bool,
+    pub auto_discover: bool,
+    pub machines_list: Vec<String>,
+}
+impl Default for MachinesConfig {
+    fn default() -> Self {
+        MachinesConfig {
+            enabled: true,
+            auto_discover: false,
+            machines_list: Vec::new(),
+        }
+    }
+}
+
 /// Config struct
 /// Each section represents an ini file section
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Config {
+    pub machines: MachinesConfig,
     pub monitord: MonitordConfig,
     pub networkd: NetworkdConfig,
     pub pid1: Pid1Config,
@@ -187,6 +204,21 @@ impl From<Ini> for Config {
                 .collect();
         }
 
+        // [machines] section
+        config.machines.enabled = read_config_bool(
+            &ini_config,
+            String::from("machines"),
+            String::from("enabled"),
+        );
+        config.machines.auto_discover = read_config_bool(
+            &ini_config,
+            String::from("machines"),
+            String::from("auto_discover"),
+        );
+        if let Some(machines_list) = config_map.get("machines.list") {
+            config.machines.machines_list = machines_list.keys().map(|s| s.to_string()).collect();
+        }
+
         config
     }
 }
@@ -251,6 +283,14 @@ foo.service
 
 [units.state_stats.blocklist]
 bar.service
+
+[machines]
+enabled = true
+auto_discover = true
+
+[machines.list]
+foo
+bar
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -307,6 +347,11 @@ output_format = json-flat
                 state_stats: true,
                 state_stats_allowlist: Vec::from([String::from("foo.service")]),
                 state_stats_blocklist: Vec::from([String::from("bar.service")]),
+            },
+            machines: MachinesConfig {
+                enabled: true,
+                auto_discover: true,
+                machines_list: Vec::from([String::from("foo"), String::from("bar")]),
             },
         };
 

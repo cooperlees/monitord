@@ -18,7 +18,7 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::error;
 
-use crate::MonitordStats;
+use crate::MachineStats;
 
 #[derive(Error, Debug)]
 pub enum MonitordSystemError {
@@ -117,6 +117,7 @@ impl TryFrom<String> for SystemdVersion {
     }
 }
 
+//pub fn get_system_state(dbus_address: &str) -> Result<SystemdSystemState, dbus::Error> {
 pub async fn get_system_state(
     connection: &zbus::Connection,
 ) -> Result<SystemdSystemState, MonitordSystemError> {
@@ -146,10 +147,10 @@ pub async fn get_system_state(
 /// Async wrapper than can update system stats when passed a locked struct
 pub async fn update_system_stats(
     connection: zbus::Connection,
-    locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+    locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    let mut monitord_stats = locked_monitord_stats.write().await;
-    monitord_stats.system_state = crate::system::get_system_state(&connection)
+    let mut machine_stats = locked_machine_stats.write().await;
+    machine_stats.system_state = crate::system::get_system_state(&connection)
         .await
         .map_err(|e| anyhow!("Error getting system state: {:?}", e))?;
     Ok(())
@@ -171,10 +172,10 @@ pub async fn get_version(
 /// Async wrapper than can update system stats when passed a locked struct
 pub async fn update_version(
     connection: zbus::Connection,
-    locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+    locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    let mut monitord_stats = locked_monitord_stats.write().await;
-    monitord_stats.version = crate::system::get_version(&connection)
+    let mut machine_stats = locked_machine_stats.write().await;
+    machine_stats.version = crate::system::get_version(&connection)
         .await
         .map_err(|e| anyhow!("Error getting systemd version: {:?}", e))?;
     Ok(())

@@ -3,6 +3,8 @@
 //! `monitord` is a library to gather statistics about systemd.
 
 use std::sync::Arc;
+
+use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -15,12 +17,22 @@ pub mod config;
 pub(crate) mod dbus;
 pub mod json;
 pub mod logging;
+pub mod machines;
 pub mod networkd;
 pub mod pid1;
 pub mod system;
 pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+pub struct MachineStats {
+    pub networkd: networkd::NetworkdState,
+    pub pid1: Option<pid1::Pid1Stats>,
+    pub system_state: system::SystemdSystemState,
+    pub units: units::SystemdUnitStats,
+    pub version: system::SystemdVersion,
+}
 
 /// Main monitord stats struct collection all enabled stats
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
@@ -30,6 +42,7 @@ pub struct MonitordStats {
     pub system_state: system::SystemdSystemState,
     pub units: units::SystemdUnitStats,
     pub version: system::SystemdVersion,
+    pub machines: HashMap<String, MachineStats>,
 }
 
 /// Print statistics in the format set in configuration
@@ -68,9 +81,12 @@ pub async fn stat_collector(
 
     let locked_monitord_stats: Arc<RwLock<MonitordStats>> =
         maybe_locked_stats.unwrap_or(Arc::new(RwLock::new(MonitordStats::default())));
+    let locked_machine_stats: Arc<RwLock<MachineStats>> =
+        Arc::new(RwLock::new(MachineStats::default()));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
     let sdc = zbus::Connection::system().await?;
     let mut join_set = tokio::task::JoinSet::new();
+
     loop {
         let collect_start_time = Instant::now();
         let mut ran_collector_count: u8 = 0;
@@ -81,7 +97,8 @@ pub async fn stat_collector(
         if config.pid1.enabled {
             ran_collector_count += 1;
             join_set.spawn(crate::pid1::update_pid1_stats(
-                locked_monitord_stats.clone(),
+                1,
+                locked_machine_stats.clone(),
             ));
         }
 
@@ -92,7 +109,7 @@ pub async fn stat_collector(
                 config.networkd.link_state_dir.clone(),
                 None,
                 sdc.clone(),
-                locked_monitord_stats.clone(),
+                locked_machine_stats.clone(),
             ));
         }
 
@@ -101,19 +118,28 @@ pub async fn stat_collector(
             ran_collector_count += 1;
             join_set.spawn(crate::system::update_system_stats(
                 sdc.clone(),
-                locked_monitord_stats.clone(),
+                locked_machine_stats.clone(),
             ));
         }
         // Not incrementing the ran_collector_count on purpose as this is always on by default
         join_set.spawn(crate::system::update_version(
             sdc.clone(),
-            locked_monitord_stats.clone(),
+            locked_machine_stats.clone(),
         ));
 
         // Run service collectors if there are services listed in config
         if config.units.enabled {
             ran_collector_count += 1;
             join_set.spawn(crate::units::update_unit_stats(
+                config.clone(),
+                sdc.clone(),
+                locked_machine_stats.clone(),
+            ));
+        }
+
+        if config.machines.enabled {
+            ran_collector_count += 1;
+            join_set.spawn(crate::machines::update_machines_stats(
                 config.clone(),
                 sdc.clone(),
                 locked_monitord_stats.clone(),
@@ -140,7 +166,19 @@ pub async fn stat_collector(
             }
         }
 
+        {
+            // Update monitord stats with machine stats
+            let mut monitord_stats = locked_monitord_stats.write().await;
+            let machine_stats = locked_machine_stats.read().await;
+            monitord_stats.pid1 = machine_stats.pid1.clone();
+            monitord_stats.networkd = machine_stats.networkd.clone();
+            monitord_stats.system_state = machine_stats.system_state.clone();
+            monitord_stats.version = machine_stats.version.clone();
+            monitord_stats.units = machine_stats.units.clone();
+        }
+
         let elapsed_runtime_ms = collect_start_time.elapsed().as_millis();
+
         info!("stat collection run took {}ms", elapsed_runtime_ms);
         if output_stats {
             let monitord_stats = locked_monitord_stats.read().await;
