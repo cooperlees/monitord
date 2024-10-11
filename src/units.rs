@@ -19,7 +19,7 @@ use tracing::error;
 use zbus::zvariant::ObjectPath;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::MonitordStats;
+use crate::MachineStats;
 
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
@@ -314,6 +314,7 @@ pub async fn parse_unit_state(
             config.units.state_stats_allowlist
         );
     }
+
     if !config.units.state_stats_blocklist.is_empty() {
         debug!(
             "Using unit state blocklist: {:?}",
@@ -324,6 +325,7 @@ pub async fn parse_unit_state(
     let mut stats = SystemdUnitStats::default();
     let p = crate::dbus::zbus_systemd::ManagerProxy::new(connection).await?;
     let units = p.list_units().await?;
+
     stats.total_units = units.len() as u64;
     for unit in units {
         // Collect unit types + states counts
@@ -362,11 +364,11 @@ pub async fn parse_unit_state(
 pub async fn update_unit_stats(
     config: crate::config::Config,
     connection: zbus::Connection,
-    locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+    locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    let mut monitord_stats = locked_monitord_stats.write().await;
+    let mut machine_stats = locked_machine_stats.write().await;
     match parse_unit_state(&config, &connection).await {
-        Ok(units_stats) => monitord_stats.units = units_stats,
+        Ok(units_stats) => machine_stats.units = units_stats,
         Err(err) => error!("units stats failed: {:?}", err),
     }
     Ok(())
