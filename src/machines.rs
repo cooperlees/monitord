@@ -18,14 +18,15 @@ pub async fn get_machines(
 
     for machine in machines.iter().filter(|c| &c.1 == "container") {
         let m = c.get_machine(&machine.0).await?;
-        let leader = m.leader().await?;
+        let leader_pid = m.leader().await?;
 
+        // TODO: Add allow + deny list support for auto discovered machines
         if config.machines.auto_discover || config.machines.machines_list.contains(&machine.0) {
-            results.insert(machine.0.to_string(), leader);
+            results.insert(machine.0.to_string(), leader_pid);
         }
     }
 
-    return Ok(results);
+    Ok(results)
 }
 pub async fn update_machines_stats(
     config: crate::config::Config,
@@ -35,13 +36,15 @@ pub async fn update_machines_stats(
     let locked_machine_stats: Arc<RwLock<MachineStats>> =
         Arc::new(RwLock::new(MachineStats::default()));
 
-    for (machine, leader) in get_machines(&connection, &config).await?.into_iter() {
+    for (machine, leader_pid) in get_machines(&connection, &config).await?.into_iter() {
         debug!(
-            "Collecting container: machine: {} leader: {}",
-            machine, leader
+            "Collecting container: machine: {} leader_pid: {}",
+            machine, leader_pid
         );
-        let container_address =
-            format!("unix:path=/proc/{}/root/run/dbus/system_bus_socket", leader);
+        let container_address = format!(
+            "unix:path=/proc/{}/root/run/dbus/system_bus_socket",
+            leader_pid
+        );
         let sdc = zbus::connection::Builder::address(container_address.as_str())?
             .build()
             .await?;
@@ -49,7 +52,7 @@ pub async fn update_machines_stats(
 
         if config.pid1.enabled {
             join_set.spawn(crate::pid1::update_pid1_stats(
-                leader as i32,
+                leader_pid as i32,
                 locked_machine_stats.clone(),
             ));
         }
@@ -100,11 +103,13 @@ pub async fn update_machines_stats(
             }
         }
 
-        let mut monitord_stats = locked_monitord_stats.write().await;
-        let machine_stats = locked_machine_stats.read().await;
-        monitord_stats
-            .machines
-            .insert(machine.clone(), machine_stats.clone());
+        {
+            let mut monitord_stats = locked_monitord_stats.write().await;
+            let machine_stats = locked_machine_stats.read().await;
+            monitord_stats
+                .machines
+                .insert(machine.clone(), machine_stats.clone());
+        }
     }
 
     Ok(())
