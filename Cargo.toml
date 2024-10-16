@@ -32,7 +32,7 @@ tracing = "0.1"
 tracing-core = "0.1"
 tracing-glog = "0.4"
 tracing-subscriber = "0.3"
-zbus = { version = "4.0", features = ["p2p", "tokio"] }
+zbus = { version = "4.4", features = ["p2p", "tokio"] }
 
 [dev-dependencies]
 tempfile = "3.3.0"
