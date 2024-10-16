@@ -21,7 +21,7 @@ pub struct Pid1Stats {
     pub tasks: u64,
 }
 
-/// Get procfs info on pid 1 - https://manpages.debian.org/buster/manpages/procfs.5.en.html
+/// Get procfs info on pid 1 - <https://manpages.debian.org/buster/manpages/procfs.5.en.html>
 pub fn get_pid_stats(pid: i32) -> anyhow::Result<Pid1Stats> {
     let bytes_per_page = procfs::page_size();
     let ticks_per_second = procfs::ticks_per_second();
