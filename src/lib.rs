@@ -196,7 +196,8 @@ pub async fn stat_collector(
             sleep_time_ms
                 .try_into()
                 .expect("Sleep time does not fit into a u64 :O"),
-        )).await;
+        ))
+        .await;
     }
     Ok(())
 }
