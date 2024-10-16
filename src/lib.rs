@@ -172,7 +172,7 @@ pub async fn stat_collector(
             let machine_stats = locked_machine_stats.read().await;
             monitord_stats.pid1 = machine_stats.pid1.clone();
             monitord_stats.networkd = machine_stats.networkd.clone();
-            monitord_stats.system_state = machine_stats.system_state.clone();
+            monitord_stats.system_state = machine_stats.system_state;
             monitord_stats.version = machine_stats.version.clone();
             monitord_stats.units = machine_stats.units.clone();
         }

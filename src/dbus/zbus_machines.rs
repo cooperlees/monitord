@@ -20,7 +20,7 @@
 //! [Writing a client proxy]: https://dbus2.github.io/zbus/client.html
 //! [D-Bus standard interfaces]: https://dbus.freedesktop.org/doc/dbus-specification.html#standard-interfaces,
 //use zbus_machine;
-
+#![allow(warnings)]
 use super::zbus_machine::{MachineProxy, MachineProxyBlocking};
 use zbus::proxy;
 
