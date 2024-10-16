@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use std::collections::HashMap;
-use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -193,11 +192,11 @@ pub async fn stat_collector(
         }
         let sleep_time_ms = collect_interval_ms - elapsed_runtime_ms;
         info!("stat collection sleeping for {}s 😴", sleep_time_ms / 1000);
-        thread::sleep(Duration::from_millis(
+        tokio::time::sleep(Duration::from_millis(
             sleep_time_ms
                 .try_into()
                 .expect("Sleep time does not fit into a u64 :O"),
-        ));
+        )).await;
     }
     Ok(())
 }
