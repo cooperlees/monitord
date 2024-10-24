@@ -102,15 +102,15 @@ impl Default for UnitsConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MachinesConfig {
     pub enabled: bool,
-    pub auto_discover: bool,
-    pub machines_list: Vec<String>,
+    pub allowlist: Vec<String>,
+    pub blocklist: Vec<String>,
 }
 impl Default for MachinesConfig {
     fn default() -> Self {
         MachinesConfig {
             enabled: true,
-            auto_discover: false,
-            machines_list: Vec::new(),
+            allowlist: Vec::new(),
+            blocklist: Vec::new(),
         }
     }
 }
@@ -210,13 +210,11 @@ impl From<Ini> for Config {
             String::from("machines"),
             String::from("enabled"),
         );
-        config.machines.auto_discover = read_config_bool(
-            &ini_config,
-            String::from("machines"),
-            String::from("auto_discover"),
-        );
-        if let Some(machines_list) = config_map.get("machines.list") {
-            config.machines.machines_list = machines_list.keys().map(|s| s.to_string()).collect();
+        if let Some(machines_allowlist) = config_map.get("machines.allowlist") {
+            config.machines.allowlist = machines_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(machines_blocklist) = config_map.get("machines.blocklist") {
+            config.machines.blocklist = machines_blocklist.keys().map(|s| s.to_string()).collect();
         }
 
         config
@@ -286,11 +284,13 @@ bar.service
 
 [machines]
 enabled = true
-auto_discover = true
 
-[machines.list]
+[machines.allowlist]
 foo
 bar
+
+[machines.blocklist]
+foo2
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -350,8 +350,8 @@ output_format = json-flat
             },
             machines: MachinesConfig {
                 enabled: true,
-                auto_discover: true,
-                machines_list: Vec::from([String::from("foo"), String::from("bar")]),
+                allowlist: Vec::from([String::from("foo"), String::from("bar")]),
+                blocklist: Vec::from([String::from("foo2")]),
             },
         };
 

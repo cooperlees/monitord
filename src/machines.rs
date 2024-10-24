@@ -7,6 +7,19 @@ use tracing::{debug, error};
 use crate::MachineStats;
 use crate::MonitordStats;
 
+pub fn filter_machines(
+    machines: Vec<crate::dbus::zbus_machines::ListedMachine>,
+    allowlist: Vec<String>,
+    blocklist: Vec<String>,
+) -> Vec<crate::dbus::zbus_machines::ListedMachine> {
+    machines
+        .into_iter()
+        .filter(|c| c.class == "container")
+        .filter(|c| !blocklist.contains(&c.name))
+        .filter(|c| allowlist.is_empty() || allowlist.contains(&c.name))
+        .collect()
+}
+
 pub async fn get_machines(
     connection: &zbus::Connection,
     config: &crate::config::Config,
@@ -16,18 +29,19 @@ pub async fn get_machines(
 
     let machines = c.list_machines().await?;
 
-    for machine in machines.iter().filter(|c| &c.1 == "container") {
-        let m = c.get_machine(&machine.0).await?;
+    for machine in filter_machines(
+        machines,
+        config.machines.allowlist.clone(),
+        config.machines.blocklist.clone(),
+    ) {
+        let m = c.get_machine(&machine.name).await?;
         let leader_pid = m.leader().await?;
-
-        // TODO: Add allow + deny list support for auto discovered machines
-        if config.machines.auto_discover || config.machines.machines_list.contains(&machine.0) {
-            results.insert(machine.0.to_string(), leader_pid);
-        }
+        results.insert(machine.name.to_string(), leader_pid);
     }
 
     Ok(results)
 }
+
 pub async fn update_machines_stats(
     config: crate::config::Config,
     connection: zbus::Connection,
@@ -113,4 +127,41 @@ pub async fn update_machines_stats(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use zbus::zvariant::OwnedObjectPath;
+
+    #[test]
+    fn test_filter_machines() {
+        let machines = vec![
+            crate::dbus::zbus_machines::ListedMachine {
+                name: "foo".to_string(),
+                class: "container".to_string(),
+                service: "".to_string(),
+                path: OwnedObjectPath::try_from("/sample/object").unwrap(),
+            },
+            crate::dbus::zbus_machines::ListedMachine {
+                name: "bar".to_string(),
+                class: "container".to_string(),
+                service: "".to_string(),
+                path: OwnedObjectPath::try_from("/sample/object").unwrap(),
+            },
+            crate::dbus::zbus_machines::ListedMachine {
+                name: "baz".to_string(),
+                class: "container".to_string(),
+                service: "".to_string(),
+                path: OwnedObjectPath::try_from("/sample/object").unwrap(),
+            },
+        ];
+        let allowlist = vec!["foo".to_string(), "baz".to_string()];
+        let blocklist = vec!["bar".to_string()];
+
+        let filtered = super::filter_machines(machines, allowlist, blocklist);
+
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].name, "foo");
+        assert_eq!(filtered[1].name, "baz");
+    }
 }
