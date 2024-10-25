@@ -27,7 +27,7 @@ use zbus::proxy;
     default_service = "org.freedesktop.systemd1",
     default_path = "/org/freedesktop/systemd1/unit/chronyd_2eservice"
 )]
-trait Unit {
+pub trait Unit {
     /// Clean method
     fn clean(&self, mask: &[&str]) -> zbus::Result<()>;
 

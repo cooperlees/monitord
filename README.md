@@ -227,8 +227,8 @@ Ensure the following pass before submitting a PR (CI checks):
 
 ### Generate codegen APIs
 
-- `cargo install dbus-codegen`
-- `dbus-codegen-rust -s -g -m None -d org.freedesktop.systemd1 -p /org/freedesktop/systemd1/unit/chronyd_2eservice > unit_dbus.rs`
+- `cargo install zbus_xmlgen`
+- `zbus-xmlgen system org.freedesktop.systemd1 /org/freedesktop/systemd1/unit/chronyd_2eservice`
 
 Then add the following macros to tell clippy to go away:
 
