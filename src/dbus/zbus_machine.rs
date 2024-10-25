@@ -26,7 +26,7 @@ use zbus::proxy;
     interface = "org.freedesktop.machine1.Machine",
     default_service = "org.freedesktop.machine1"
 )]
-trait Machine {
+pub trait Machine {
     /// BindMount method
     fn bind_mount(
         &self,

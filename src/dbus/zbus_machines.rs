@@ -19,10 +19,12 @@
 //! [D-Bus standard interfaces]: https://dbus.freedesktop.org/doc/dbus-specification.html#standard-interfaces,
 
 #![allow(warnings)]
-use super::zbus_machine::{MachineProxy, MachineProxyBlocking};
 use serde_tuple::Deserialize_tuple;
 use zbus::proxy;
 use zbus::zvariant::Type;
+
+use crate::dbus::zbus_machine::MachineProxy;
+use crate::dbus::zbus_machine::MachineProxyBlocking;
 
 #[derive(Deserialize_tuple, PartialEq, Eq, Debug, Type)]
 pub struct ListedMachine {
@@ -37,7 +39,7 @@ pub struct ListedMachine {
     default_service = "org.freedesktop.machine1",
     default_path = "/org/freedesktop/machine1"
 )]
-trait Manager {
+pub trait Manager {
     /// BindMountMachine method
     fn bind_mount_machine(
         &self,
