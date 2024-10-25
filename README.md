@@ -104,6 +104,34 @@ foo.service
 
 [units.state_stats.blocklist]
 bar.service
+
+# machines config
+[machines]
+enabled = true
+
+# Same rules apply as state_stats lists above
+[machines.allowlist]
+foo
+
+[machines.blocklist]
+bar
+```
+
+## Machines support
+
+From version `>=0.11` monitord supports obtaining the same set of key from
+systemd 'machines' (i.e. `machinectl --list`).
+
+The keys are the same format as below in `json_flat` output but are prefixed with
+the `machine` keyword and machine name. For example:
+
+```json
+# $KEY_PREFIX.machine.$MACHINE_NAME
+{
+  ...
+  "monitord.machine.foo.pid1.fd_count": 69,
+  ...
+}
 ```
 
 ## Output Formats
@@ -126,35 +154,7 @@ Is semi pretty too + custom. All unittested ...
   "networkd.eno4.ipv6_address_state": 2,
   "networkd.eno4.oper_state": 9,
   "networkd.eno4.required_for_online": 1,
-  "networkd.ens2f0.address_state": 1,
-  "networkd.ens2f0.admin_state": 3,
-  "networkd.ens2f0.carrier_state": 1,
-  "networkd.ens2f0.ipv4_address_state": 1,
-  "networkd.ens2f0.ipv6_address_state": 1,
-  "networkd.ens2f0.oper_state": 2,
-  "networkd.ens2f0.required_for_online": 0,
-  "networkd.managed_interfaces": 6,
-  "networkd.spectrum.address_state": 3,
-  "networkd.spectrum.admin_state": 4,
-  "networkd.spectrum.carrier_state": 5,
-  "networkd.spectrum.ipv4_address_state": 3,
-  "networkd.spectrum.ipv6_address_state": 3,
-  "networkd.spectrum.oper_state": 9,
-  "networkd.spectrum.required_for_online": 1,
-  "networkd.vlan69.address_state": 3,
-  "networkd.vlan69.admin_state": 4,
-  "networkd.vlan69.carrier_state": 5,
-  "networkd.vlan69.ipv4_address_state": 3,
-  "networkd.vlan69.ipv6_address_state": 3,
-  "networkd.vlan69.oper_state": 9,
-  "networkd.vlan69.required_for_online": 1,
-  "networkd.vlan70.address_state": 3,
-  "networkd.vlan70.admin_state": 4,
-  "networkd.vlan70.carrier_state": 5,
-  "networkd.vlan70.ipv4_address_state": 1,
-  "networkd.vlan70.ipv6_address_state": 3,
-  "networkd.vlan70.oper_state": 9,
-  "networkd.vlan70.required_for_online": 1,
+  "networkd.managed_interfaces": 2,
   "networkd.wg0.address_state": 3,
   "networkd.wg0.admin_state": 4,
   "networkd.wg0.carrier_state": 5,
@@ -235,5 +235,4 @@ Then add the following macros to tell clippy to go away:
 ```rust
 #![allow(warnings)]
 #![allow(clippy)]
-#![allow(unknown_lints)]
 ```
