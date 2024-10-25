@@ -306,7 +306,10 @@ fn flatten_machines(
     }
 
     for (machine, stats) in machines_stats {
-        let machine_key_prefix = format!("{}.machines.{}", key_prefix, machine);
+        let machine_key_prefix = match key_prefix.is_empty() {
+            true => format!("machines.{}", machine),
+            false => format!("{}.machines.{}", key_prefix, machine),
+        };
         flat_stats.extend(flatten_networkd(&stats.networkd, &machine_key_prefix));
         flat_stats.extend(flatten_units(&stats.units, &machine_key_prefix));
         flat_stats.extend(flatten_pid1(&stats.pid1, &machine_key_prefix));
@@ -362,12 +365,30 @@ pub fn flatten(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use super::*;
 
     // This will always be sorted / deterministic ...
     const EXPECTED_FLAT_JSON: &str = r###"{
+  "machines.foo.networkd.managed_interfaces": 0,
+  "machines.foo.system-state": 0,
+  "machines.foo.units.active_units": 0,
+  "machines.foo.units.automount_units": 0,
+  "machines.foo.units.device_units": 0,
+  "machines.foo.units.failed_units": 0,
+  "machines.foo.units.inactive_units": 0,
+  "machines.foo.units.jobs_queued": 0,
+  "machines.foo.units.loaded_units": 0,
+  "machines.foo.units.masked_units": 0,
+  "machines.foo.units.mount_units": 0,
+  "machines.foo.units.not_found_units": 0,
+  "machines.foo.units.path_units": 0,
+  "machines.foo.units.scope_units": 0,
+  "machines.foo.units.service_units": 0,
+  "machines.foo.units.slice_units": 0,
+  "machines.foo.units.socket_units": 0,
+  "machines.foo.units.target_units": 0,
+  "machines.foo.units.timer_units": 0,
+  "machines.foo.units.total_units": 0,
   "networkd.eth0.address_state": 3,
   "networkd.eth0.admin_state": 4,
   "networkd.eth0.carrier_state": 5,
@@ -453,7 +474,7 @@ mod tests {
             version: String::from("255.7-1.fc40")
                 .try_into()
                 .expect("Unable to make SystemdVersion struct"),
-            machines: HashMap::<String, MachineStats>::new(),
+            machines: HashMap::from([(String::from("foo"), MachineStats::default())]),
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
@@ -492,7 +513,7 @@ mod tests {
             &return_monitord_stats(),
             &String::from("JSON serialize failed"),
         );
-        assert_eq!(55, json_flat_map.len());
+        assert_eq!(75, json_flat_map.len());
     }
 
     #[test]
