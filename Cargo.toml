@@ -33,7 +33,9 @@ tracing = "0.1"
 tracing-core = "0.1"
 tracing-glog = "0.4"
 tracing-subscriber = "0.3"
-zbus = { version = ">=4, <6", features = ["p2p", "tokio"] }
+zbus = { version = "4.4.0", features = ["p2p", "tokio"] }
+zvariant = "4.2.0"
+zvariant_derive = "4.2.0"
 
 [dev-dependencies]
 tempfile = "3.3.0"
