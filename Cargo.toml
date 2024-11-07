@@ -41,4 +41,4 @@ zvariant_derive = "4.2.0"
 tempfile = "3.3.0"
 
 [profile]
-release = { strip = "symbols", lto = "thin", opt-level = "z" }
+release = { strip = "symbols", lto = "fat", opt-level = "z" }
