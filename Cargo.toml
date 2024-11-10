@@ -28,7 +28,7 @@ struct-field-names-as-array = "0.3"
 strum = "0.26"
 strum_macros = "0.26"
 thiserror = "1.0"
-tokio = { version = "1.37.0", features = ["full", "tracing"] }
+tokio = { version = "1.37.0", features = ["fs", "rt", "rt-multi-thread", "macros", "tracing", "time", "sync"] }
 tracing = "0.1"
 tracing-core = "0.1"
 tracing-glog = "0.4"
@@ -39,6 +39,7 @@ zvariant_derive = "4.2.0"
 
 [dev-dependencies]
 tempfile = "3.3.0"
+tokio = { version = "1.37.0", features = ["test-util"] }
 
 [profile]
 release = { strip = "symbols", lto = "fat", opt-level = "z", codegen-units = 1 }
