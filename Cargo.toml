@@ -14,7 +14,7 @@ categories = ["network-programming", "os::linux-apis"]
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.5", features = ["derive", "std"], default-features = false }
+clap = { version = "4.5", features = ["derive", "std", "help"], default-features = false }
 configparser = { version = "3.0.3", features = ["indexmap"] }
 indexmap = "2.2"
 int-enum = "1.1"
