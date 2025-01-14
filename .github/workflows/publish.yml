@@ -19,11 +19,6 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Installing libdbus
-        run: |
-          sudo apt update
-          sudo apt install libdbus-1-dev pkg-config
-
       - name: Cargo Publish
         uses: actions-rs/cargo@v1
         env:
