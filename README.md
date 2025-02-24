@@ -210,7 +210,7 @@ Is semi pretty too + custom. All unittested ...
 
 ### json-pretty
 
-Normal `serde_json` pretty representations of each componoents structs.
+Normal `serde_json` pretty representations of each components structs.
 
 ## Development
 
@@ -240,15 +240,18 @@ Then add the following macros to tell clippy to go away:
 ### Non Linux development
 
 Sometimes I develop from my Mac OS X laptop. So I thought I'd document and
-add the way I build a Fedora Rawhide container and mount the local repo to /repo.
+add the way I build a Fedora Rawhide container and mount the local repo to /repo
+in the container to run monitord and test.
 
 - Build the image (w/git, rust tools and systemd)
   - `docker build -t monitord-dev .`
 - Start via systemd and mount the monitord repo to /repo
-  - `docker run --name monitord-dev -it --privileged --tmpfs /run --tmpfs /tmp -v $(pwd):/repo monitord-dev /sbin/init`
+  - `docker run --rm --name monitord-dev -it --privileged --tmpfs /run --tmpfs /tmp -v $(pwd):/repo monitord-dev /sbin/init`
+    - `--rm` is optional but will remove the container when stopped
 
 You can now log into the container to build + run tests and run the binary now against systemd.
-- `docker exec -it monitord-def bash`
+- `docker exec -it monitord-dev bash`
 - `cd /repo ; cargo run -- -c monitord`
   - networkd etc. are not running my default but can be started ...
-  - `systemctl start sytemd-networkd`
+  - `systemctl start systemd-networkd`
+    - No interfaces will be managed tho by default in the container ...
