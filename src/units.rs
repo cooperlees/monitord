@@ -256,7 +256,7 @@ pub fn parse_state(
 /// Parse a unit and add to overall counts of state, type etc.
 fn parse_unit(
     stats: &mut SystemdUnitStats,
-    unit: (
+    unit: &(
         String,          // The primary unit name as string
         String,          // The human readable description string
         String,          // The load state (i.e. whether the unit file has been loaded successfully)
@@ -329,7 +329,7 @@ pub async fn parse_unit_state(
     stats.total_units = units.len() as u64;
     for unit in units {
         // Collect unit types + states counts
-        parse_unit(&mut stats, unit.clone());
+        parse_unit(&mut stats, &unit);
 
         // Collect per unit state stats - ActiveState + LoadState
         // Not collecting SubState (yet)
@@ -522,7 +522,7 @@ mod tests {
         };
         let mut stats = SystemdUnitStats::default();
         let systemd_unit = get_unit_file();
-        parse_unit(&mut stats, systemd_unit);
+        parse_unit(&mut stats, &systemd_unit);
         assert_eq!(expected_stats, stats);
     }
 
