@@ -44,6 +44,7 @@ pub struct SystemdUnitStats {
     pub socket_units: u64,
     pub target_units: u64,
     pub timer_units: u64,
+    pub timer_persistent_units: u64,
     pub total_units: u64,
     pub service_stats: HashMap<String, ServiceStats>,
     pub unit_states: HashMap<String, UnitStates>,
@@ -355,6 +356,11 @@ pub async fn parse_unit_state(
                 ),
             }
         }
+
+        // Collect timer stats
+        if unit.0.contains(".timer") {
+            crate::timer::collect_timer_stats(connection, &mut stats, &unit).await?;
+        }
     }
     debug!("unit stats: {:?}", stats);
     Ok(stats)
@@ -457,6 +463,7 @@ mod tests {
             socket_units: 0,
             target_units: 0,
             timer_units: 0,
+            timer_persistent_units: 0,
             total_units: 0,
             service_stats: HashMap::new(),
             unit_states: HashMap::from([(
@@ -516,6 +523,7 @@ mod tests {
             socket_units: 0,
             target_units: 0,
             timer_units: 1,
+            timer_persistent_units: 0,
             total_units: 0,
             service_stats: HashMap::new(),
             unit_states: HashMap::new(),

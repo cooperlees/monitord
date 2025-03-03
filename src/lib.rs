@@ -20,6 +20,7 @@ pub mod machines;
 pub mod networkd;
 pub mod pid1;
 pub mod system;
+pub mod timer;
 pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
