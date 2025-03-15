@@ -207,6 +207,9 @@ fn flatten_unit_states(
                         flat_stats.insert(key, 1.into());
                     }
                 },
+                "time_in_state_usecs" => {
+                    flat_stats.insert(key, unit_state_stats.time_in_state_usecs.into());
+                }
                 _ => {
                     debug!("Got a unhandled unit state: '{}'", field_name);
                 }
@@ -425,9 +428,11 @@ mod tests {
   "system-state": 3,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.active_state": 1,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.load_state": 1,
+  "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.time_in_state_usecs": 69,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.unhealthy": 0,
   "unit_states.unittest.service.active_state": 1,
   "unit_states.unittest.service.load_state": 1,
+  "unit_states.unittest.service.time_in_state_usecs": 69,
   "unit_states.unittest.service.unhealthy": 0,
   "units.active_units": 0,
   "units.automount_units": 0,
@@ -496,6 +501,7 @@ mod tests {
                 active_state: units::SystemdUnitActiveState::active,
                 load_state: units::SystemdUnitLoadState::loaded,
                 unhealthy: false,
+                time_in_state_usecs: 69,
             },
         );
         // Ensure we escape keys correctly
@@ -507,6 +513,7 @@ mod tests {
                 active_state: units::SystemdUnitActiveState::active,
                 load_state: units::SystemdUnitLoadState::loaded,
                 unhealthy: false,
+                time_in_state_usecs: 69,
             },
         );
         stats
@@ -518,7 +525,7 @@ mod tests {
             &return_monitord_stats(),
             &String::from("JSON serialize failed"),
         );
-        assert_eq!(77, json_flat_map.len());
+        assert_eq!(79, json_flat_map.len());
     }
 
     #[test]
