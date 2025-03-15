@@ -216,7 +216,7 @@ pub fn is_unit_unhealthy(
 /// Parse state of a unit into our unit_states hash
 pub fn parse_state(
     stats: &mut SystemdUnitStats,
-    unit: (
+    unit: &(
         String, // unit name
         String,
         String, // load state
@@ -231,12 +231,11 @@ pub fn parse_state(
     allowlist: &[String],
     blocklist: &[String],
 ) {
-    let unit_name = unit.0;
-    if blocklist.contains(&unit_name) {
-        debug!("Skipping state stats for {} due to blocklist", unit_name);
+    if blocklist.contains(&unit.0) {
+        debug!("Skipping state stats for {} due to blocklist", &unit.0);
         return;
     }
-    if !allowlist.is_empty() && !allowlist.contains(&unit_name) {
+    if !allowlist.is_empty() && !allowlist.contains(&unit.0) {
         return;
     }
     let active_state =
@@ -245,7 +244,7 @@ pub fn parse_state(
         .unwrap_or(SystemdUnitLoadState::unknown);
 
     stats.unit_states.insert(
-        unit_name.clone(),
+        unit.0.clone(),
         UnitStates {
             active_state,
             load_state,
@@ -337,7 +336,7 @@ pub async fn parse_unit_state(
         if config.units.state_stats {
             parse_state(
                 &mut stats,
-                unit.clone(),
+                &unit,
                 &config.units.state_stats_allowlist,
                 &config.units.state_stats_blocklist,
             );
@@ -479,7 +478,7 @@ mod tests {
         let systemd_unit = get_unit_file();
 
         // Test no allow list or blocklist
-        parse_state(&mut stats, systemd_unit.clone(), &vec![], &vec![]);
+        parse_state(&mut stats, &systemd_unit, &vec![], &vec![]);
         assert_eq!(expected_stats, stats);
 
         // Create some allow/block lists
@@ -488,18 +487,13 @@ mod tests {
 
         // test no blocklist and only allow list - Should equal the same as no lists above
         let mut allowlist_stats = SystemdUnitStats::default();
-        parse_state(
-            &mut allowlist_stats,
-            systemd_unit.clone(),
-            &allowlist,
-            &vec![],
-        );
+        parse_state(&mut allowlist_stats, &systemd_unit, &allowlist, &vec![]);
         assert_eq!(expected_stats, allowlist_stats);
 
         // test blocklist with allow list (show it's preferred)
         let mut blocklist_stats = SystemdUnitStats::default();
         let expected_blocklist_stats = SystemdUnitStats::default();
-        parse_state(&mut blocklist_stats, systemd_unit, &allowlist, &blocklist);
+        parse_state(&mut blocklist_stats, &systemd_unit, &allowlist, &blocklist);
         assert_eq!(expected_blocklist_stats, blocklist_stats);
     }
 
