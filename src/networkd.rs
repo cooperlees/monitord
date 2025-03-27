@@ -361,8 +361,11 @@ pub async fn update_networkd_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
     use std::fs::File;
+    #[cfg(target_os = "linux")]
     use std::io::Write;
+    #[cfg(target_os = "linux")]
     use tempfile::tempdir;
 
     const MOCK_INTERFACE_STATE: &str = r###"# This is private data. Do not parse.
@@ -431,6 +434,7 @@ MDNS=no
         assert_eq!(expected_interface_state_json.to_string(), stats_json);
     }
 
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn test_parse_interface_state_files() -> Result<()> {
         let expected_files = NetworkdState {
@@ -460,6 +464,7 @@ MDNS=no
         Ok(())
     }
 
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn test_parse_interface_state_files_json() -> Result<()> {
         let expected_interface_state_json = r###"{"interfaces_state":[{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"eth69","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###;

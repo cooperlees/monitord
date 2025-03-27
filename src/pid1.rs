@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+#[cfg(target_os = "linux")]
 use procfs::process::Process;
 use tokio::sync::RwLock;
 use tracing::error;
@@ -22,6 +23,7 @@ pub struct Pid1Stats {
 }
 
 /// Get procfs info on pid 1 - <https://manpages.debian.org/buster/manpages/procfs.5.en.html>
+#[cfg(target_os = "linux")]
 pub fn get_pid_stats(pid: i32) -> anyhow::Result<Pid1Stats> {
     let bytes_per_page = procfs::page_size();
     let ticks_per_second = procfs::ticks_per_second();
@@ -43,6 +45,12 @@ pub fn get_pid_stats(pid: i32) -> anyhow::Result<Pid1Stats> {
             .len()
             .try_into()?,
     })
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn get_pid_stats(_pid: i32) -> anyhow::Result<Pid1Stats> {
+    error!("pid1 stats not supported on this OS");
+    Ok(Pid1Stats::default())
 }
 
 /// Async wrapper than can update PID1 stats when passed a locked struct
@@ -67,6 +75,7 @@ pub async fn update_pid1_stats(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 #[cfg(test)]
 pub mod tests {
     use super::*;

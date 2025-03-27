@@ -252,7 +252,7 @@ pub async fn parse_state(
     let time_in_state_usecs: u64 = match connection {
         Some(c) => {
             let up = crate::dbus::zbus_unit::UnitProxy::builder(c)
-                .path(ObjectPath::try_from(unit.6.clone())?)?
+                .path(ObjectPath::from(unit.6.clone()))?
                 .build()
                 .await?;
             let now: u64 = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() * 1_000_000;

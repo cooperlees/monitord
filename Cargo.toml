@@ -19,7 +19,6 @@ configparser = { version = "3.0.3", features = ["indexmap"] }
 indexmap = "2.2"
 int-enum = "1.1"
 itertools = "0.14.0"
-procfs = "0.15.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_repr = "0.1"
@@ -36,6 +35,9 @@ tracing-subscriber = "0.3"
 zbus = { version = "5.1.1", features = ["tokio"], default-features = false }
 zvariant = "5.1.0"
 zvariant_derive = "5.1.0"
+
+[target.'cfg(linux)'.dependencies]
+procfs = "0.15.1"
 
 [dev-dependencies]
 tempfile = "3.3.0"
