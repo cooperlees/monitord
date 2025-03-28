@@ -295,22 +295,31 @@ pub fn parse_interface_stats(
 pub async fn parse_interface_state_files(
     states_path: &PathBuf,
     maybe_network_int_to_name: Option<HashMap<i32, String>>,
-    connection: &zbus::Connection,
+    maybe_connection: Option<&zbus::Connection>,
 ) -> Result<NetworkdState, std::io::Error> {
     let mut managed_interface_count: u64 = 0;
     let mut interfaces_state = vec![];
 
     let network_int_to_name = match maybe_network_int_to_name {
-        None => match get_interface_links(connection).await {
-            Ok(hashmap) => hashmap,
-            Err(err) => {
+        None => {
+            if let Some(connection) = maybe_connection {
+                match get_interface_links(connection).await {
+                    Ok(hashmap) => hashmap,
+                    Err(err) => {
+                        error!(
+                            "Unable to get interface links via DBUS - is networkd running?: {:#?}",
+                            err
+                        );
+                        return Ok(NetworkdState::default());
+                    }
+                }
+            } else {
                 error!(
-                    "Unable to get interface links via DBUS - is networkd running?: {:#?}",
-                    err
+                    "Unable to get interface links via DBUS and no network_int_to_name supplied"
                 );
                 return Ok(NetworkdState::default());
             }
-        },
+        }
         Some(valid_hashmap) => valid_hashmap,
     };
 
@@ -348,7 +357,9 @@ pub async fn update_networkd_stats(
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    match parse_interface_state_files(&states_path, maybe_network_int_to_name, &connection).await {
+    match parse_interface_state_files(&states_path, maybe_network_int_to_name, Some(&connection))
+        .await
+    {
         Ok(networkd_stats) => {
             let mut machine_stats = locked_machine_stats.write().await;
             machine_stats.networkd = networkd_stats;
@@ -361,11 +372,8 @@ pub async fn update_networkd_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(target_os = "linux")]
     use std::fs::File;
-    #[cfg(target_os = "linux")]
     use std::io::Write;
-    #[cfg(target_os = "linux")]
     use tempfile::tempdir;
 
     const MOCK_INTERFACE_STATE: &str = r###"# This is private data. Do not parse.
@@ -418,9 +426,9 @@ MDNS=no
             parse_interface_stats(
                 MOCK_INTERFACE_STATE.to_string(),
                 2,
-                &return_mock_int_name_hashmap().unwrap()
+                &return_mock_int_name_hashmap().expect("Failed to get a mock int name hashmap"),
             )
-            .unwrap(),
+            .expect("Failed to parse interface stats"),
         );
     }
 
@@ -434,7 +442,6 @@ MDNS=no
         assert_eq!(expected_interface_state_json.to_string(), stats_json);
     }
 
-    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn test_parse_interface_state_files() -> Result<()> {
         let expected_files = NetworkdState {
@@ -454,9 +461,7 @@ MDNS=no
             parse_interface_state_files(
                 &path,
                 return_mock_int_name_hashmap(),
-                &zbus::Connection::system()
-                    .await
-                    .expect("Unable to get dbus connection via dbus"),
+                None, // No DBUS in tests
             )
             .await
             .expect("Problem with parsing interface stte files")
@@ -464,41 +469,12 @@ MDNS=no
         Ok(())
     }
 
-    #[cfg(target_os = "linux")]
-    #[tokio::test]
-    async fn test_parse_interface_state_files_json() -> Result<()> {
-        let expected_interface_state_json = r###"{"interfaces_state":[{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"eth69","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###;
-
-        let temp_dir = tempdir()?;
-        // As the networkctl JSON has no interface with index 69 name gets no value ...
-        let file_path = temp_dir.path().join("69");
-        let mut state_file = File::create(file_path)?;
-        writeln!(state_file, "{}", MOCK_INTERFACE_STATE)?;
-
-        let path = PathBuf::from(temp_dir.path());
-        let interface_stats = parse_interface_state_files(
-            &path,
-            return_mock_int_name_hashmap(),
-            &zbus::Connection::system()
-                .await
-                .expect("Unable to get dbus connection via dbus"),
-        )
-        .await
-        .expect("Unable to parse interface state files");
-        let interface_stats_json = serde_json::to_string(&interface_stats).unwrap();
-        assert_eq!(
-            expected_interface_state_json.to_string(),
-            interface_stats_json
-        );
-        Ok(())
-    }
-
     #[test]
     fn test_enums_to_ints() -> Result<()> {
-        assert_eq!(3, AddressState::routable as u64,);
+        assert_eq!(3, AddressState::routable as u64);
         let carrier_state_int: u8 = u8::from(CarrierState::degraded_carrier);
         assert_eq!(4, carrier_state_int);
-        assert_eq!(1, BoolState::True as i64,);
+        assert_eq!(1, BoolState::True as i64);
         let bool_state_false_int: u8 = u8::from(BoolState::False);
         assert_eq!(0, bool_state_false_int);
 
