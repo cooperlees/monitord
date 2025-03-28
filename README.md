@@ -35,12 +35,12 @@ Usage: monitord [OPTIONS]
 Options:
   -c, --config <CONFIG>
           Location of your monitord config
-          
+
           [default: /etc/monitord.conf]
 
   -l, --log-level <LOG_LEVEL>
           Adjust the console log-level
-          
+
           [default: Info]
           [possible values: error, warn, info, debug, trace]
 
@@ -51,10 +51,9 @@ Options:
           Print version
 ```
 
-
 ### Config
 
-monitord can have the different components monitored. To enable / disabled set the 
+monitord can have the different components monitored. To enable / disabled set the
 following in our monitord.conf. This file is [ini format](https://en.wikipedia.org/wiki/INI_file)
 to match systemd unit files.
 
@@ -214,7 +213,8 @@ Normal `serde_json` pretty representations of each components structs.
 
 ## Development
 
-To do test runs (requires `systemd` and `systemd-networkd` *installed*)
+To do test runs (requires `systemd` and `systemd-networkd` _installed_)
+
 - Pending what you have enabled in your config ...
 
 - `cargo run -- -c monitord.conf -l debug`
@@ -250,8 +250,35 @@ in the container to run monitord and test.
     - `--rm` is optional but will remove the container when stopped
 
 You can now log into the container to build + run tests and run the binary now against systemd.
+
 - `docker exec -it monitord-dev bash`
 - `cd /repo ; cargo run -- -c monitord`
   - networkd etc. are not running my default but can be started ...
   - `systemctl start systemd-networkd`
     - No interfaces will be managed tho by default in the container ...
+
+### varlink 101
+
+varlink might one day replace our DBUS usage. Here are some notes on how to work with systemd varlink
+as there isn't really documentation outside `man` pages.
+
+#### Checking interfaces
+
+- varlinkctl is your friend - https://man7.org/linux/man-pages/man1/varlinkctl.1.html
+
+Here is an example with networkd's interfaces:
+
+```
+varlinkctl info unix:/run/systemd/netif/io.systemd.Network
+varlinkctl introspect unix:/run/systemd/netif/io.systemd.Network io.systemd.Network
+
+cooper@au:~$ varlinkctl call unix:/run/systemd/netif/io.systemd.Network io.systemd.Network.GetStates '{}' -j | jq
+{
+  "AddressState": "routable",
+  "IPv4AddressState": "routable",
+  "IPv6AddressState": "routable",
+  "CarrierState": "carrier",
+  "OnlineState": "online",
+  "OperationalState": "routable"
+}
+```
