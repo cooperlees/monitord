@@ -381,14 +381,15 @@ ADMIN_STATE=configured
 OPER_STATE=routable
 CARRIER_STATE=carrier
 ADDRESS_STATE=routable
-IPV4_ADDRESS_STATE=routable
-IPV6_ADDRESS_STATE=degraded
+IPV4_ADDRESS_STATE=degraded
+IPV6_ADDRESS_STATE=routable
 ONLINE_STATE=online
 REQUIRED_FOR_ONLINE=yes
-REQUIRED_OPER_STATE_FOR_ONLINE=degraded
+REQUIRED_OPER_STATE_FOR_ONLINE=degraded:routable
 REQUIRED_FAMILY_FOR_ONLINE=any
 ACTIVATION_POLICY=up
 NETWORK_FILE=/etc/systemd/network/69-eno4.network
+NETWORK_FILE_DROPINS=""
 DNS=8.8.8.8 8.8.4.4
 NTP=
 SIP=
@@ -403,8 +404,8 @@ MDNS=no
             address_state: AddressState::routable,
             admin_state: AdminState::configured,
             carrier_state: CarrierState::carrier,
-            ipv4_address_state: AddressState::routable,
-            ipv6_address_state: AddressState::degraded,
+            ipv4_address_state: AddressState::degraded,
+            ipv6_address_state: AddressState::routable,
             name: "eth0".to_string(),
             network_file: "/etc/systemd/network/69-eno4.network".to_string(),
             oper_state: OperState::routable,
@@ -435,7 +436,7 @@ MDNS=no
     #[test]
     fn test_parse_interface_stats_json() {
         // 'name' stays as an empty string cause we don't pass in networkctl json or an interface id
-        let expected_interface_state_json = r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###;
+        let expected_interface_state_json = r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":2,"ipv6_address_state":3,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###;
         let stats =
             parse_interface_stats(MOCK_INTERFACE_STATE.to_string(), 0, &HashMap::new()).unwrap();
         let stats_json = serde_json::to_string(&stats).unwrap();
