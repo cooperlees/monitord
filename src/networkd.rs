@@ -26,6 +26,7 @@ use crate::MachineStats;
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -35,6 +36,7 @@ use crate::MachineStats;
 )]
 #[repr(u8)]
 pub enum AddressState {
+    #[default]
     unknown = 0,
     off = 1,
     degraded = 2,
@@ -49,6 +51,7 @@ pub enum AddressState {
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -58,6 +61,7 @@ pub enum AddressState {
 )]
 #[repr(u8)]
 pub enum AdminState {
+    #[default]
     unknown = 0,
     pending = 1,
     failed = 2,
@@ -75,6 +79,7 @@ pub enum AdminState {
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -84,6 +89,7 @@ pub enum AdminState {
 )]
 #[repr(u8)]
 pub enum BoolState {
+    #[default]
     unknown = u8::MAX,
     #[strum(
         serialize = "false",
@@ -109,6 +115,7 @@ pub enum BoolState {
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -118,6 +125,7 @@ pub enum BoolState {
 )]
 #[repr(u8)]
 pub enum CarrierState {
+    #[default]
     unknown = 0,
     off = 1,
     #[strum(serialize = "no-carrier", serialize = "no_carrier")]
@@ -137,6 +145,7 @@ pub enum CarrierState {
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -146,6 +155,7 @@ pub enum CarrierState {
 )]
 #[repr(u8)]
 pub enum OnlineState {
+    #[default]
     unknown = 0,
     offline = 1,
     partial = 2,
@@ -160,6 +170,7 @@ pub enum OnlineState {
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -169,6 +180,7 @@ pub enum OnlineState {
 )]
 #[repr(u8)]
 pub enum OperState {
+    #[default]
     unknown = 0,
     missing = 1,
     off = 2,
@@ -184,7 +196,7 @@ pub enum OperState {
 }
 
 /// Main per interface networkd state structure
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct InterfaceState {
     pub address_state: AddressState,
     pub admin_state: AdminState,
@@ -225,17 +237,7 @@ pub fn parse_interface_stats(
     interface_id: i32,
     interface_id_to_name: &HashMap<i32, String>,
 ) -> Result<InterfaceState, String> {
-    let mut interface_state = InterfaceState {
-        address_state: AddressState::unknown,
-        admin_state: AdminState::unknown,
-        carrier_state: CarrierState::unknown,
-        ipv4_address_state: AddressState::unknown,
-        ipv6_address_state: AddressState::unknown,
-        name: "".to_string(),
-        network_file: "".to_string(),
-        oper_state: OperState::unknown,
-        required_for_online: BoolState::False,
-    };
+    let mut interface_state = InterfaceState::default();
 
     for line in interface_state_str.lines() {
         // Skip comments + lines without =
