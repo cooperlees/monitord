@@ -1,0 +1,23 @@
+name: RustDoc CI
+
+on: [push, pull_request]
+
+jobs:
+  build_and_test:
+    name: Rust Cargo Doc CI on ${{matrix.os}}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cargo doc
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
