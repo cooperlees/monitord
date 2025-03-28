@@ -1,10 +1,10 @@
-name: RustDoc CI
+name: RustClippy CI
 
 on: [push, pull_request]
 
 jobs:
-  docs:
-    name: Rust Cargo Doc CI on ${{matrix.os}}
+  clippy:
+    name: Rust Clippy CI on ${{matrix.os}}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -17,7 +17,7 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Cargo doc
+      - name: Cargo clippy
         uses: actions-rs/cargo@v1
         with:
-          command: doc
+          command: clippy

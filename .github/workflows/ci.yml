@@ -28,11 +28,6 @@ jobs:
         with:
           command: test
 
-      - name: Cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-
       - name: Cargo release + all feature build
         uses: actions-rs/cargo@v1
         with:
