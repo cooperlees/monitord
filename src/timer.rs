@@ -36,7 +36,18 @@ pub async fn collect_timer_stats(
             }
         }
         Err(err) => error!(
-            "Failed to check if {} timer is persistent: {:?}",
+            "Failed to check if {} is persistent: {:?}",
+            &unit.0, err
+        ),
+    }
+    match pt.remain_after_elapse().await {
+        Ok(remain_after_elapse) => {
+            if remain_after_elapse {
+                stats.timer_remain_after_elapse += 1;
+            }
+        }
+        Err(err) => error!(
+            "Failed to check if {} remains after elapse: {:?}",
             &unit.0, err
         ),
     }
