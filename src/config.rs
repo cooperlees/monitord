@@ -82,6 +82,16 @@ impl Default for SystemStateConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TimersConfig {
+    pub enabled: bool,
+}
+impl Default for TimersConfig {
+    fn default() -> Self {
+        TimersConfig { enabled: true }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnitsConfig {
     pub enabled: bool,
     pub state_stats: bool,
@@ -125,6 +135,7 @@ pub struct Config {
     pub pid1: Pid1Config,
     pub services: Vec<String>,
     pub system_state: SystemStateConfig,
+    pub timers: TimersConfig,
     pub units: UnitsConfig,
 }
 
@@ -182,6 +193,10 @@ impl From<Ini> for Config {
             String::from("system-state"),
             String::from("enabled"),
         );
+
+        // [timers] section
+        config.timers.enabled =
+            read_config_bool(&ini_config, String::from("timers"), String::from("enabled"));
 
         // [units] section
         config.units.enabled =
@@ -272,6 +287,9 @@ bar.service
 [system-state]
 enabled = true
 
+[timers]
+enabled = true
+
 [units]
 enabled = true
 state_stats = true
@@ -342,6 +360,7 @@ output_format = json-flat
             pid1: Pid1Config { enabled: true },
             services: Vec::from([String::from("foo.service"), String::from("bar.service")]),
             system_state: SystemStateConfig { enabled: true },
+            timers: TimersConfig { enabled: true },
             units: UnitsConfig {
                 enabled: true,
                 state_stats: true,

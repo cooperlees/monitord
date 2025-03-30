@@ -21,6 +21,7 @@ use tracing::error;
 use zbus::zvariant::ObjectPath;
 use zbus::zvariant::OwnedObjectPath;
 
+use crate::timer::TimerStats;
 use crate::MachineStats;
 
 #[derive(
@@ -50,6 +51,7 @@ pub struct SystemdUnitStats {
     pub timer_remain_after_elapse: u64,
     pub total_units: u64,
     pub service_stats: HashMap<String, ServiceStats>,
+    pub timer_stats: HashMap<String, TimerStats>,
     pub unit_states: HashMap<String, UnitStates>,
 }
 
@@ -384,8 +386,18 @@ pub async fn parse_unit_state(
         }
 
         // Collect timer stats
-        if unit.0.contains(".timer") {
-            crate::timer::collect_timer_stats(connection, &mut stats, &unit).await?;
+        if config.timers.enabled && unit.0.contains(".timer") {
+            let timer_stats: Option<TimerStats> =
+                match crate::timer::collect_timer_stats(connection, &mut stats, &unit).await {
+                    Ok(ts) => Some(ts),
+                    Err(err) => {
+                        error!("Failed to get {} stats: {:#?}", &unit.0, err);
+                        None
+                    }
+                };
+            if let Some(ts) = timer_stats {
+                stats.timer_stats.insert(unit.0.clone(), ts);
+            }
         }
     }
     debug!("unit stats: {:?}", stats);
@@ -493,6 +505,7 @@ mod tests {
             timer_remain_after_elapse: 0,
             total_units: 0,
             service_stats: HashMap::new(),
+            timer_stats: HashMap::new(),
             unit_states: HashMap::from([(
                 test_unit_name.clone(),
                 UnitStates {
@@ -565,6 +578,7 @@ mod tests {
             timer_remain_after_elapse: 0,
             total_units: 0,
             service_stats: HashMap::new(),
+            timer_stats: HashMap::new(),
             unit_states: HashMap::new(),
         };
         let mut stats = SystemdUnitStats::default();
