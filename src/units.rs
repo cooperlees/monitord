@@ -47,6 +47,7 @@ pub struct SystemdUnitStats {
     pub target_units: u64,
     pub timer_units: u64,
     pub timer_persistent_units: u64,
+    pub timer_remain_after_elapse: u64,
     pub total_units: u64,
     pub service_stats: HashMap<String, ServiceStats>,
     pub unit_states: HashMap<String, UnitStates>,
@@ -489,6 +490,7 @@ mod tests {
             target_units: 0,
             timer_units: 0,
             timer_persistent_units: 0,
+            timer_remain_after_elapse: 0,
             total_units: 0,
             service_stats: HashMap::new(),
             unit_states: HashMap::from([(
@@ -560,6 +562,7 @@ mod tests {
             target_units: 0,
             timer_units: 1,
             timer_persistent_units: 0,
+            timer_remain_after_elapse: 0,
             total_units: 0,
             service_stats: HashMap::new(),
             unit_states: HashMap::new(),

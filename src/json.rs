@@ -288,6 +288,9 @@ fn flatten_units(
             "timer_persistent_units" => {
                 flat_stats.insert(key, units_stats.timer_persistent_units.into());
             }
+            "timer_remain_after_elapse" => {
+                flat_stats.insert(key, units_stats.timer_remain_after_elapse.into());
+            }
             "total_units" => {
                 flat_stats.insert(key, units_stats.total_units.into());
             }
@@ -394,6 +397,7 @@ mod tests {
   "machines.foo.units.socket_units": 0,
   "machines.foo.units.target_units": 0,
   "machines.foo.units.timer_persistent_units": 0,
+  "machines.foo.units.timer_remain_after_elapse": 0,
   "machines.foo.units.timer_units": 0,
   "machines.foo.units.total_units": 0,
   "networkd.eth0.address_state": 3,
@@ -451,6 +455,7 @@ mod tests {
   "units.socket_units": 0,
   "units.target_units": 0,
   "units.timer_persistent_units": 0,
+  "units.timer_remain_after_elapse": 0,
   "units.timer_units": 0,
   "units.total_units": 0,
   "version": "255.7-1.fc40"
@@ -525,7 +530,7 @@ mod tests {
             &return_monitord_stats(),
             &String::from("JSON serialize failed"),
         );
-        assert_eq!(79, json_flat_map.len());
+        assert_eq!(81, json_flat_map.len());
     }
 
     #[test]
