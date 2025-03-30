@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
+use struct_field_names_as_array::FieldNamesAsArray;
 use tracing::debug;
 
 use crate::networkd;
@@ -182,6 +183,65 @@ fn flatten_services(
     flat_stats
 }
 
+fn flatten_timers(
+    timer_stats_hash: &HashMap<String, crate::timer::TimerStats>,
+    key_prefix: &String,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("timers"));
+
+    for (timer_name, timer_stats) in timer_stats_hash.iter() {
+        for field_name in crate::timer::TimerStats::FIELD_NAMES_AS_ARRAY.iter() {
+            let key = format!("{base_metric_name}.{timer_name}.{field_name}");
+            match field_name.to_string().as_str() {
+                "accruacy_usec" => {
+                    flat_stats.insert(key, timer_stats.accruacy_usec.into());
+                }
+                "fixed_random_delay" => {
+                    flat_stats.insert(key, (timer_stats.fixed_random_delay as u64).into());
+                }
+                "last_trigger_usec" => {
+                    flat_stats.insert(key, timer_stats.last_trigger_usec.into());
+                }
+                "last_trigger_usec_monotonic" => {
+                    flat_stats.insert(key, timer_stats.last_trigger_usec_monotonic.into());
+                }
+                "next_elapse_usec_monotonic" => {
+                    flat_stats.insert(key, timer_stats.next_elapse_usec_monotonic.into());
+                }
+                "next_elapse_usec_realtime" => {
+                    flat_stats.insert(key, timer_stats.next_elapse_usec_realtime.into());
+                }
+                "persistent" => {
+                    flat_stats.insert(key, (timer_stats.persistent as u64).into());
+                }
+                "randomized_delay_usec" => {
+                    flat_stats.insert(key, timer_stats.randomized_delay_usec.into());
+                }
+                "remain_after_elapse" => {
+                    flat_stats.insert(key, (timer_stats.remain_after_elapse as u64).into());
+                }
+                "service_unit_last_state_change_usec" => {
+                    flat_stats.insert(
+                        key,
+                        (timer_stats.service_unit_last_state_change_usec).into(),
+                    );
+                }
+                "service_unit_last_state_change_usec_monotonic" => {
+                    flat_stats.insert(
+                        key,
+                        (timer_stats.service_unit_last_state_change_usec_monotonic).into(),
+                    );
+                }
+                _ => {
+                    debug!("Got a unhandled stat: '{}'", field_name);
+                }
+            }
+        }
+    }
+    flat_stats
+}
+
 fn flatten_unit_states(
     unit_states_hash: &HashMap<String, units::UnitStates>,
     key_prefix: &String,
@@ -330,6 +390,10 @@ fn flatten_machines(
             &stats.units.service_stats,
             &machine_key_prefix,
         ));
+        flat_stats.extend(flatten_timers(
+            &stats.units.timer_stats,
+            &machine_key_prefix,
+        ));
     }
 
     flat_stats
@@ -351,6 +415,7 @@ fn flatten_stats(
         &stats_struct.units.service_stats,
         key_prefix,
     ));
+    flat_stats.extend(flatten_timers(&stats_struct.units.timer_stats, key_prefix));
     flat_stats.extend(flatten_unit_states(
         &stats_struct.units.unit_states,
         key_prefix,
@@ -374,12 +439,25 @@ pub fn flatten(
 
 #[cfg(test)]
 mod tests {
+    use crate::timer;
+
     use super::*;
 
     // This will always be sorted / deterministic ...
     const EXPECTED_FLAT_JSON: &str = r###"{
   "machines.foo.networkd.managed_interfaces": 0,
   "machines.foo.system-state": 0,
+  "machines.foo.timers.unittest.timer.accruacy_usec": 69,
+  "machines.foo.timers.unittest.timer.fixed_random_delay": 1,
+  "machines.foo.timers.unittest.timer.last_trigger_usec": 69,
+  "machines.foo.timers.unittest.timer.last_trigger_usec_monotonic": 69,
+  "machines.foo.timers.unittest.timer.next_elapse_usec_monotonic": 69,
+  "machines.foo.timers.unittest.timer.next_elapse_usec_realtime": 69,
+  "machines.foo.timers.unittest.timer.persistent": 0,
+  "machines.foo.timers.unittest.timer.randomized_delay_usec": 69,
+  "machines.foo.timers.unittest.timer.remain_after_elapse": 1,
+  "machines.foo.timers.unittest.timer.service_unit_last_state_change_usec": 69,
+  "machines.foo.timers.unittest.timer.service_unit_last_state_change_usec_monotonic": 69,
   "machines.foo.units.active_units": 0,
   "machines.foo.units.automount_units": 0,
   "machines.foo.units.device_units": 0,
@@ -430,6 +508,17 @@ mod tests {
   "services.unittest.service.timeout_clean_usec": 0,
   "services.unittest.service.watchdog_usec": 0,
   "system-state": 3,
+  "timers.unittest.timer.accruacy_usec": 69,
+  "timers.unittest.timer.fixed_random_delay": 1,
+  "timers.unittest.timer.last_trigger_usec": 69,
+  "timers.unittest.timer.last_trigger_usec_monotonic": 69,
+  "timers.unittest.timer.next_elapse_usec_monotonic": 69,
+  "timers.unittest.timer.next_elapse_usec_realtime": 69,
+  "timers.unittest.timer.persistent": 0,
+  "timers.unittest.timer.randomized_delay_usec": 69,
+  "timers.unittest.timer.remain_after_elapse": 1,
+  "timers.unittest.timer.service_unit_last_state_change_usec": 69,
+  "timers.unittest.timer.service_unit_last_state_change_usec_monotonic": 69,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.active_state": 1,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.load_state": 1,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.time_in_state_usecs": 69,
@@ -509,6 +598,31 @@ mod tests {
                 time_in_state_usecs: 69,
             },
         );
+        let timer_unit = String::from("unittest.timer");
+        let timer_stats = timer::TimerStats {
+            accruacy_usec: 69,
+            fixed_random_delay: true,
+            last_trigger_usec: 69,
+            last_trigger_usec_monotonic: 69,
+            next_elapse_usec_monotonic: 69,
+            next_elapse_usec_realtime: 69,
+            persistent: false,
+            randomized_delay_usec: 69,
+            remain_after_elapse: true,
+            service_unit_last_state_change_usec: 69,
+            service_unit_last_state_change_usec_monotonic: 69,
+        };
+        stats
+            .units
+            .timer_stats
+            .insert(timer_unit.clone(), timer_stats.clone());
+        stats
+            .machines
+            .get_mut("foo")
+            .expect("No machine foo? WTF")
+            .units
+            .timer_stats
+            .insert(timer_unit, timer_stats);
         // Ensure we escape keys correctly
         stats.units.unit_states.insert(
             String::from(
@@ -530,7 +644,7 @@ mod tests {
             &return_monitord_stats(),
             &String::from("JSON serialize failed"),
         );
-        assert_eq!(81, json_flat_map.len());
+        assert_eq!(103, json_flat_map.len());
     }
 
     #[test]
