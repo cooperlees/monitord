@@ -194,8 +194,8 @@ fn flatten_timers(
         for field_name in crate::timer::TimerStats::FIELD_NAMES_AS_ARRAY.iter() {
             let key = format!("{base_metric_name}.{timer_name}.{field_name}");
             match field_name.to_string().as_str() {
-                "accruacy_usec" => {
-                    flat_stats.insert(key, timer_stats.accruacy_usec.into());
+                "accuracy_usec" => {
+                    flat_stats.insert(key, timer_stats.accuracy_usec.into());
                 }
                 "fixed_random_delay" => {
                     flat_stats.insert(key, (timer_stats.fixed_random_delay as u64).into());
@@ -447,7 +447,7 @@ mod tests {
     const EXPECTED_FLAT_JSON: &str = r###"{
   "machines.foo.networkd.managed_interfaces": 0,
   "machines.foo.system-state": 0,
-  "machines.foo.timers.unittest.timer.accruacy_usec": 69,
+  "machines.foo.timers.unittest.timer.accuracy_usec": 69,
   "machines.foo.timers.unittest.timer.fixed_random_delay": 1,
   "machines.foo.timers.unittest.timer.last_trigger_usec": 69,
   "machines.foo.timers.unittest.timer.last_trigger_usec_monotonic": 69,
@@ -508,7 +508,7 @@ mod tests {
   "services.unittest.service.timeout_clean_usec": 0,
   "services.unittest.service.watchdog_usec": 0,
   "system-state": 3,
-  "timers.unittest.timer.accruacy_usec": 69,
+  "timers.unittest.timer.accuracy_usec": 69,
   "timers.unittest.timer.fixed_random_delay": 1,
   "timers.unittest.timer.last_trigger_usec": 69,
   "timers.unittest.timer.last_trigger_usec_monotonic": 69,
@@ -600,7 +600,7 @@ mod tests {
         );
         let timer_unit = String::from("unittest.timer");
         let timer_stats = timer::TimerStats {
-            accruacy_usec: 69,
+            accuracy_usec: 69,
             fixed_random_delay: true,
             last_trigger_usec: 69,
             last_trigger_usec_monotonic: 69,
