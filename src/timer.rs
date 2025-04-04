@@ -47,52 +47,81 @@ pub async fn collect_timer_stats(
         OwnedObjectPath, // The job object path
     ),
 ) -> Result<TimerStats> {
+    let mut timer_stats = TimerStats::default();
+
     let pt = crate::dbus::zbus_timer::TimerProxy::builder(connection)
         .path(unit.6.clone())?
         .build()
         .await?;
-    let mut timer_stats = TimerStats::default();
-
     // Get service unit name to check when it last ran to ensure
     // we are triggers the configured service with times set
     let service_unit = pt.unit().await?;
+    let mut service_unit_last_state_change_usec: Result<u64, zbus::Error> = Ok(0);
+    let mut service_unit_last_state_change_usec_monotonic: Result<u64, zbus::Error> = Ok(0);
     if service_unit.is_empty() {
-        error!("{}: No service unit name found for timer", unit.0);
-        return Ok(timer_stats);
+        error!("{}: No service unit name found for timer.", unit.0);
+    } else {
+        // Get the object path of the service unit
+        let mp = crate::dbus::zbus_systemd::ManagerProxy::new(connection).await?;
+        let service_unit_path = mp.get_unit(&service_unit).await?;
+        // Create a UnitProxy with the unit path to async get the two counters we want
+        let up = crate::dbus::zbus_unit::UnitProxy::builder(connection)
+            .path(service_unit_path)?
+            .build()
+            .await?;
+
+        (
+            service_unit_last_state_change_usec,
+            service_unit_last_state_change_usec_monotonic,
+        ) = tokio::join!(
+            up.state_change_timestamp(),
+            up.state_change_timestamp_monotonic(),
+        );
     }
+    timer_stats.service_unit_last_state_change_usec = service_unit_last_state_change_usec?;
+    timer_stats.service_unit_last_state_change_usec_monotonic =
+        service_unit_last_state_change_usec_monotonic?;
 
-    // Get the object path of the service unit
-    let mp = crate::dbus::zbus_systemd::ManagerProxy::new(connection).await?;
-    let service_unit_path = mp.get_unit(&service_unit).await?;
+    // Grab all the other DBUS data async
+    let (
+        accruacy_usec,
+        fixed_random_delay,
+        last_trigger_usec,
+        last_trigger_usec_monotonic,
+        persistent,
+        next_elapse_usec_monotonic,
+        next_elapse_usec_realtime,
+        randomized_delay_usec,
+        remain_after_elapse,
+    ) = tokio::join!(
+        pt.accuracy_usec(),
+        pt.fixed_random_delay(),
+        pt.last_trigger_usec(),
+        pt.last_trigger_usec_monotonic(),
+        pt.persistent(),
+        pt.next_elapse_usec_monotonic(),
+        pt.next_elapse_usec_realtime(),
+        pt.randomized_delay_usec(),
+        pt.remain_after_elapse(),
+    );
 
-    let up = crate::dbus::zbus_unit::UnitProxy::builder(connection)
-        .path(service_unit_path)?
-        .build()
-        .await?;
+    timer_stats.accruacy_usec = accruacy_usec?;
+    timer_stats.fixed_random_delay = fixed_random_delay?;
+    timer_stats.last_trigger_usec = last_trigger_usec?;
+    timer_stats.last_trigger_usec_monotonic = last_trigger_usec_monotonic?;
+    timer_stats.persistent = persistent?;
+    timer_stats.next_elapse_usec_monotonic = next_elapse_usec_monotonic?;
+    timer_stats.next_elapse_usec_realtime = next_elapse_usec_realtime?;
+    timer_stats.randomized_delay_usec = randomized_delay_usec?;
+    timer_stats.remain_after_elapse = remain_after_elapse?;
 
-    let persistent_bool = pt.persistent().await?;
-    if persistent_bool {
+    if timer_stats.persistent {
         stats.timer_persistent_units += 1;
     }
-    timer_stats.persistent = persistent_bool;
 
-    let remain_after_elapse = pt.remain_after_elapse().await?;
-    if remain_after_elapse {
+    if timer_stats.remain_after_elapse {
         stats.timer_remain_after_elapse += 1;
     }
-    timer_stats.remain_after_elapse = remain_after_elapse;
-
-    // Add all non counted stats
-    timer_stats.accruacy_usec = pt.accuracy_usec().await?;
-    timer_stats.fixed_random_delay = pt.fixed_random_delay().await?;
-    timer_stats.last_trigger_usec = pt.last_trigger_usec().await?;
-    timer_stats.last_trigger_usec_monotonic = pt.last_trigger_usec_monotonic().await?;
-    timer_stats.next_elapse_usec_monotonic = pt.next_elapse_usec_monotonic().await?;
-    timer_stats.next_elapse_usec_realtime = pt.next_elapse_usec_realtime().await?;
-    timer_stats.randomized_delay_usec = pt.randomized_delay_usec().await?;
-    timer_stats.service_unit_last_state_change_usec = up.state_change_timestamp().await?;
-    timer_stats.service_unit_last_state_change_usec_monotonic =
-        up.state_change_timestamp_monotonic().await?;
 
     Ok(timer_stats)
 }
