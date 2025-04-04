@@ -84,10 +84,16 @@ impl Default for SystemStateConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimersConfig {
     pub enabled: bool,
+    pub allowlist: Vec<String>,
+    pub blocklist: Vec<String>,
 }
 impl Default for TimersConfig {
     fn default() -> Self {
-        TimersConfig { enabled: true }
+        TimersConfig {
+            enabled: true,
+            allowlist: Vec::new(),
+            blocklist: Vec::new(),
+        }
     }
 }
 
@@ -197,6 +203,12 @@ impl From<Ini> for Config {
         // [timers] section
         config.timers.enabled =
             read_config_bool(&ini_config, String::from("timers"), String::from("enabled"));
+        if let Some(timers_allowlist) = config_map.get("timers.allowlist") {
+            config.timers.allowlist = timers_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(timers_blocklist) = config_map.get("timers.blocklist") {
+            config.timers.blocklist = timers_blocklist.keys().map(|s| s.to_string()).collect();
+        }
 
         // [units] section
         config.units.enabled =
@@ -290,6 +302,12 @@ enabled = true
 [timers]
 enabled = true
 
+[timers.allowlist]
+foo.timer
+
+[timers.blocklist]
+bar.timer
+
 [units]
 enabled = true
 state_stats = true
@@ -360,7 +378,11 @@ output_format = json-flat
             pid1: Pid1Config { enabled: true },
             services: Vec::from([String::from("foo.service"), String::from("bar.service")]),
             system_state: SystemStateConfig { enabled: true },
-            timers: TimersConfig { enabled: true },
+            timers: TimersConfig {
+                enabled: true,
+                allowlist: Vec::from([String::from("foo.timer")]),
+                blocklist: Vec::from([String::from("bar.timer")]),
+            },
             units: UnitsConfig {
                 enabled: true,
                 state_stats: true,

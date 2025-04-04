@@ -90,6 +90,15 @@ enabled = true
 [services]
 foo.service
 
+[timers]
+enabled = true
+
+[timers.allowlist]
+foo.timer
+
+[timers.blocklist]
+bar.timer
+
 # Grab unit status counts via dbus
 [units]
 enabled = true
@@ -182,6 +191,17 @@ Is semi pretty too + custom. All unittested ...
   "services.chronyd.service.timeout_clean_usec": 18446744073709551615,
   "services.chronyd.service.watchdog_usec": 0,
   "system-state": 3,
+  "timers.fstrim.timer.accuracy_usec": 3600000000,
+  "timers.fstrim.timer.fixed_random_delay": 0,
+  "timers.fstrim.timer.last_trigger_usec": 1743397269608978,
+  "timers.fstrim.timer.last_trigger_usec_monotonic": 0,
+  "timers.fstrim.timer.next_elapse_usec_monotonic": 0,
+  "timers.fstrim.timer.next_elapse_usec_realtime": 1744007133996149,
+  "timers.fstrim.timer.persistent": 1,
+  "timers.fstrim.timer.randomized_delay_usec": 6000000000,
+  "timers.fstrim.timer.remain_after_elapse": 1,
+  "timers.fstrim.timer.service_unit_last_state_change_usec": 1743517244700135,
+  "timers.fstrim.timer.service_unit_last_state_change_usec_monotonic": 639312703,
   "unit_states.chronyd.service.active_state": 1,
   "unit_states.chronyd.service.loaded_state": 1,
   "unit_states.chronyd.service.unhealthy": 0,

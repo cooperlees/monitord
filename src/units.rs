@@ -387,6 +387,13 @@ pub async fn parse_unit_state(
 
         // Collect timer stats
         if config.timers.enabled && unit.0.contains(".timer") {
+            if config.timers.blocklist.contains(&unit.0) {
+                debug!("Skipping timer stats for {} due to blocklist", &unit.0);
+                continue;
+            }
+            if !config.timers.allowlist.is_empty() && !config.timers.allowlist.contains(&unit.0) {
+                continue;
+            }
             let timer_stats: Option<TimerStats> =
                 match crate::timer::collect_timer_stats(connection, &mut stats, &unit).await {
                     Ok(ts) => Some(ts),
