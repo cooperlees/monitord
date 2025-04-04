@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/units.rs`."><title>units.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-b0742ba02757f159.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.83.0 (90b35a623 2024-11-26)" data-channel="1.83.0" data-search-js="search-f0d225181b97f9a4.js" data-settings-js="settings-805db61a62df4bd2.js" ><script src="../../static.files/storage-1d39b6787ed640ff.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-f070b9041d14864c.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-0111fcff984fae8f.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>units.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers">
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/units.rs`."><title>units.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-46132b98.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.1 (4eb161250 2025-03-15)" data-channel="1.85.1" data-search-js="search-75f5ac3e.js" data-settings-js="settings-0f613d39.js" ><script src="../../static.files/storage-59e33391.js"></script><script defer src="../../static.files/src-script-56102188.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>units.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers">
 <a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
@@ -532,7 +532,75 @@
 <a href="#531" id="531">531</a>
 <a href="#532" id="532">532</a>
 <a href="#533" id="533">533</a>
-<a href="#534" id="534">534</a></pre></div><pre class="rust"><code><span class="doccomment">//! # units module
+<a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
+<a href="#540" id="540">540</a>
+<a href="#541" id="541">541</a>
+<a href="#542" id="542">542</a>
+<a href="#543" id="543">543</a>
+<a href="#544" id="544">544</a>
+<a href="#545" id="545">545</a>
+<a href="#546" id="546">546</a>
+<a href="#547" id="547">547</a>
+<a href="#548" id="548">548</a>
+<a href="#549" id="549">549</a>
+<a href="#550" id="550">550</a>
+<a href="#551" id="551">551</a>
+<a href="#552" id="552">552</a>
+<a href="#553" id="553">553</a>
+<a href="#554" id="554">554</a>
+<a href="#555" id="555">555</a>
+<a href="#556" id="556">556</a>
+<a href="#557" id="557">557</a>
+<a href="#558" id="558">558</a>
+<a href="#559" id="559">559</a>
+<a href="#560" id="560">560</a>
+<a href="#561" id="561">561</a>
+<a href="#562" id="562">562</a>
+<a href="#563" id="563">563</a>
+<a href="#564" id="564">564</a>
+<a href="#565" id="565">565</a>
+<a href="#566" id="566">566</a>
+<a href="#567" id="567">567</a>
+<a href="#568" id="568">568</a>
+<a href="#569" id="569">569</a>
+<a href="#570" id="570">570</a>
+<a href="#571" id="571">571</a>
+<a href="#572" id="572">572</a>
+<a href="#573" id="573">573</a>
+<a href="#574" id="574">574</a>
+<a href="#575" id="575">575</a>
+<a href="#576" id="576">576</a>
+<a href="#577" id="577">577</a>
+<a href="#578" id="578">578</a>
+<a href="#579" id="579">579</a>
+<a href="#580" id="580">580</a>
+<a href="#581" id="581">581</a>
+<a href="#582" id="582">582</a>
+<a href="#583" id="583">583</a>
+<a href="#584" id="584">584</a>
+<a href="#585" id="585">585</a>
+<a href="#586" id="586">586</a>
+<a href="#587" id="587">587</a>
+<a href="#588" id="588">588</a>
+<a href="#589" id="589">589</a>
+<a href="#590" id="590">590</a>
+<a href="#591" id="591">591</a>
+<a href="#592" id="592">592</a>
+<a href="#593" id="593">593</a>
+<a href="#594" id="594">594</a>
+<a href="#595" id="595">595</a>
+<a href="#596" id="596">596</a>
+<a href="#597" id="597">597</a>
+<a href="#598" id="598">598</a>
+<a href="#599" id="599">599</a>
+<a href="#600" id="600">600</a>
+<a href="#601" id="601">601</a>
+<a href="#602" id="602">602</a></pre></div><pre class="rust"><code><span class="doccomment">//! # units module
 //!
 //! All main systemd unit statistics. Counts of types of units, unit states and
 //! queued jobs. We also house service specific statistics and system unit states.
@@ -540,6 +608,8 @@
 </span><span class="kw">use </span>std::collections::HashMap;
 <span class="kw">use </span>std::str::FromStr;
 <span class="kw">use </span>std::sync::Arc;
+<span class="kw">use </span>std::time::SystemTime;
+<span class="kw">use </span>std::time::UNIX_EPOCH;
 
 <span class="kw">use </span>anyhow::Result;
 <span class="kw">use </span>int_enum::IntEnum;
@@ -553,6 +623,7 @@
 <span class="kw">use </span>zbus::zvariant::ObjectPath;
 <span class="kw">use </span>zbus::zvariant::OwnedObjectPath;
 
+<span class="kw">use </span><span class="kw">crate</span>::timer::TimerStats;
 <span class="kw">use </span><span class="kw">crate</span>::MachineStats;
 
 <span class="attr">#[derive(
@@ -578,8 +649,11 @@
     <span class="kw">pub </span>socket_units: u64,
     <span class="kw">pub </span>target_units: u64,
     <span class="kw">pub </span>timer_units: u64,
+    <span class="kw">pub </span>timer_persistent_units: u64,
+    <span class="kw">pub </span>timer_remain_after_elapse: u64,
     <span class="kw">pub </span>total_units: u64,
     <span class="kw">pub </span>service_stats: HashMap&lt;String, ServiceStats&gt;,
+    <span class="kw">pub </span>timer_stats: HashMap&lt;String, TimerStats&gt;,
     <span class="kw">pub </span>unit_states: HashMap&lt;String, UnitStates&gt;,
 }
 
@@ -616,6 +690,8 @@
     <span class="comment">// Unhealthy is only calculated for SystemdUnitLoadState::loaded units based on !SystemdActiveState::active
     // and !SystemdUnitLoadState::masked
     </span><span class="kw">pub </span>unhealthy: bool,
+    <span class="comment">// Time in microseconds since the unit state has changed ...
+    </span><span class="kw">pub </span>time_in_state_usecs: u64,
 }
 
 <span class="comment">// Declare state types
@@ -747,9 +823,9 @@
 }
 
 <span class="doccomment">/// Parse state of a unit into our unit_states hash
-</span><span class="kw">pub fn </span>parse_state(
+</span><span class="kw">pub async fn </span>parse_state(
     stats: <span class="kw-2">&amp;mut </span>SystemdUnitStats,
-    unit: (
+    unit: <span class="kw-2">&amp;</span>(
         String, <span class="comment">// unit name
         </span>String,
         String, <span class="comment">// load state
@@ -763,34 +839,53 @@
     ),
     allowlist: <span class="kw-2">&amp;</span>[String],
     blocklist: <span class="kw-2">&amp;</span>[String],
-) {
-    <span class="kw">let </span>unit_name = unit.<span class="number">0</span>;
-    <span class="kw">if </span>blocklist.contains(<span class="kw-2">&amp;</span>unit_name) {
-        <span class="macro">debug!</span>(<span class="string">"Skipping state stats for {} due to blocklist"</span>, unit_name);
-        <span class="kw">return</span>;
+    connection: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>zbus::Connection&gt;,
+) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+    <span class="kw">if </span>blocklist.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
+        <span class="macro">debug!</span>(<span class="string">"Skipping state stats for {} due to blocklist"</span>, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>);
+        <span class="kw">return </span><span class="prelude-val">Ok</span>(());
     }
-    <span class="kw">if </span>!allowlist.is_empty() &amp;&amp; !allowlist.contains(<span class="kw-2">&amp;</span>unit_name) {
-        <span class="kw">return</span>;
+    <span class="kw">if </span>!allowlist.is_empty() &amp;&amp; !allowlist.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
+        <span class="kw">return </span><span class="prelude-val">Ok</span>(());
     }
     <span class="kw">let </span>active_state =
         SystemdUnitActiveState::from_str(<span class="kw-2">&amp;</span>unit.<span class="number">3</span>).unwrap_or(SystemdUnitActiveState::unknown);
     <span class="kw">let </span>load_state = SystemdUnitLoadState::from_str(<span class="kw-2">&amp;</span>unit.<span class="number">2</span>.replace(<span class="string">'-'</span>, <span class="string">"_"</span>))
         .unwrap_or(SystemdUnitLoadState::unknown);
 
+    <span class="comment">// Get the state_change_timestamp to determine time in seconds we've been in this state
+    </span><span class="kw">let </span>time_in_state_usecs: u64 = <span class="kw">match </span>connection {
+        <span class="prelude-val">Some</span>(c) =&gt; {
+            <span class="kw">let </span>up = <span class="kw">crate</span>::dbus::zbus_unit::UnitProxy::builder(c)
+                .path(ObjectPath::from(unit.<span class="number">6</span>.clone()))<span class="question-mark">?
+                </span>.build()
+                .<span class="kw">await</span><span class="question-mark">?</span>;
+            <span class="kw">let </span>now: u64 = SystemTime::now().duration_since(UNIX_EPOCH)<span class="question-mark">?</span>.as_secs() * <span class="number">1_000_000</span>;
+            <span class="kw">let </span>state_change_timestamp = up.state_change_timestamp().<span class="kw">await</span>.unwrap_or(now);
+            now - state_change_timestamp
+        }
+        <span class="prelude-val">None </span>=&gt; {
+            <span class="macro">debug!</span>(<span class="string">"No zbus connection so not calculating time_in_state_secs"</span>);
+            <span class="number">0
+        </span>}
+    };
+
     stats.unit_states.insert(
-        unit_name.clone(),
+        unit.<span class="number">0</span>.clone(),
         UnitStates {
             active_state,
             load_state,
             unhealthy: is_unit_unhealthy(active_state, load_state),
+            time_in_state_usecs,
         },
     );
+    <span class="prelude-val">Ok</span>(())
 }
 
 <span class="doccomment">/// Parse a unit and add to overall counts of state, type etc.
 </span><span class="kw">fn </span>parse_unit(
     stats: <span class="kw-2">&amp;mut </span>SystemdUnitStats,
-    unit: (
+    unit: <span class="kw-2">&amp;</span>(
         String,          <span class="comment">// The primary unit name as string
         </span>String,          <span class="comment">// The human readable description string
         </span>String,          <span class="comment">// The load state (i.e. whether the unit file has been loaded successfully)
@@ -863,17 +958,19 @@
     stats.total_units = units.len() <span class="kw">as </span>u64;
     <span class="kw">for </span>unit <span class="kw">in </span>units {
         <span class="comment">// Collect unit types + states counts
-        </span>parse_unit(<span class="kw-2">&amp;mut </span>stats, unit.clone());
+        </span>parse_unit(<span class="kw-2">&amp;mut </span>stats, <span class="kw-2">&amp;</span>unit);
 
         <span class="comment">// Collect per unit state stats - ActiveState + LoadState
         // Not collecting SubState (yet)
         </span><span class="kw">if </span>config.units.state_stats {
             parse_state(
                 <span class="kw-2">&amp;mut </span>stats,
-                unit.clone(),
+                <span class="kw-2">&amp;</span>unit,
                 <span class="kw-2">&amp;</span>config.units.state_stats_allowlist,
                 <span class="kw-2">&amp;</span>config.units.state_stats_blocklist,
-            );
+                <span class="prelude-val">Some</span>(connection),
+            )
+            .<span class="kw">await</span><span class="question-mark">?</span>;
         }
 
         <span class="comment">// Collect service stats
@@ -887,6 +984,28 @@
                     <span class="string">"Unable to get service stats for {} {}: {:#?}"</span>,
                     <span class="kw-2">&amp;</span>unit.<span class="number">0</span>, <span class="kw-2">&amp;</span>unit.<span class="number">6</span>, err
                 ),
+            }
+        }
+
+        <span class="comment">// Collect timer stats
+        </span><span class="kw">if </span>config.timers.enabled &amp;&amp; unit.<span class="number">0</span>.contains(<span class="string">".timer"</span>) {
+            <span class="kw">if </span>config.timers.blocklist.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
+                <span class="macro">debug!</span>(<span class="string">"Skipping timer stats for {} due to blocklist"</span>, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>);
+                <span class="kw">continue</span>;
+            }
+            <span class="kw">if </span>!config.timers.allowlist.is_empty() &amp;&amp; !config.timers.allowlist.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
+                <span class="kw">continue</span>;
+            }
+            <span class="kw">let </span>timer_stats: <span class="prelude-ty">Option</span>&lt;TimerStats&gt; =
+                <span class="kw">match </span><span class="kw">crate</span>::timer::collect_timer_stats(connection, <span class="kw-2">&amp;mut </span>stats, <span class="kw-2">&amp;</span>unit).<span class="kw">await </span>{
+                    <span class="prelude-val">Ok</span>(ts) =&gt; <span class="prelude-val">Some</span>(ts),
+                    <span class="prelude-val">Err</span>(err) =&gt; {
+                        <span class="macro">error!</span>(<span class="string">"Failed to get {} stats: {:#?}"</span>, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>, err);
+                        <span class="prelude-val">None
+                    </span>}
+                };
+            <span class="kw">if let </span><span class="prelude-val">Some</span>(ts) = timer_stats {
+                stats.timer_stats.insert(unit.<span class="number">0</span>.clone(), ts);
             }
         }
     }
@@ -970,8 +1089,8 @@
         ));
     }
 
-    <span class="attr">#[test]
-    </span><span class="kw">fn </span>test_state_parse() {
+    <span class="attr">#[tokio::test]
+    </span><span class="kw">async fn </span>test_state_parse() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
         <span class="kw">let </span>test_unit_name = String::from(<span class="string">"apport-autoreport.timer"</span>);
         <span class="kw">let </span>expected_stats = SystemdUnitStats {
             active_units: <span class="number">0</span>,
@@ -991,14 +1110,18 @@
             socket_units: <span class="number">0</span>,
             target_units: <span class="number">0</span>,
             timer_units: <span class="number">0</span>,
+            timer_persistent_units: <span class="number">0</span>,
+            timer_remain_after_elapse: <span class="number">0</span>,
             total_units: <span class="number">0</span>,
             service_stats: HashMap::new(),
+            timer_stats: HashMap::new(),
             unit_states: HashMap::from([(
                 test_unit_name.clone(),
                 UnitStates {
                     active_state: SystemdUnitActiveState::inactive,
                     load_state: SystemdUnitLoadState::loaded,
                     unhealthy: <span class="bool-val">true</span>,
+                    time_in_state_usecs: <span class="number">0</span>,
                 },
             )]),
         };
@@ -1006,7 +1129,7 @@
         <span class="kw">let </span>systemd_unit = get_unit_file();
 
         <span class="comment">// Test no allow list or blocklist
-        </span>parse_state(<span class="kw-2">&amp;mut </span>stats, systemd_unit.clone(), <span class="kw-2">&amp;</span><span class="macro">vec!</span>[], <span class="kw-2">&amp;</span><span class="macro">vec!</span>[]);
+        </span>parse_state(<span class="kw-2">&amp;mut </span>stats, <span class="kw-2">&amp;</span>systemd_unit, <span class="kw-2">&amp;</span><span class="macro">vec!</span>[], <span class="kw-2">&amp;</span><span class="macro">vec!</span>[], <span class="prelude-val">None</span>).<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="macro">assert_eq!</span>(expected_stats, stats);
 
         <span class="comment">// Create some allow/block lists
@@ -1017,17 +1140,27 @@
         </span><span class="kw">let </span><span class="kw-2">mut </span>allowlist_stats = SystemdUnitStats::default();
         parse_state(
             <span class="kw-2">&amp;mut </span>allowlist_stats,
-            systemd_unit.clone(),
+            <span class="kw-2">&amp;</span>systemd_unit,
             <span class="kw-2">&amp;</span>allowlist,
             <span class="kw-2">&amp;</span><span class="macro">vec!</span>[],
-        );
+            <span class="prelude-val">None</span>,
+        )
+        .<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="macro">assert_eq!</span>(expected_stats, allowlist_stats);
 
         <span class="comment">// test blocklist with allow list (show it's preferred)
         </span><span class="kw">let </span><span class="kw-2">mut </span>blocklist_stats = SystemdUnitStats::default();
         <span class="kw">let </span>expected_blocklist_stats = SystemdUnitStats::default();
-        parse_state(<span class="kw-2">&amp;mut </span>blocklist_stats, systemd_unit, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist);
+        parse_state(
+            <span class="kw-2">&amp;mut </span>blocklist_stats,
+            <span class="kw-2">&amp;</span>systemd_unit,
+            <span class="kw-2">&amp;</span>allowlist,
+            <span class="kw-2">&amp;</span>blocklist,
+            <span class="prelude-val">None</span>,
+        )
+        .<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="macro">assert_eq!</span>(expected_blocklist_stats, blocklist_stats);
+        <span class="prelude-val">Ok</span>(())
     }
 
     <span class="attr">#[test]
@@ -1050,13 +1183,16 @@
             socket_units: <span class="number">0</span>,
             target_units: <span class="number">0</span>,
             timer_units: <span class="number">1</span>,
+            timer_persistent_units: <span class="number">0</span>,
+            timer_remain_after_elapse: <span class="number">0</span>,
             total_units: <span class="number">0</span>,
             service_stats: HashMap::new(),
+            timer_stats: HashMap::new(),
             unit_states: HashMap::new(),
         };
         <span class="kw">let </span><span class="kw-2">mut </span>stats = SystemdUnitStats::default();
         <span class="kw">let </span>systemd_unit = get_unit_file();
-        parse_unit(<span class="kw-2">&amp;mut </span>stats, systemd_unit);
+        parse_unit(<span class="kw-2">&amp;mut </span>stats, <span class="kw-2">&amp;</span>systemd_unit);
         <span class="macro">assert_eq!</span>(expected_stats, stats);
     }
 

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/networkd.rs`."><title>networkd.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-b0742ba02757f159.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.83.0 (90b35a623 2024-11-26)" data-channel="1.83.0" data-search-js="search-f0d225181b97f9a4.js" data-settings-js="settings-805db61a62df4bd2.js" ><script src="../../static.files/storage-1d39b6787ed640ff.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-f070b9041d14864c.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-0111fcff984fae8f.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>networkd.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers">
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/networkd.rs`."><title>networkd.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-46132b98.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.1 (4eb161250 2025-03-15)" data-channel="1.85.1" data-search-js="search-75f5ac3e.js" data-settings-js="settings-0f613d39.js" ><script src="../../static.files/storage-59e33391.js"></script><script defer src="../../static.files/src-script-56102188.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>networkd.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers">
 <a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
@@ -484,23 +484,7 @@
 <a href="#483" id="483">483</a>
 <a href="#484" id="484">484</a>
 <a href="#485" id="485">485</a>
-<a href="#486" id="486">486</a>
-<a href="#487" id="487">487</a>
-<a href="#488" id="488">488</a>
-<a href="#489" id="489">489</a>
-<a href="#490" id="490">490</a>
-<a href="#491" id="491">491</a>
-<a href="#492" id="492">492</a>
-<a href="#493" id="493">493</a>
-<a href="#494" id="494">494</a>
-<a href="#495" id="495">495</a>
-<a href="#496" id="496">496</a>
-<a href="#497" id="497">497</a>
-<a href="#498" id="498">498</a>
-<a href="#499" id="499">499</a>
-<a href="#500" id="500">500</a>
-<a href="#501" id="501">501</a>
-<a href="#502" id="502">502</a></pre></div><pre class="rust"><code><span class="doccomment">//! # networkd module
+<a href="#486" id="486">486</a></pre></div><pre class="rust"><code><span class="doccomment">//! # networkd module
 //!
 //! All structs, enums and methods specific to systemd-networkd.
 //! Enumerations were copied from &lt;https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h&gt;
@@ -528,6 +512,7 @@
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -537,7 +522,8 @@
 )]
 #[repr(u8)]
 </span><span class="kw">pub enum </span>AddressState {
-    unknown = <span class="number">0</span>,
+    <span class="attr">#[default]
+    </span>unknown = <span class="number">0</span>,
     off = <span class="number">1</span>,
     degraded = <span class="number">2</span>,
     routable = <span class="number">3</span>,
@@ -551,6 +537,7 @@
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -560,7 +547,8 @@
 )]
 #[repr(u8)]
 </span><span class="kw">pub enum </span>AdminState {
-    unknown = <span class="number">0</span>,
+    <span class="attr">#[default]
+    </span>unknown = <span class="number">0</span>,
     pending = <span class="number">1</span>,
     failed = <span class="number">2</span>,
     configuring = <span class="number">3</span>,
@@ -577,6 +565,7 @@
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -586,7 +575,8 @@
 )]
 #[repr(u8)]
 </span><span class="kw">pub enum </span>BoolState {
-    unknown = u8::MAX,
+    <span class="attr">#[default]
+    </span>unknown = u8::MAX,
     <span class="attr">#[strum(
         serialize = <span class="string">"false"</span>,
         serialize = <span class="string">"False"</span>,
@@ -611,6 +601,7 @@
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -620,7 +611,8 @@
 )]
 #[repr(u8)]
 </span><span class="kw">pub enum </span>CarrierState {
-    unknown = <span class="number">0</span>,
+    <span class="attr">#[default]
+    </span>unknown = <span class="number">0</span>,
     off = <span class="number">1</span>,
     <span class="attr">#[strum(serialize = <span class="string">"no-carrier"</span>, serialize = <span class="string">"no_carrier"</span>)]
     </span>no_carrier = <span class="number">2</span>,
@@ -639,6 +631,7 @@
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -648,7 +641,8 @@
 )]
 #[repr(u8)]
 </span><span class="kw">pub enum </span>OnlineState {
-    unknown = <span class="number">0</span>,
+    <span class="attr">#[default]
+    </span>unknown = <span class="number">0</span>,
     offline = <span class="number">1</span>,
     partial = <span class="number">2</span>,
     online = <span class="number">3</span>,
@@ -662,6 +656,7 @@
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     PartialEq,
     EnumIter,
@@ -671,7 +666,8 @@
 )]
 #[repr(u8)]
 </span><span class="kw">pub enum </span>OperState {
-    unknown = <span class="number">0</span>,
+    <span class="attr">#[default]
+    </span>unknown = <span class="number">0</span>,
     missing = <span class="number">1</span>,
     off = <span class="number">2</span>,
     <span class="attr">#[strum(serialize = <span class="string">"no-carrier"</span>, serialize = <span class="string">"no_carrier"</span>)]
@@ -686,7 +682,7 @@
 }
 
 <span class="doccomment">/// Main per interface networkd state structure
-</span><span class="attr">#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
+</span><span class="attr">#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 </span><span class="kw">pub struct </span>InterfaceState {
     <span class="kw">pub </span>address_state: AddressState,
     <span class="kw">pub </span>admin_state: AdminState,
@@ -727,17 +723,7 @@
     interface_id: i32,
     interface_id_to_name: <span class="kw-2">&amp;</span>HashMap&lt;i32, String&gt;,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;InterfaceState, String&gt; {
-    <span class="kw">let </span><span class="kw-2">mut </span>interface_state = InterfaceState {
-        address_state: AddressState::unknown,
-        admin_state: AdminState::unknown,
-        carrier_state: CarrierState::unknown,
-        ipv4_address_state: AddressState::unknown,
-        ipv6_address_state: AddressState::unknown,
-        name: <span class="string">""</span>.to_string(),
-        network_file: <span class="string">""</span>.to_string(),
-        oper_state: OperState::unknown,
-        required_for_online: BoolState::False,
-    };
+    <span class="kw">let </span><span class="kw-2">mut </span>interface_state = InterfaceState::default();
 
     <span class="kw">for </span>line <span class="kw">in </span>interface_state_str.lines() {
         <span class="comment">// Skip comments + lines without =
@@ -797,22 +783,31 @@
 </span><span class="kw">pub async fn </span>parse_interface_state_files(
     states_path: <span class="kw-2">&amp;</span>PathBuf,
     maybe_network_int_to_name: <span class="prelude-ty">Option</span>&lt;HashMap&lt;i32, String&gt;&gt;,
-    connection: <span class="kw-2">&amp;</span>zbus::Connection,
+    maybe_connection: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>zbus::Connection&gt;,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;NetworkdState, std::io::Error&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>managed_interface_count: u64 = <span class="number">0</span>;
     <span class="kw">let </span><span class="kw-2">mut </span>interfaces_state = <span class="macro">vec!</span>[];
 
     <span class="kw">let </span>network_int_to_name = <span class="kw">match </span>maybe_network_int_to_name {
-        <span class="prelude-val">None </span>=&gt; <span class="kw">match </span>get_interface_links(connection).<span class="kw">await </span>{
-            <span class="prelude-val">Ok</span>(hashmap) =&gt; hashmap,
-            <span class="prelude-val">Err</span>(err) =&gt; {
+        <span class="prelude-val">None </span>=&gt; {
+            <span class="kw">if let </span><span class="prelude-val">Some</span>(connection) = maybe_connection {
+                <span class="kw">match </span>get_interface_links(connection).<span class="kw">await </span>{
+                    <span class="prelude-val">Ok</span>(hashmap) =&gt; hashmap,
+                    <span class="prelude-val">Err</span>(err) =&gt; {
+                        <span class="macro">error!</span>(
+                            <span class="string">"Unable to get interface links via DBUS - is networkd running?: {:#?}"</span>,
+                            err
+                        );
+                        <span class="kw">return </span><span class="prelude-val">Ok</span>(NetworkdState::default());
+                    }
+                }
+            } <span class="kw">else </span>{
                 <span class="macro">error!</span>(
-                    <span class="string">"Unable to get interface links via DBUS - is networkd running?: {:#?}"</span>,
-                    err
-                );
+                    <span class="string">"Unable to get interface links via DBUS and no network_int_to_name supplied"
+                </span>);
                 <span class="kw">return </span><span class="prelude-val">Ok</span>(NetworkdState::default());
             }
-        },
+        }
         <span class="prelude-val">Some</span>(valid_hashmap) =&gt; valid_hashmap,
     };
 
@@ -850,7 +845,9 @@
     connection: zbus::Connection,
     locked_machine_stats: Arc&lt;RwLock&lt;MachineStats&gt;&gt;,
 ) -&gt; anyhow::Result&lt;()&gt; {
-    <span class="kw">match </span>parse_interface_state_files(<span class="kw-2">&amp;</span>states_path, maybe_network_int_to_name, <span class="kw-2">&amp;</span>connection).<span class="kw">await </span>{
+    <span class="kw">match </span>parse_interface_state_files(<span class="kw-2">&amp;</span>states_path, maybe_network_int_to_name, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>connection))
+        .<span class="kw">await
+    </span>{
         <span class="prelude-val">Ok</span>(networkd_stats) =&gt; {
             <span class="kw">let </span><span class="kw-2">mut </span>machine_stats = locked_machine_stats.write().<span class="kw">await</span>;
             machine_stats.networkd = networkd_stats;
@@ -872,14 +869,15 @@ ADMIN_STATE=configured
 OPER_STATE=routable
 CARRIER_STATE=carrier
 ADDRESS_STATE=routable
-IPV4_ADDRESS_STATE=routable
-IPV6_ADDRESS_STATE=degraded
+IPV4_ADDRESS_STATE=degraded
+IPV6_ADDRESS_STATE=routable
 ONLINE_STATE=online
 REQUIRED_FOR_ONLINE=yes
-REQUIRED_OPER_STATE_FOR_ONLINE=degraded
+REQUIRED_OPER_STATE_FOR_ONLINE=degraded:routable
 REQUIRED_FAMILY_FOR_ONLINE=any
 ACTIVATION_POLICY=up
 NETWORK_FILE=/etc/systemd/network/69-eno4.network
+NETWORK_FILE_DROPINS=""
 DNS=8.8.8.8 8.8.4.4
 NTP=
 SIP=
@@ -894,8 +892,8 @@ MDNS=no
             address_state: AddressState::routable,
             admin_state: AdminState::configured,
             carrier_state: CarrierState::carrier,
-            ipv4_address_state: AddressState::routable,
-            ipv6_address_state: AddressState::degraded,
+            ipv4_address_state: AddressState::degraded,
+            ipv6_address_state: AddressState::routable,
             name: <span class="string">"eth0"</span>.to_string(),
             network_file: <span class="string">"/etc/systemd/network/69-eno4.network"</span>.to_string(),
             oper_state: OperState::routable,
@@ -917,16 +915,16 @@ MDNS=no
             parse_interface_stats(
                 MOCK_INTERFACE_STATE.to_string(),
                 <span class="number">2</span>,
-                <span class="kw-2">&amp;</span>return_mock_int_name_hashmap().unwrap()
+                <span class="kw-2">&amp;</span>return_mock_int_name_hashmap().expect(<span class="string">"Failed to get a mock int name hashmap"</span>),
             )
-            .unwrap(),
+            .expect(<span class="string">"Failed to parse interface stats"</span>),
         );
     }
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_parse_interface_stats_json() {
         <span class="comment">// 'name' stays as an empty string cause we don't pass in networkctl json or an interface id
-        </span><span class="kw">let </span>expected_interface_state_json = <span class="string">r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###</span>;
+        </span><span class="kw">let </span>expected_interface_state_json = <span class="string">r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":2,"ipv6_address_state":3,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###</span>;
         <span class="kw">let </span>stats =
             parse_interface_stats(MOCK_INTERFACE_STATE.to_string(), <span class="number">0</span>, <span class="kw-2">&amp;</span>HashMap::new()).unwrap();
         <span class="kw">let </span>stats_json = serde_json::to_string(<span class="kw-2">&amp;</span>stats).unwrap();
@@ -952,50 +950,20 @@ MDNS=no
             parse_interface_state_files(
                 <span class="kw-2">&amp;</span>path,
                 return_mock_int_name_hashmap(),
-                <span class="kw-2">&amp;</span>zbus::Connection::system()
-                    .<span class="kw">await
-                    </span>.expect(<span class="string">"Unable to get dbus connection via dbus"</span>),
-            )
+                <span class="prelude-val">None</span>, <span class="comment">// No DBUS in tests
+            </span>)
             .<span class="kw">await
             </span>.expect(<span class="string">"Problem with parsing interface stte files"</span>)
         );
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="attr">#[tokio::test]
-    </span><span class="kw">async fn </span>test_parse_interface_state_files_json() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-        <span class="kw">let </span>expected_interface_state_json = <span class="string">r###"{"interfaces_state":[{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":3,"ipv6_address_state":2,"name":"eth69","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}],"managed_interfaces":1}"###</span>;
-
-        <span class="kw">let </span>temp_dir = tempdir()<span class="question-mark">?</span>;
-        <span class="comment">// As the networkctl JSON has no interface with index 69 name gets no value ...
-        </span><span class="kw">let </span>file_path = temp_dir.path().join(<span class="string">"69"</span>);
-        <span class="kw">let </span><span class="kw-2">mut </span>state_file = File::create(file_path)<span class="question-mark">?</span>;
-        <span class="macro">writeln!</span>(state_file, <span class="string">"{}"</span>, MOCK_INTERFACE_STATE)<span class="question-mark">?</span>;
-
-        <span class="kw">let </span>path = PathBuf::from(temp_dir.path());
-        <span class="kw">let </span>interface_stats = parse_interface_state_files(
-            <span class="kw-2">&amp;</span>path,
-            return_mock_int_name_hashmap(),
-            <span class="kw-2">&amp;</span>zbus::Connection::system()
-                .<span class="kw">await
-                </span>.expect(<span class="string">"Unable to get dbus connection via dbus"</span>),
-        )
-        .<span class="kw">await
-        </span>.expect(<span class="string">"Unable to parse interface state files"</span>);
-        <span class="kw">let </span>interface_stats_json = serde_json::to_string(<span class="kw-2">&amp;</span>interface_stats).unwrap();
-        <span class="macro">assert_eq!</span>(
-            expected_interface_state_json.to_string(),
-            interface_stats_json
-        );
-        <span class="prelude-val">Ok</span>(())
-    }
-
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_enums_to_ints() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-        <span class="macro">assert_eq!</span>(<span class="number">3</span>, AddressState::routable <span class="kw">as </span>u64,);
+        <span class="macro">assert_eq!</span>(<span class="number">3</span>, AddressState::routable <span class="kw">as </span>u64);
         <span class="kw">let </span>carrier_state_int: u8 = u8::from(CarrierState::degraded_carrier);
         <span class="macro">assert_eq!</span>(<span class="number">4</span>, carrier_state_int);
-        <span class="macro">assert_eq!</span>(<span class="number">1</span>, BoolState::True <span class="kw">as </span>i64,);
+        <span class="macro">assert_eq!</span>(<span class="number">1</span>, BoolState::True <span class="kw">as </span>i64);
         <span class="kw">let </span>bool_state_false_int: u8 = u8::from(BoolState::False);
         <span class="macro">assert_eq!</span>(<span class="number">0</span>, bool_state_false_int);
 
