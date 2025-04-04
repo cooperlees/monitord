@@ -16,7 +16,7 @@ use crate::units::SystemdUnitStats;
 
 /// Struct with all the timer specific statistics
 pub struct TimerStats {
-    pub accruacy_usec: u64,
+    pub accuracy_usec: u64,
     pub fixed_random_delay: bool,
     pub last_trigger_usec: u64,
     pub last_trigger_usec_monotonic: u64,
@@ -84,7 +84,7 @@ pub async fn collect_timer_stats(
 
     // Grab all the other DBUS data async
     let (
-        accruacy_usec,
+        accuracy_usec,
         fixed_random_delay,
         last_trigger_usec,
         last_trigger_usec_monotonic,
@@ -105,7 +105,7 @@ pub async fn collect_timer_stats(
         pt.remain_after_elapse(),
     );
 
-    timer_stats.accruacy_usec = accruacy_usec?;
+    timer_stats.accuracy_usec = accuracy_usec?;
     timer_stats.fixed_random_delay = fixed_random_delay?;
     timer_stats.last_trigger_usec = last_trigger_usec?;
     timer_stats.last_trigger_usec_monotonic = last_trigger_usec_monotonic?;
