@@ -268,7 +268,9 @@ fn flatten_unit_states(
                     }
                 },
                 "time_in_state_usecs" => {
-                    flat_stats.insert(key, unit_state_stats.time_in_state_usecs.into());
+                    if let Some(time_in_state_usecs) = unit_state_stats.time_in_state_usecs {
+                        flat_stats.insert(key, time_in_state_usecs.into());
+                    }
                 }
                 _ => {
                     debug!("Got a unhandled unit state: '{}'", field_name);
@@ -521,7 +523,6 @@ mod tests {
   "timers.unittest.timer.service_unit_last_state_change_usec_monotonic": 69,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.active_state": 1,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.load_state": 1,
-  "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.time_in_state_usecs": 69,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.unhealthy": 0,
   "unit_states.unittest.service.active_state": 1,
   "unit_states.unittest.service.load_state": 1,
@@ -595,7 +596,7 @@ mod tests {
                 active_state: units::SystemdUnitActiveState::active,
                 load_state: units::SystemdUnitLoadState::loaded,
                 unhealthy: false,
-                time_in_state_usecs: 69,
+                time_in_state_usecs: Some(69),
             },
         );
         let timer_unit = String::from("unittest.timer");
@@ -632,7 +633,7 @@ mod tests {
                 active_state: units::SystemdUnitActiveState::active,
                 load_state: units::SystemdUnitLoadState::loaded,
                 unhealthy: false,
-                time_in_state_usecs: 69,
+                time_in_state_usecs: None,
             },
         );
         stats
@@ -644,7 +645,7 @@ mod tests {
             &return_monitord_stats(),
             &String::from("JSON serialize failed"),
         );
-        assert_eq!(103, json_flat_map.len());
+        assert_eq!(102, json_flat_map.len());
     }
 
     #[test]
