@@ -256,7 +256,7 @@ async fn get_time_in_state(
             Ok(Some(now - state_change_timestamp))
         }
         None => {
-            error!("No zbus connection passed, but time_in_state_secs enabled");
+            error!("No zbus connection passed, but time_in_state_usecs enabled");
             Ok(None)
         }
     }
@@ -292,7 +292,7 @@ pub async fn parse_state(
     let load_state = SystemdUnitLoadState::from_str(&unit.2.replace('-', "_"))
         .unwrap_or(SystemdUnitLoadState::unknown);
 
-    // Get the state_change_timestamp to determine time in seconds we've been in current state
+    // Get the state_change_timestamp to determine time in usecs we've been in current state
     let mut time_in_state_usecs: Option<u64> = None;
     if config.state_stats_time_in_state {
         time_in_state_usecs = get_time_in_state(connection, unit).await?;
