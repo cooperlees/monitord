@@ -600,7 +600,37 @@
 <a href="#599" id="599">599</a>
 <a href="#600" id="600">600</a>
 <a href="#601" id="601">601</a>
-<a href="#602" id="602">602</a></pre></div><pre class="rust"><code><span class="doccomment">//! # units module
+<a href="#602" id="602">602</a>
+<a href="#603" id="603">603</a>
+<a href="#604" id="604">604</a>
+<a href="#605" id="605">605</a>
+<a href="#606" id="606">606</a>
+<a href="#607" id="607">607</a>
+<a href="#608" id="608">608</a>
+<a href="#609" id="609">609</a>
+<a href="#610" id="610">610</a>
+<a href="#611" id="611">611</a>
+<a href="#612" id="612">612</a>
+<a href="#613" id="613">613</a>
+<a href="#614" id="614">614</a>
+<a href="#615" id="615">615</a>
+<a href="#616" id="616">616</a>
+<a href="#617" id="617">617</a>
+<a href="#618" id="618">618</a>
+<a href="#619" id="619">619</a>
+<a href="#620" id="620">620</a>
+<a href="#621" id="621">621</a>
+<a href="#622" id="622">622</a>
+<a href="#623" id="623">623</a>
+<a href="#624" id="624">624</a>
+<a href="#625" id="625">625</a>
+<a href="#626" id="626">626</a>
+<a href="#627" id="627">627</a>
+<a href="#628" id="628">628</a>
+<a href="#629" id="629">629</a>
+<a href="#630" id="630">630</a>
+<a href="#631" id="631">631</a>
+<a href="#632" id="632">632</a></pre></div><pre class="rust"><code><span class="doccomment">//! # units module
 //!
 //! All main systemd unit statistics. Counts of types of units, unit states and
 //! queued jobs. We also house service specific statistics and system unit states.
@@ -691,7 +721,8 @@
     // and !SystemdUnitLoadState::masked
     </span><span class="kw">pub </span>unhealthy: bool,
     <span class="comment">// Time in microseconds since the unit state has changed ...
-    </span><span class="kw">pub </span>time_in_state_usecs: u64,
+    // Expensive to lookup, so config disable available - Use optional to show that
+    </span><span class="kw">pub </span>time_in_state_usecs: <span class="prelude-ty">Option</span>&lt;u64&gt;,
 }
 
 <span class="comment">// Declare state types
@@ -750,6 +781,63 @@
     error = <span class="number">2</span>,
     masked = <span class="number">3</span>,
     not_found = <span class="number">4</span>,
+}
+
+<span class="doccomment">/// Representation of the returned Tuple from list_units - Better typing etc.
+</span><span class="attr">#[derive(Debug)]
+</span><span class="kw">pub struct </span>ListedUnit {
+    <span class="kw">pub </span>name: String,                      <span class="comment">// The primary unit name
+    </span><span class="kw">pub </span>description: String,               <span class="comment">// The human readable description
+    </span><span class="kw">pub </span>load_state: String, <span class="comment">// The load state (i.e. whether the unit file has been loaded successfully)
+    </span><span class="kw">pub </span>active_state: String, <span class="comment">// The active state (i.e. whether the unit is currently started or not)
+    </span><span class="kw">pub </span>sub_state: String,    <span class="comment">// The sub state (i.e. unit type more specific state)
+    </span><span class="kw">pub </span>follow_unit: String, <span class="comment">// A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
+    </span><span class="kw">pub </span>unit_object_path: OwnedObjectPath, <span class="comment">// The unit object path
+    </span><span class="kw">pub </span>job_id: u32, <span class="comment">// If there is a job queued for the job unit, the numeric job id, 0 otherwise
+    </span><span class="kw">pub </span>job_type: String, <span class="comment">// The job type as string
+    </span><span class="kw">pub </span>job_object_path: OwnedObjectPath, <span class="comment">// The job object path
+</span>}
+<span class="kw">impl
+    </span>From&lt;(
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        OwnedObjectPath,
+        u32,
+        String,
+        OwnedObjectPath,
+    )&gt; <span class="kw">for </span>ListedUnit
+{
+    <span class="kw">fn </span>from(
+        tuple: (
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            OwnedObjectPath,
+            u32,
+            String,
+            OwnedObjectPath,
+        ),
+    ) -&gt; <span class="self">Self </span>{
+        ListedUnit {
+            name: tuple.<span class="number">0</span>,
+            description: tuple.<span class="number">1</span>,
+            load_state: tuple.<span class="number">2</span>,
+            active_state: tuple.<span class="number">3</span>,
+            sub_state: tuple.<span class="number">4</span>,
+            follow_unit: tuple.<span class="number">5</span>,
+            unit_object_path: tuple.<span class="number">6</span>,
+            job_id: tuple.<span class="number">7</span>,
+            job_type: tuple.<span class="number">8</span>,
+            job_object_path: tuple.<span class="number">9</span>,
+        }
+    }
 }
 
 <span class="kw">pub const </span>SERVICE_FIELD_NAMES: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = <span class="kw-2">&amp;</span>ServiceStats::FIELD_NAMES_AS_ARRAY;
@@ -822,56 +910,65 @@
     }
 }
 
-<span class="doccomment">/// Parse state of a unit into our unit_states hash
-</span><span class="kw">pub async fn </span>parse_state(
-    stats: <span class="kw-2">&amp;mut </span>SystemdUnitStats,
-    unit: <span class="kw-2">&amp;</span>(
-        String, <span class="comment">// unit name
-        </span>String,
-        String, <span class="comment">// load state
-        </span>String, <span class="comment">// active state
-        </span>String,
-        String,
-        OwnedObjectPath,
-        u32,
-        String,
-        OwnedObjectPath,
-    ),
-    allowlist: <span class="kw-2">&amp;</span>[String],
-    blocklist: <span class="kw-2">&amp;</span>[String],
+<span class="kw">async fn </span>get_time_in_state(
     connection: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>zbus::Connection&gt;,
-) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-    <span class="kw">if </span>blocklist.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
-        <span class="macro">debug!</span>(<span class="string">"Skipping state stats for {} due to blocklist"</span>, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>);
-        <span class="kw">return </span><span class="prelude-val">Ok</span>(());
-    }
-    <span class="kw">if </span>!allowlist.is_empty() &amp;&amp; !allowlist.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
-        <span class="kw">return </span><span class="prelude-val">Ok</span>(());
-    }
-    <span class="kw">let </span>active_state =
-        SystemdUnitActiveState::from_str(<span class="kw-2">&amp;</span>unit.<span class="number">3</span>).unwrap_or(SystemdUnitActiveState::unknown);
-    <span class="kw">let </span>load_state = SystemdUnitLoadState::from_str(<span class="kw-2">&amp;</span>unit.<span class="number">2</span>.replace(<span class="string">'-'</span>, <span class="string">"_"</span>))
-        .unwrap_or(SystemdUnitLoadState::unknown);
-
-    <span class="comment">// Get the state_change_timestamp to determine time in seconds we've been in this state
-    </span><span class="kw">let </span>time_in_state_usecs: u64 = <span class="kw">match </span>connection {
+    unit: <span class="kw-2">&amp;</span>ListedUnit,
+) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;u64&gt;&gt; {
+    <span class="kw">match </span>connection {
         <span class="prelude-val">Some</span>(c) =&gt; {
             <span class="kw">let </span>up = <span class="kw">crate</span>::dbus::zbus_unit::UnitProxy::builder(c)
-                .path(ObjectPath::from(unit.<span class="number">6</span>.clone()))<span class="question-mark">?
+                .path(ObjectPath::from(unit.unit_object_path.clone()))<span class="question-mark">?
                 </span>.build()
                 .<span class="kw">await</span><span class="question-mark">?</span>;
             <span class="kw">let </span>now: u64 = SystemTime::now().duration_since(UNIX_EPOCH)<span class="question-mark">?</span>.as_secs() * <span class="number">1_000_000</span>;
-            <span class="kw">let </span>state_change_timestamp = up.state_change_timestamp().<span class="kw">await</span>.unwrap_or(now);
-            now - state_change_timestamp
+            <span class="kw">let </span>state_change_timestamp = <span class="kw">match </span>up.state_change_timestamp().<span class="kw">await </span>{
+                <span class="prelude-val">Ok</span>(sct) =&gt; sct,
+                <span class="prelude-val">Err</span>(err) =&gt; {
+                    <span class="macro">error!</span>(
+                        <span class="string">"Unable to get state_change_timestamp for {} - Setting to 0: {:?}"</span>,
+                        <span class="kw-2">&amp;</span>unit.name, err,
+                    );
+                    <span class="number">0
+                </span>}
+            };
+            <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(now - state_change_timestamp))
         }
         <span class="prelude-val">None </span>=&gt; {
-            <span class="macro">debug!</span>(<span class="string">"No zbus connection so not calculating time_in_state_secs"</span>);
-            <span class="number">0
-        </span>}
-    };
+            <span class="macro">error!</span>(<span class="string">"No zbus connection passed, but time_in_state_usecs enabled"</span>);
+            <span class="prelude-val">Ok</span>(<span class="prelude-val">None</span>)
+        }
+    }
+}
+
+<span class="doccomment">/// Parse state of a unit into our unit_states hash
+</span><span class="kw">pub async fn </span>parse_state(
+    stats: <span class="kw-2">&amp;mut </span>SystemdUnitStats,
+    unit: <span class="kw-2">&amp;</span>ListedUnit,
+    config: <span class="kw-2">&amp;</span><span class="kw">crate</span>::config::UnitsConfig,
+    connection: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>zbus::Connection&gt;,
+) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+    <span class="kw">if </span>config.state_stats_blocklist.contains(<span class="kw-2">&amp;</span>unit.name) {
+        <span class="macro">debug!</span>(<span class="string">"Skipping state stats for {} due to blocklist"</span>, <span class="kw-2">&amp;</span>unit.name);
+        <span class="kw">return </span><span class="prelude-val">Ok</span>(());
+    }
+    <span class="kw">if </span>!config.state_stats_allowlist.is_empty()
+        &amp;&amp; !config.state_stats_allowlist.contains(<span class="kw-2">&amp;</span>unit.name)
+    {
+        <span class="kw">return </span><span class="prelude-val">Ok</span>(());
+    }
+    <span class="kw">let </span>active_state = SystemdUnitActiveState::from_str(<span class="kw-2">&amp;</span>unit.active_state)
+        .unwrap_or(SystemdUnitActiveState::unknown);
+    <span class="kw">let </span>load_state = SystemdUnitLoadState::from_str(<span class="kw-2">&amp;</span>unit.load_state.replace(<span class="string">'-'</span>, <span class="string">"_"</span>))
+        .unwrap_or(SystemdUnitLoadState::unknown);
+
+    <span class="comment">// Get the state_change_timestamp to determine time in usecs we've been in current state
+    </span><span class="kw">let </span><span class="kw-2">mut </span>time_in_state_usecs: <span class="prelude-ty">Option</span>&lt;u64&gt; = <span class="prelude-val">None</span>;
+    <span class="kw">if </span>config.state_stats_time_in_state {
+        time_in_state_usecs = get_time_in_state(connection, unit).<span class="kw">await</span><span class="question-mark">?</span>;
+    }
 
     stats.unit_states.insert(
-        unit.<span class="number">0</span>.clone(),
+        unit.name.clone(),
         UnitStates {
             active_state,
             load_state,
@@ -883,23 +980,9 @@
 }
 
 <span class="doccomment">/// Parse a unit and add to overall counts of state, type etc.
-</span><span class="kw">fn </span>parse_unit(
-    stats: <span class="kw-2">&amp;mut </span>SystemdUnitStats,
-    unit: <span class="kw-2">&amp;</span>(
-        String,          <span class="comment">// The primary unit name as string
-        </span>String,          <span class="comment">// The human readable description string
-        </span>String,          <span class="comment">// The load state (i.e. whether the unit file has been loaded successfully)
-        </span>String,          <span class="comment">// The active state (i.e. whether the unit is currently started or not)
-        </span>String,          <span class="comment">// The sub state (i.e. unit type more specific state)
-        </span>String, <span class="comment">// A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
-        </span>OwnedObjectPath, <span class="comment">// The unit object path
-        </span>u32,    <span class="comment">// If there is a job queued for the job unit, the numeric job id, 0 otherwise
-        </span>String, <span class="comment">// The job type as string
-        </span>OwnedObjectPath, <span class="comment">// The job object path
-    </span>),
-) {
+</span><span class="kw">fn </span>parse_unit(stats: <span class="kw-2">&amp;mut </span>SystemdUnitStats, unit: <span class="kw-2">&amp;</span>ListedUnit) {
     <span class="comment">// Count unit type
-    </span><span class="kw">match </span>unit.<span class="number">0</span>.rsplit(<span class="string">'.'</span>).next() {
+    </span><span class="kw">match </span>unit.name.rsplit(<span class="string">'.'</span>).next() {
         <span class="prelude-val">Some</span>(<span class="string">"automount"</span>) =&gt; stats.automount_units += <span class="number">1</span>,
         <span class="prelude-val">Some</span>(<span class="string">"device"</span>) =&gt; stats.device_units += <span class="number">1</span>,
         <span class="prelude-val">Some</span>(<span class="string">"mount"</span>) =&gt; stats.mount_units += <span class="number">1</span>,
@@ -913,21 +996,21 @@
         unknown =&gt; <span class="macro">debug!</span>(<span class="string">"Found unhandled '{:?}' unit type"</span>, unknown),
     };
     <span class="comment">// Count load state
-    </span><span class="kw">match </span>unit.<span class="number">2</span>.as_str() {
+    </span><span class="kw">match </span>unit.load_state.as_str() {
         <span class="string">"loaded" </span>=&gt; stats.loaded_units += <span class="number">1</span>,
         <span class="string">"masked" </span>=&gt; stats.masked_units += <span class="number">1</span>,
         <span class="string">"not-found" </span>=&gt; stats.not_found_units += <span class="number">1</span>,
-        <span class="kw">_ </span>=&gt; <span class="macro">debug!</span>(<span class="string">"{} is not loaded. It's {}"</span>, unit.<span class="number">0</span>, unit.<span class="number">2</span>),
+        <span class="kw">_ </span>=&gt; <span class="macro">debug!</span>(<span class="string">"{} is not loaded. It's {}"</span>, unit.name, unit.load_state),
     };
     <span class="comment">// Count unit status
-    </span><span class="kw">match </span>unit.<span class="number">3</span>.as_str() {
+    </span><span class="kw">match </span>unit.active_state.as_str() {
         <span class="string">"active" </span>=&gt; stats.active_units += <span class="number">1</span>,
         <span class="string">"failed" </span>=&gt; stats.failed_units += <span class="number">1</span>,
         <span class="string">"inactive" </span>=&gt; stats.inactive_units += <span class="number">1</span>,
         unknown =&gt; <span class="macro">debug!</span>(<span class="string">"Found unhandled '{}' unit state"</span>, unknown),
     };
     <span class="comment">// Count jobs queued
-    </span><span class="kw">if </span>unit.<span class="number">7 </span>!= <span class="number">0 </span>{
+    </span><span class="kw">if </span>unit.job_id != <span class="number">0 </span>{
         stats.jobs_queued += <span class="number">1</span>;
     }
 }
@@ -956,56 +1039,51 @@
     <span class="kw">let </span>units = p.list_units().<span class="kw">await</span><span class="question-mark">?</span>;
 
     stats.total_units = units.len() <span class="kw">as </span>u64;
-    <span class="kw">for </span>unit <span class="kw">in </span>units {
+    <span class="kw">for </span>unit_raw <span class="kw">in </span>units {
+        <span class="kw">let </span>unit: ListedUnit = unit_raw.into();
         <span class="comment">// Collect unit types + states counts
         </span>parse_unit(<span class="kw-2">&amp;mut </span>stats, <span class="kw-2">&amp;</span>unit);
 
         <span class="comment">// Collect per unit state stats - ActiveState + LoadState
         // Not collecting SubState (yet)
         </span><span class="kw">if </span>config.units.state_stats {
-            parse_state(
-                <span class="kw-2">&amp;mut </span>stats,
-                <span class="kw-2">&amp;</span>unit,
-                <span class="kw-2">&amp;</span>config.units.state_stats_allowlist,
-                <span class="kw-2">&amp;</span>config.units.state_stats_blocklist,
-                <span class="prelude-val">Some</span>(connection),
-            )
-            .<span class="kw">await</span><span class="question-mark">?</span>;
+            parse_state(<span class="kw-2">&amp;mut </span>stats, <span class="kw-2">&amp;</span>unit, <span class="kw-2">&amp;</span>config.units, <span class="prelude-val">Some</span>(connection)).<span class="kw">await</span><span class="question-mark">?</span>;
         }
 
         <span class="comment">// Collect service stats
-        </span><span class="kw">if </span>config.services.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
+        </span><span class="kw">if </span>config.services.contains(<span class="kw-2">&amp;</span>unit.name) {
             <span class="macro">debug!</span>(<span class="string">"Collecting service stats for {:?}"</span>, <span class="kw-2">&amp;</span>unit);
-            <span class="kw">match </span>parse_service(connection, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>, <span class="kw-2">&amp;</span>unit.<span class="number">6</span>).<span class="kw">await </span>{
+            <span class="kw">match </span>parse_service(connection, <span class="kw-2">&amp;</span>unit.name, <span class="kw-2">&amp;</span>unit.unit_object_path).<span class="kw">await </span>{
                 <span class="prelude-val">Ok</span>(service_stats) =&gt; {
-                    stats.service_stats.insert(unit.<span class="number">0</span>.clone(), service_stats);
+                    stats.service_stats.insert(unit.name.clone(), service_stats);
                 }
                 <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">error!</span>(
                     <span class="string">"Unable to get service stats for {} {}: {:#?}"</span>,
-                    <span class="kw-2">&amp;</span>unit.<span class="number">0</span>, <span class="kw-2">&amp;</span>unit.<span class="number">6</span>, err
+                    <span class="kw-2">&amp;</span>unit.name, <span class="kw-2">&amp;</span>unit.unit_object_path, err
                 ),
             }
         }
 
         <span class="comment">// Collect timer stats
-        </span><span class="kw">if </span>config.timers.enabled &amp;&amp; unit.<span class="number">0</span>.contains(<span class="string">".timer"</span>) {
-            <span class="kw">if </span>config.timers.blocklist.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
-                <span class="macro">debug!</span>(<span class="string">"Skipping timer stats for {} due to blocklist"</span>, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>);
+        </span><span class="kw">if </span>config.timers.enabled &amp;&amp; unit.name.contains(<span class="string">".timer"</span>) {
+            <span class="kw">if </span>config.timers.blocklist.contains(<span class="kw-2">&amp;</span>unit.name) {
+                <span class="macro">debug!</span>(<span class="string">"Skipping timer stats for {} due to blocklist"</span>, <span class="kw-2">&amp;</span>unit.name);
                 <span class="kw">continue</span>;
             }
-            <span class="kw">if </span>!config.timers.allowlist.is_empty() &amp;&amp; !config.timers.allowlist.contains(<span class="kw-2">&amp;</span>unit.<span class="number">0</span>) {
+            <span class="kw">if </span>!config.timers.allowlist.is_empty() &amp;&amp; !config.timers.allowlist.contains(<span class="kw-2">&amp;</span>unit.name)
+            {
                 <span class="kw">continue</span>;
             }
             <span class="kw">let </span>timer_stats: <span class="prelude-ty">Option</span>&lt;TimerStats&gt; =
                 <span class="kw">match </span><span class="kw">crate</span>::timer::collect_timer_stats(connection, <span class="kw-2">&amp;mut </span>stats, <span class="kw-2">&amp;</span>unit).<span class="kw">await </span>{
                     <span class="prelude-val">Ok</span>(ts) =&gt; <span class="prelude-val">Some</span>(ts),
                     <span class="prelude-val">Err</span>(err) =&gt; {
-                        <span class="macro">error!</span>(<span class="string">"Failed to get {} stats: {:#?}"</span>, <span class="kw-2">&amp;</span>unit.<span class="number">0</span>, err);
+                        <span class="macro">error!</span>(<span class="string">"Failed to get {} stats: {:#?}"</span>, <span class="kw-2">&amp;</span>unit.name, err);
                         <span class="prelude-val">None
                     </span>}
                 };
             <span class="kw">if let </span><span class="prelude-val">Some</span>(ts) = timer_stats {
-                stats.timer_stats.insert(unit.<span class="number">0</span>.clone(), ts);
+                stats.timer_stats.insert(unit.name.clone(), ts);
             }
         }
     }
@@ -1032,32 +1110,25 @@
     <span class="kw">use super</span>::<span class="kw-2">*</span>;
     <span class="kw">use </span>strum::IntoEnumIterator;
 
-    <span class="kw">fn </span>get_unit_file() -&gt; (
-        String, <span class="comment">// unit name
-        </span>String,
-        String, <span class="comment">// load state
-        </span>String, <span class="comment">// active state
-        </span>String,
-        String,
-        OwnedObjectPath,
-        u32,
-        String,
-        OwnedObjectPath,
-    ) {
-        (
-            String::from(<span class="string">"apport-autoreport.timer"</span>),
-            String::from(<span class="string">"Process error reports when automatic reporting is enabled (timer based)"</span>),
-            String::from(<span class="string">"loaded"</span>),
-            String::from(<span class="string">"inactive"</span>),
-            String::from(<span class="string">"dead"</span>),
-            String::from(<span class="string">""</span>),
-            ObjectPath::try_from(<span class="string">"/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer"</span>)
-                .unwrap()
-                .into(),
-            <span class="number">0 </span><span class="kw">as </span>u32,
-            String::from(<span class="string">""</span>),
-            ObjectPath::try_from(<span class="string">"/"</span>).unwrap().into(),
-        )
+    <span class="kw">fn </span>get_unit_file() -&gt; ListedUnit {
+        ListedUnit {
+            name: String::from(<span class="string">"apport-autoreport.timer"</span>),
+            description: String::from(
+                <span class="string">"Process error reports when automatic reporting is enabled (timer based)"</span>,
+            ),
+            load_state: String::from(<span class="string">"loaded"</span>),
+            active_state: String::from(<span class="string">"inactive"</span>),
+            sub_state: String::from(<span class="string">"dead"</span>),
+            follow_unit: String::from(<span class="string">""</span>),
+            unit_object_path: ObjectPath::try_from(
+                <span class="string">"/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer"</span>,
+            )
+            .expect(<span class="string">"Unable to make an object path"</span>)
+            .into(),
+            job_id: <span class="number">0</span>,
+            job_type: String::from(<span class="string">""</span>),
+            job_object_path: ObjectPath::try_from(<span class="string">"/"</span>).unwrap().into(),
+        }
     }
 
     <span class="attr">#[test]
@@ -1121,44 +1192,33 @@
                     active_state: SystemdUnitActiveState::inactive,
                     load_state: SystemdUnitLoadState::loaded,
                     unhealthy: <span class="bool-val">true</span>,
-                    time_in_state_usecs: <span class="number">0</span>,
+                    time_in_state_usecs: <span class="prelude-val">None</span>,
                 },
             )]),
         };
         <span class="kw">let </span><span class="kw-2">mut </span>stats = SystemdUnitStats::default();
         <span class="kw">let </span>systemd_unit = get_unit_file();
+        <span class="kw">let </span><span class="kw-2">mut </span>config = <span class="kw">crate</span>::config::UnitsConfig::default();
 
         <span class="comment">// Test no allow list or blocklist
-        </span>parse_state(<span class="kw-2">&amp;mut </span>stats, <span class="kw-2">&amp;</span>systemd_unit, <span class="kw-2">&amp;</span><span class="macro">vec!</span>[], <span class="kw-2">&amp;</span><span class="macro">vec!</span>[], <span class="prelude-val">None</span>).<span class="kw">await</span><span class="question-mark">?</span>;
+        </span>parse_state(<span class="kw-2">&amp;mut </span>stats, <span class="kw-2">&amp;</span>systemd_unit, <span class="kw-2">&amp;</span>config, <span class="prelude-val">None</span>).<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="macro">assert_eq!</span>(expected_stats, stats);
 
-        <span class="comment">// Create some allow/block lists
-        </span><span class="kw">let </span>allowlist = Vec::from([test_unit_name.clone()]);
-        <span class="kw">let </span>blocklist = Vec::from([test_unit_name]);
+        <span class="comment">// Create an allow list
+        </span>config.state_stats_allowlist = Vec::from([test_unit_name.clone()]);
 
         <span class="comment">// test no blocklist and only allow list - Should equal the same as no lists above
         </span><span class="kw">let </span><span class="kw-2">mut </span>allowlist_stats = SystemdUnitStats::default();
-        parse_state(
-            <span class="kw-2">&amp;mut </span>allowlist_stats,
-            <span class="kw-2">&amp;</span>systemd_unit,
-            <span class="kw-2">&amp;</span>allowlist,
-            <span class="kw-2">&amp;</span><span class="macro">vec!</span>[],
-            <span class="prelude-val">None</span>,
-        )
-        .<span class="kw">await</span><span class="question-mark">?</span>;
+        parse_state(<span class="kw-2">&amp;mut </span>allowlist_stats, <span class="kw-2">&amp;</span>systemd_unit, <span class="kw-2">&amp;</span>config, <span class="prelude-val">None</span>).<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="macro">assert_eq!</span>(expected_stats, allowlist_stats);
+
+        <span class="comment">// Now add a blocklist
+        </span>config.state_stats_blocklist = Vec::from([test_unit_name]);
 
         <span class="comment">// test blocklist with allow list (show it's preferred)
         </span><span class="kw">let </span><span class="kw-2">mut </span>blocklist_stats = SystemdUnitStats::default();
         <span class="kw">let </span>expected_blocklist_stats = SystemdUnitStats::default();
-        parse_state(
-            <span class="kw-2">&amp;mut </span>blocklist_stats,
-            <span class="kw-2">&amp;</span>systemd_unit,
-            <span class="kw-2">&amp;</span>allowlist,
-            <span class="kw-2">&amp;</span>blocklist,
-            <span class="prelude-val">None</span>,
-        )
-        .<span class="kw">await</span><span class="question-mark">?</span>;
+        parse_state(<span class="kw-2">&amp;mut </span>blocklist_stats, <span class="kw-2">&amp;</span>systemd_unit, <span class="kw-2">&amp;</span>config, <span class="prelude-val">None</span>).<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="macro">assert_eq!</span>(expected_blocklist_stats, blocklist_stats);
         <span class="prelude-val">Ok</span>(())
     }

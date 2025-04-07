@@ -665,7 +665,8 @@
 <a href="#664" id="664">664</a>
 <a href="#665" id="665">665</a>
 <a href="#666" id="666">666</a>
-<a href="#667" id="667">667</a></pre></div><pre class="rust"><code><span class="doccomment">//! # json module
+<a href="#667" id="667">667</a>
+<a href="#668" id="668">668</a></pre></div><pre class="rust"><code><span class="doccomment">//! # json module
 //!
 //! `json` is in charge of generating a flat BTreeMap like . serperated hierarchical
 //! JSON output. This is used by some metric parsing systems when running a command.
@@ -935,7 +936,9 @@
                     }
                 },
                 <span class="string">"time_in_state_usecs" </span>=&gt; {
-                    flat_stats.insert(key, unit_state_stats.time_in_state_usecs.into());
+                    <span class="kw">if let </span><span class="prelude-val">Some</span>(time_in_state_usecs) = unit_state_stats.time_in_state_usecs {
+                        flat_stats.insert(key, time_in_state_usecs.into());
+                    }
                 }
                 <span class="kw">_ </span>=&gt; {
                     <span class="macro">debug!</span>(<span class="string">"Got a unhandled unit state: '{}'"</span>, field_name);
@@ -1188,7 +1191,6 @@
   "timers.unittest.timer.service_unit_last_state_change_usec_monotonic": 69,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.active_state": 1,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.load_state": 1,
-  "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.time_in_state_usecs": 69,
   "unit_states.nvme\\x2dWDC_CL_SN730_SDBQNTY\\x2d512G\\x2d2020_37222H80070511\\x2dpart3.device.unhealthy": 0,
   "unit_states.unittest.service.active_state": 1,
   "unit_states.unittest.service.load_state": 1,
@@ -1262,7 +1264,7 @@
                 active_state: units::SystemdUnitActiveState::active,
                 load_state: units::SystemdUnitLoadState::loaded,
                 unhealthy: <span class="bool-val">false</span>,
-                time_in_state_usecs: <span class="number">69</span>,
+                time_in_state_usecs: <span class="prelude-val">Some</span>(<span class="number">69</span>),
             },
         );
         <span class="kw">let </span>timer_unit = String::from(<span class="string">"unittest.timer"</span>);
@@ -1299,7 +1301,7 @@
                 active_state: units::SystemdUnitActiveState::active,
                 load_state: units::SystemdUnitLoadState::loaded,
                 unhealthy: <span class="bool-val">false</span>,
-                time_in_state_usecs: <span class="number">69</span>,
+                time_in_state_usecs: <span class="prelude-val">None</span>,
             },
         );
         stats
@@ -1311,7 +1313,7 @@
             <span class="kw-2">&amp;</span>return_monitord_stats(),
             <span class="kw-2">&amp;</span>String::from(<span class="string">"JSON serialize failed"</span>),
         );
-        <span class="macro">assert_eq!</span>(<span class="number">103</span>, json_flat_map.len());
+        <span class="macro">assert_eq!</span>(<span class="number">102</span>, json_flat_map.len());
     }
 
     <span class="attr">#[test]

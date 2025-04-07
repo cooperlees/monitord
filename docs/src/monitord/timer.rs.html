@@ -113,19 +113,7 @@
 <a href="#112" id="112">112</a>
 <a href="#113" id="113">113</a>
 <a href="#114" id="114">114</a>
-<a href="#115" id="115">115</a>
-<a href="#116" id="116">116</a>
-<a href="#117" id="117">117</a>
-<a href="#118" id="118">118</a>
-<a href="#119" id="119">119</a>
-<a href="#120" id="120">120</a>
-<a href="#121" id="121">121</a>
-<a href="#122" id="122">122</a>
-<a href="#123" id="123">123</a>
-<a href="#124" id="124">124</a>
-<a href="#125" id="125">125</a>
-<a href="#126" id="126">126</a>
-<a href="#127" id="127">127</a></pre></div><pre class="rust"><code><span class="doccomment">//! # timers module
+<a href="#115" id="115">115</a></pre></div><pre class="rust"><code><span class="doccomment">//! # timers module
 //!
 //! All timer related logic goes here. This will be hitting timer specific
 //! dbus / varlink etc.
@@ -133,7 +121,6 @@
 </span><span class="kw">use </span>anyhow::Result;
 <span class="kw">use </span>struct_field_names_as_array::FieldNamesAsArray;
 <span class="kw">use </span>tracing::error;
-<span class="kw">use </span>zbus::zvariant::OwnedObjectPath;
 
 <span class="kw">use </span><span class="kw">crate</span>::units::SystemdUnitStats;
 
@@ -161,23 +148,12 @@
 <span class="kw">pub async fn </span>collect_timer_stats(
     connection: <span class="kw-2">&amp;</span>zbus::Connection,
     stats: <span class="kw-2">&amp;mut </span>SystemdUnitStats,
-    unit: <span class="kw-2">&amp;</span>(
-        String,          <span class="comment">// The primary unit name as string
-        </span>String,          <span class="comment">// The human readable description string
-        </span>String,          <span class="comment">// The load state (i.e. whether the unit file has been loaded successfully)
-        </span>String,          <span class="comment">// The active state (i.e. whether the unit is currently started or not)
-        </span>String,          <span class="comment">// The sub state (i.e. unit type more specific state)
-        </span>String, <span class="comment">// A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
-        </span>OwnedObjectPath, <span class="comment">// The unit object path
-        </span>u32,    <span class="comment">// If there is a job queued for the job unit, the numeric job id, 0 otherwise
-        </span>String, <span class="comment">// The job type as string
-        </span>OwnedObjectPath, <span class="comment">// The job object path
-    </span>),
+    unit: <span class="kw-2">&amp;</span><span class="kw">crate</span>::units::ListedUnit,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;TimerStats&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>timer_stats = TimerStats::default();
 
     <span class="kw">let </span>pt = <span class="kw">crate</span>::dbus::zbus_timer::TimerProxy::builder(connection)
-        .path(unit.<span class="number">6</span>.clone())<span class="question-mark">?
+        .path(unit.unit_object_path.clone())<span class="question-mark">?
         </span>.build()
         .<span class="kw">await</span><span class="question-mark">?</span>;
     <span class="comment">// Get service unit name to check when it last ran to ensure
@@ -186,7 +162,7 @@
     <span class="kw">let </span><span class="kw-2">mut </span>service_unit_last_state_change_usec: <span class="prelude-ty">Result</span>&lt;u64, zbus::Error&gt; = <span class="prelude-val">Ok</span>(<span class="number">0</span>);
     <span class="kw">let </span><span class="kw-2">mut </span>service_unit_last_state_change_usec_monotonic: <span class="prelude-ty">Result</span>&lt;u64, zbus::Error&gt; = <span class="prelude-val">Ok</span>(<span class="number">0</span>);
     <span class="kw">if </span>service_unit.is_empty() {
-        <span class="macro">error!</span>(<span class="string">"{}: No service unit name found for timer."</span>, unit.<span class="number">0</span>);
+        <span class="macro">error!</span>(<span class="string">"{}: No service unit name found for timer."</span>, unit.name);
     } <span class="kw">else </span>{
         <span class="comment">// Get the object path of the service unit
         </span><span class="kw">let </span>mp = <span class="kw">crate</span>::dbus::zbus_systemd::ManagerProxy::new(connection).<span class="kw">await</span><span class="question-mark">?</span>;
