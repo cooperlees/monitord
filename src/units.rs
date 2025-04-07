@@ -151,6 +151,63 @@ pub enum SystemdUnitLoadState {
     not_found = 4,
 }
 
+/// Representation of the returned Tuple from list_units - Better typing etc.
+#[derive(Debug)]
+pub struct ListedUnit {
+    pub name: String,                      // The primary unit name
+    pub description: String,               // The human readable description
+    pub load_state: String, // The load state (i.e. whether the unit file has been loaded successfully)
+    pub active_state: String, // The active state (i.e. whether the unit is currently started or not)
+    pub sub_state: String,    // The sub state (i.e. unit type more specific state)
+    pub follow_unit: String, // A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
+    pub unit_object_path: OwnedObjectPath, // The unit object path
+    pub job_id: u32, // If there is a job queued for the job unit, the numeric job id, 0 otherwise
+    pub job_type: String, // The job type as string
+    pub job_object_path: OwnedObjectPath, // The job object path
+}
+impl
+    From<(
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        OwnedObjectPath,
+        u32,
+        String,
+        OwnedObjectPath,
+    )> for ListedUnit
+{
+    fn from(
+        tuple: (
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            OwnedObjectPath,
+            u32,
+            String,
+            OwnedObjectPath,
+        ),
+    ) -> Self {
+        ListedUnit {
+            name: tuple.0,
+            description: tuple.1,
+            load_state: tuple.2,
+            active_state: tuple.3,
+            sub_state: tuple.4,
+            follow_unit: tuple.5,
+            unit_object_path: tuple.6,
+            job_id: tuple.7,
+            job_type: tuple.8,
+            job_object_path: tuple.9,
+        }
+    }
+}
+
 pub const SERVICE_FIELD_NAMES: &[&str] = &ServiceStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_FIELD_NAMES: &[&str] = &SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_STATES_FIELD_NAMES: &[&str] = &UnitStates::FIELD_NAMES_AS_ARRAY;
@@ -223,23 +280,12 @@ pub fn is_unit_unhealthy(
 
 async fn get_time_in_state(
     connection: Option<&zbus::Connection>,
-    unit: &(
-        String, // unit name
-        String,
-        String, // load state
-        String, // active state
-        String,
-        String,
-        OwnedObjectPath,
-        u32,
-        String,
-        OwnedObjectPath,
-    ),
+    unit: &ListedUnit,
 ) -> Result<Option<u64>> {
     match connection {
         Some(c) => {
             let up = crate::dbus::zbus_unit::UnitProxy::builder(c)
-                .path(ObjectPath::from(unit.6.clone()))?
+                .path(ObjectPath::from(unit.unit_object_path.clone()))?
                 .build()
                 .await?;
             let now: u64 = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() * 1_000_000;
@@ -248,7 +294,7 @@ async fn get_time_in_state(
                 Err(err) => {
                     error!(
                         "Unable to get state_change_timestamp for {} - Setting to 0: {:?}",
-                        &unit.0, err,
+                        &unit.name, err,
                     );
                     0
                 }
@@ -265,31 +311,22 @@ async fn get_time_in_state(
 /// Parse state of a unit into our unit_states hash
 pub async fn parse_state(
     stats: &mut SystemdUnitStats,
-    unit: &(
-        String, // unit name
-        String,
-        String, // load state
-        String, // active state
-        String,
-        String,
-        OwnedObjectPath,
-        u32,
-        String,
-        OwnedObjectPath,
-    ),
+    unit: &ListedUnit,
     config: &crate::config::UnitsConfig,
     connection: Option<&zbus::Connection>,
 ) -> Result<()> {
-    if config.state_stats_blocklist.contains(&unit.0) {
-        debug!("Skipping state stats for {} due to blocklist", &unit.0);
+    if config.state_stats_blocklist.contains(&unit.name) {
+        debug!("Skipping state stats for {} due to blocklist", &unit.name);
         return Ok(());
     }
-    if !config.state_stats_allowlist.is_empty() && !config.state_stats_allowlist.contains(&unit.0) {
+    if !config.state_stats_allowlist.is_empty()
+        && !config.state_stats_allowlist.contains(&unit.name)
+    {
         return Ok(());
     }
-    let active_state =
-        SystemdUnitActiveState::from_str(&unit.3).unwrap_or(SystemdUnitActiveState::unknown);
-    let load_state = SystemdUnitLoadState::from_str(&unit.2.replace('-', "_"))
+    let active_state = SystemdUnitActiveState::from_str(&unit.active_state)
+        .unwrap_or(SystemdUnitActiveState::unknown);
+    let load_state = SystemdUnitLoadState::from_str(&unit.load_state.replace('-', "_"))
         .unwrap_or(SystemdUnitLoadState::unknown);
 
     // Get the state_change_timestamp to determine time in usecs we've been in current state
@@ -299,7 +336,7 @@ pub async fn parse_state(
     }
 
     stats.unit_states.insert(
-        unit.0.clone(),
+        unit.name.clone(),
         UnitStates {
             active_state,
             load_state,
@@ -311,23 +348,9 @@ pub async fn parse_state(
 }
 
 /// Parse a unit and add to overall counts of state, type etc.
-fn parse_unit(
-    stats: &mut SystemdUnitStats,
-    unit: &(
-        String,          // The primary unit name as string
-        String,          // The human readable description string
-        String,          // The load state (i.e. whether the unit file has been loaded successfully)
-        String,          // The active state (i.e. whether the unit is currently started or not)
-        String,          // The sub state (i.e. unit type more specific state)
-        String, // A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
-        OwnedObjectPath, // The unit object path
-        u32,    // If there is a job queued for the job unit, the numeric job id, 0 otherwise
-        String, // The job type as string
-        OwnedObjectPath, // The job object path
-    ),
-) {
+fn parse_unit(stats: &mut SystemdUnitStats, unit: &ListedUnit) {
     // Count unit type
-    match unit.0.rsplit('.').next() {
+    match unit.name.rsplit('.').next() {
         Some("automount") => stats.automount_units += 1,
         Some("device") => stats.device_units += 1,
         Some("mount") => stats.mount_units += 1,
@@ -341,21 +364,21 @@ fn parse_unit(
         unknown => debug!("Found unhandled '{:?}' unit type", unknown),
     };
     // Count load state
-    match unit.2.as_str() {
+    match unit.load_state.as_str() {
         "loaded" => stats.loaded_units += 1,
         "masked" => stats.masked_units += 1,
         "not-found" => stats.not_found_units += 1,
-        _ => debug!("{} is not loaded. It's {}", unit.0, unit.2),
+        _ => debug!("{} is not loaded. It's {}", unit.name, unit.load_state),
     };
     // Count unit status
-    match unit.3.as_str() {
+    match unit.active_state.as_str() {
         "active" => stats.active_units += 1,
         "failed" => stats.failed_units += 1,
         "inactive" => stats.inactive_units += 1,
         unknown => debug!("Found unhandled '{}' unit state", unknown),
     };
     // Count jobs queued
-    if unit.7 != 0 {
+    if unit.job_id != 0 {
         stats.jobs_queued += 1;
     }
 }
@@ -384,7 +407,8 @@ pub async fn parse_unit_state(
     let units = p.list_units().await?;
 
     stats.total_units = units.len() as u64;
-    for unit in units {
+    for unit_raw in units {
+        let unit: ListedUnit = unit_raw.into();
         // Collect unit types + states counts
         parse_unit(&mut stats, &unit);
 
@@ -395,38 +419,39 @@ pub async fn parse_unit_state(
         }
 
         // Collect service stats
-        if config.services.contains(&unit.0) {
+        if config.services.contains(&unit.name) {
             debug!("Collecting service stats for {:?}", &unit);
-            match parse_service(connection, &unit.0, &unit.6).await {
+            match parse_service(connection, &unit.name, &unit.unit_object_path).await {
                 Ok(service_stats) => {
-                    stats.service_stats.insert(unit.0.clone(), service_stats);
+                    stats.service_stats.insert(unit.name.clone(), service_stats);
                 }
                 Err(err) => error!(
                     "Unable to get service stats for {} {}: {:#?}",
-                    &unit.0, &unit.6, err
+                    &unit.name, &unit.unit_object_path, err
                 ),
             }
         }
 
         // Collect timer stats
-        if config.timers.enabled && unit.0.contains(".timer") {
-            if config.timers.blocklist.contains(&unit.0) {
-                debug!("Skipping timer stats for {} due to blocklist", &unit.0);
+        if config.timers.enabled && unit.name.contains(".timer") {
+            if config.timers.blocklist.contains(&unit.name) {
+                debug!("Skipping timer stats for {} due to blocklist", &unit.name);
                 continue;
             }
-            if !config.timers.allowlist.is_empty() && !config.timers.allowlist.contains(&unit.0) {
+            if !config.timers.allowlist.is_empty() && !config.timers.allowlist.contains(&unit.name)
+            {
                 continue;
             }
             let timer_stats: Option<TimerStats> =
                 match crate::timer::collect_timer_stats(connection, &mut stats, &unit).await {
                     Ok(ts) => Some(ts),
                     Err(err) => {
-                        error!("Failed to get {} stats: {:#?}", &unit.0, err);
+                        error!("Failed to get {} stats: {:#?}", &unit.name, err);
                         None
                     }
                 };
             if let Some(ts) = timer_stats {
-                stats.timer_stats.insert(unit.0.clone(), ts);
+                stats.timer_stats.insert(unit.name.clone(), ts);
             }
         }
     }
@@ -453,32 +478,25 @@ mod tests {
     use super::*;
     use strum::IntoEnumIterator;
 
-    fn get_unit_file() -> (
-        String, // unit name
-        String,
-        String, // load state
-        String, // active state
-        String,
-        String,
-        OwnedObjectPath,
-        u32,
-        String,
-        OwnedObjectPath,
-    ) {
-        (
-            String::from("apport-autoreport.timer"),
-            String::from("Process error reports when automatic reporting is enabled (timer based)"),
-            String::from("loaded"),
-            String::from("inactive"),
-            String::from("dead"),
-            String::from(""),
-            ObjectPath::try_from("/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer")
-                .unwrap()
-                .into(),
-            0 as u32,
-            String::from(""),
-            ObjectPath::try_from("/").unwrap().into(),
-        )
+    fn get_unit_file() -> ListedUnit {
+        ListedUnit {
+            name: String::from("apport-autoreport.timer"),
+            description: String::from(
+                "Process error reports when automatic reporting is enabled (timer based)",
+            ),
+            load_state: String::from("loaded"),
+            active_state: String::from("inactive"),
+            sub_state: String::from("dead"),
+            follow_unit: String::from(""),
+            unit_object_path: ObjectPath::try_from(
+                "/org/freedesktop/systemd1/unit/apport_2dautoreport_2etimer",
+            )
+            .expect("Unable to make an object path")
+            .into(),
+            job_id: 0,
+            job_type: String::from(""),
+            job_object_path: ObjectPath::try_from("/").unwrap().into(),
+        }
     }
 
     #[test]

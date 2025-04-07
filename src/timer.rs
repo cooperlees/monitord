@@ -6,7 +6,6 @@
 use anyhow::Result;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tracing::error;
-use zbus::zvariant::OwnedObjectPath;
 
 use crate::units::SystemdUnitStats;
 
@@ -34,23 +33,12 @@ pub const TIMER_STATS_FIELD_NAMES: &[&str] = &TimerStats::FIELD_NAMES_AS_ARRAY;
 pub async fn collect_timer_stats(
     connection: &zbus::Connection,
     stats: &mut SystemdUnitStats,
-    unit: &(
-        String,          // The primary unit name as string
-        String,          // The human readable description string
-        String,          // The load state (i.e. whether the unit file has been loaded successfully)
-        String,          // The active state (i.e. whether the unit is currently started or not)
-        String,          // The sub state (i.e. unit type more specific state)
-        String, // A unit that is being followed in its state by this unit, if there is any, otherwise the empty string
-        OwnedObjectPath, // The unit object path
-        u32,    // If there is a job queued for the job unit, the numeric job id, 0 otherwise
-        String, // The job type as string
-        OwnedObjectPath, // The job object path
-    ),
+    unit: &crate::units::ListedUnit,
 ) -> Result<TimerStats> {
     let mut timer_stats = TimerStats::default();
 
     let pt = crate::dbus::zbus_timer::TimerProxy::builder(connection)
-        .path(unit.6.clone())?
+        .path(unit.unit_object_path.clone())?
         .build()
         .await?;
     // Get service unit name to check when it last ran to ensure
@@ -59,7 +47,7 @@ pub async fn collect_timer_stats(
     let mut service_unit_last_state_change_usec: Result<u64, zbus::Error> = Ok(0);
     let mut service_unit_last_state_change_usec_monotonic: Result<u64, zbus::Error> = Ok(0);
     if service_unit.is_empty() {
-        error!("{}: No service unit name found for timer.", unit.0);
+        error!("{}: No service unit name found for timer.", unit.name);
     } else {
         // Get the object path of the service unit
         let mp = crate::dbus::zbus_systemd::ManagerProxy::new(connection).await?;
