@@ -103,6 +103,7 @@ pub struct UnitsConfig {
     pub state_stats: bool,
     pub state_stats_allowlist: Vec<String>,
     pub state_stats_blocklist: Vec<String>,
+    pub state_stats_time_in_state: bool,
 }
 impl Default for UnitsConfig {
     fn default() -> Self {
@@ -111,6 +112,7 @@ impl Default for UnitsConfig {
             state_stats: false,
             state_stats_allowlist: Vec::new(),
             state_stats_blocklist: Vec::new(),
+            state_stats_time_in_state: true,
         }
     }
 }
@@ -230,6 +232,11 @@ impl From<Ini> for Config {
                 .map(|s| s.to_string())
                 .collect();
         }
+        config.units.state_stats_time_in_state = read_config_bool(
+            &ini_config,
+            String::from("units"),
+            String::from("state_stats_time_in_state"),
+        );
 
         // [machines] section
         config.machines.enabled = read_config_bool(
@@ -311,6 +318,7 @@ bar.timer
 [units]
 enabled = true
 state_stats = true
+state_stats_time_in_state = true
 
 [units.state_stats.allowlist]
 foo.service
@@ -388,6 +396,7 @@ output_format = json-flat
                 state_stats: true,
                 state_stats_allowlist: Vec::from([String::from("foo.service")]),
                 state_stats_blocklist: Vec::from([String::from("bar.service")]),
+                state_stats_time_in_state: true,
             },
             machines: MachinesConfig {
                 enabled: true,

@@ -89,7 +89,8 @@ pub struct UnitStates {
     // and !SystemdUnitLoadState::masked
     pub unhealthy: bool,
     // Time in microseconds since the unit state has changed ...
-    pub time_in_state_usecs: u64,
+    // Expensive to lookup, so config disable available - Use optional to show that
+    pub time_in_state_usecs: Option<u64>,
 }
 
 // Declare state types
@@ -220,6 +221,47 @@ pub fn is_unit_unhealthy(
     }
 }
 
+async fn get_time_in_state(
+    connection: Option<&zbus::Connection>,
+    unit: &(
+        String, // unit name
+        String,
+        String, // load state
+        String, // active state
+        String,
+        String,
+        OwnedObjectPath,
+        u32,
+        String,
+        OwnedObjectPath,
+    ),
+) -> Result<Option<u64>> {
+    match connection {
+        Some(c) => {
+            let up = crate::dbus::zbus_unit::UnitProxy::builder(c)
+                .path(ObjectPath::from(unit.6.clone()))?
+                .build()
+                .await?;
+            let now: u64 = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() * 1_000_000;
+            let state_change_timestamp = match up.state_change_timestamp().await {
+                Ok(sct) => sct,
+                Err(err) => {
+                    error!(
+                        "Unable to get state_change_timestamp for {} - Setting to 0: {:?}",
+                        &unit.0, err,
+                    );
+                    0
+                }
+            };
+            Ok(Some(now - state_change_timestamp))
+        }
+        None => {
+            error!("No zbus connection passed, but time_in_state_secs enabled");
+            Ok(None)
+        }
+    }
+}
+
 /// Parse state of a unit into our unit_states hash
 pub async fn parse_state(
     stats: &mut SystemdUnitStats,
@@ -235,15 +277,14 @@ pub async fn parse_state(
         String,
         OwnedObjectPath,
     ),
-    allowlist: &[String],
-    blocklist: &[String],
+    config: &crate::config::UnitsConfig,
     connection: Option<&zbus::Connection>,
 ) -> Result<()> {
-    if blocklist.contains(&unit.0) {
+    if config.state_stats_blocklist.contains(&unit.0) {
         debug!("Skipping state stats for {} due to blocklist", &unit.0);
         return Ok(());
     }
-    if !allowlist.is_empty() && !allowlist.contains(&unit.0) {
+    if !config.state_stats_allowlist.is_empty() && !config.state_stats_allowlist.contains(&unit.0) {
         return Ok(());
     }
     let active_state =
@@ -251,22 +292,11 @@ pub async fn parse_state(
     let load_state = SystemdUnitLoadState::from_str(&unit.2.replace('-', "_"))
         .unwrap_or(SystemdUnitLoadState::unknown);
 
-    // Get the state_change_timestamp to determine time in seconds we've been in this state
-    let time_in_state_usecs: u64 = match connection {
-        Some(c) => {
-            let up = crate::dbus::zbus_unit::UnitProxy::builder(c)
-                .path(ObjectPath::from(unit.6.clone()))?
-                .build()
-                .await?;
-            let now: u64 = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() * 1_000_000;
-            let state_change_timestamp = up.state_change_timestamp().await.unwrap_or(now);
-            now - state_change_timestamp
-        }
-        None => {
-            debug!("No zbus connection so not calculating time_in_state_secs");
-            0
-        }
-    };
+    // Get the state_change_timestamp to determine time in seconds we've been in current state
+    let mut time_in_state_usecs: Option<u64> = None;
+    if config.state_stats_time_in_state {
+        time_in_state_usecs = get_time_in_state(connection, unit).await?;
+    }
 
     stats.unit_states.insert(
         unit.0.clone(),
@@ -361,14 +391,7 @@ pub async fn parse_unit_state(
         // Collect per unit state stats - ActiveState + LoadState
         // Not collecting SubState (yet)
         if config.units.state_stats {
-            parse_state(
-                &mut stats,
-                &unit,
-                &config.units.state_stats_allowlist,
-                &config.units.state_stats_blocklist,
-                Some(connection),
-            )
-            .await?;
+            parse_state(&mut stats, &unit, &config.units, Some(connection)).await?;
         }
 
         // Collect service stats
@@ -519,44 +542,33 @@ mod tests {
                     active_state: SystemdUnitActiveState::inactive,
                     load_state: SystemdUnitLoadState::loaded,
                     unhealthy: true,
-                    time_in_state_usecs: 0,
+                    time_in_state_usecs: None,
                 },
             )]),
         };
         let mut stats = SystemdUnitStats::default();
         let systemd_unit = get_unit_file();
+        let mut config = crate::config::UnitsConfig::default();
 
         // Test no allow list or blocklist
-        parse_state(&mut stats, &systemd_unit, &vec![], &vec![], None).await?;
+        parse_state(&mut stats, &systemd_unit, &config, None).await?;
         assert_eq!(expected_stats, stats);
 
-        // Create some allow/block lists
-        let allowlist = Vec::from([test_unit_name.clone()]);
-        let blocklist = Vec::from([test_unit_name]);
+        // Create an allow list
+        config.state_stats_allowlist = Vec::from([test_unit_name.clone()]);
 
         // test no blocklist and only allow list - Should equal the same as no lists above
         let mut allowlist_stats = SystemdUnitStats::default();
-        parse_state(
-            &mut allowlist_stats,
-            &systemd_unit,
-            &allowlist,
-            &vec![],
-            None,
-        )
-        .await?;
+        parse_state(&mut allowlist_stats, &systemd_unit, &config, None).await?;
         assert_eq!(expected_stats, allowlist_stats);
+
+        // Now add a blocklist
+        config.state_stats_blocklist = Vec::from([test_unit_name]);
 
         // test blocklist with allow list (show it's preferred)
         let mut blocklist_stats = SystemdUnitStats::default();
         let expected_blocklist_stats = SystemdUnitStats::default();
-        parse_state(
-            &mut blocklist_stats,
-            &systemd_unit,
-            &allowlist,
-            &blocklist,
-            None,
-        )
-        .await?;
+        parse_state(&mut blocklist_stats, &systemd_unit, &config, None).await?;
         assert_eq!(expected_blocklist_stats, blocklist_stats);
         Ok(())
     }
