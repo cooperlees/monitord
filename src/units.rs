@@ -328,7 +328,7 @@ async fn parse_service(
         memory_current: memory_current??,
         memory_available: memory_available??,
         nrestarts: nrestarts??,
-        processes: processes??[0].1,
+        processes: processes??.len().try_into()?,
         restart_usec: restart_usec??,
         state_change_timestamp: state_change_timestamp??,
         status_errno: status_errno??,
