@@ -14,6 +14,7 @@ use tracing::info;
 
 pub mod config;
 pub(crate) mod dbus;
+pub mod dbus_stats;
 pub mod json;
 pub mod logging;
 pub mod machines;
