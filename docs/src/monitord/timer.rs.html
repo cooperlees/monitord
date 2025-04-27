@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/timer.rs`."><title>timer.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-46132b98.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.1 (4eb161250 2025-03-15)" data-channel="1.85.1" data-search-js="search-75f5ac3e.js" data-settings-js="settings-0f613d39.js" ><script src="../../static.files/storage-59e33391.js"></script><script defer src="../../static.files/src-script-56102188.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>timer.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers">
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/timer.rs`."><title>timer.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-46132b98.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.0 (4d91de4e4 2025-02-17)" data-channel="1.85.0" data-search-js="search-75f5ac3e.js" data-settings-js="settings-0f613d39.js" ><script src="../../static.files/storage-59e33391.js"></script><script defer src="../../static.files/src-script-56102188.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>timer.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers">
 <a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
@@ -113,12 +113,45 @@
 <a href="#112" id="112">112</a>
 <a href="#113" id="113">113</a>
 <a href="#114" id="114">114</a>
-<a href="#115" id="115">115</a></pre></div><pre class="rust"><code><span class="doccomment">//! # timers module
+<a href="#115" id="115">115</a>
+<a href="#116" id="116">116</a>
+<a href="#117" id="117">117</a>
+<a href="#118" id="118">118</a>
+<a href="#119" id="119">119</a>
+<a href="#120" id="120">120</a>
+<a href="#121" id="121">121</a>
+<a href="#122" id="122">122</a>
+<a href="#123" id="123">123</a>
+<a href="#124" id="124">124</a>
+<a href="#125" id="125">125</a>
+<a href="#126" id="126">126</a>
+<a href="#127" id="127">127</a>
+<a href="#128" id="128">128</a>
+<a href="#129" id="129">129</a>
+<a href="#130" id="130">130</a>
+<a href="#131" id="131">131</a>
+<a href="#132" id="132">132</a>
+<a href="#133" id="133">133</a>
+<a href="#134" id="134">134</a>
+<a href="#135" id="135">135</a>
+<a href="#136" id="136">136</a>
+<a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
+<a href="#139" id="139">139</a>
+<a href="#140" id="140">140</a>
+<a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a>
+<a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a></pre></div><pre class="rust"><code><span class="doccomment">//! # timers module
 //!
 //! All timer related logic goes here. This will be hitting timer specific
 //! dbus / varlink etc.
 
-</span><span class="kw">use </span>anyhow::Result;
+</span><span class="kw">use </span>std::sync::Arc;
+
+<span class="kw">use </span>anyhow::Result;
 <span class="kw">use </span>struct_field_names_as_array::FieldNamesAsArray;
 <span class="kw">use </span>tracing::error;
 
@@ -152,10 +185,12 @@
 ) -&gt; <span class="prelude-ty">Result</span>&lt;TimerStats&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>timer_stats = TimerStats::default();
 
-    <span class="kw">let </span>pt = <span class="kw">crate</span>::dbus::zbus_timer::TimerProxy::builder(connection)
-        .path(unit.unit_object_path.clone())<span class="question-mark">?
-        </span>.build()
-        .<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">let </span>pt = Arc::new(
+        <span class="kw">crate</span>::dbus::zbus_timer::TimerProxy::builder(connection)
+            .path(unit.unit_object_path.clone())<span class="question-mark">?
+            </span>.build()
+            .<span class="kw">await</span><span class="question-mark">?</span>,
+    );
     <span class="comment">// Get service unit name to check when it last ran to ensure
     // we are triggers the configured service with times set
     </span><span class="kw">let </span>service_unit = pt.unit().<span class="kw">await</span><span class="question-mark">?</span>;
@@ -197,26 +232,53 @@
         randomized_delay_usec,
         remain_after_elapse,
     ) = <span class="macro">tokio::join!</span>(
-        pt.accuracy_usec(),
-        pt.fixed_random_delay(),
-        pt.last_trigger_usec(),
-        pt.last_trigger_usec_monotonic(),
-        pt.persistent(),
-        pt.next_elapse_usec_monotonic(),
-        pt.next_elapse_usec_realtime(),
-        pt.randomized_delay_usec(),
-        pt.remain_after_elapse(),
+        tokio::spawn({
+            <span class="kw">let </span>spawn_pt = pt.clone();
+            <span class="kw">async move </span>{ spawn_pt.accuracy_usec().<span class="kw">await </span>}
+        }),
+        tokio::spawn({
+            <span class="kw">let </span>spawn_pt = pt.clone();
+            <span class="kw">async move </span>{ spawn_pt.fixed_random_delay().<span class="kw">await </span>}
+        }),
+        tokio::spawn({
+            <span class="kw">let </span>spawn_pt = pt.clone();
+            <span class="kw">async move </span>{ spawn_pt.last_trigger_usec().<span class="kw">await </span>}
+        }),
+        tokio::spawn({
+            <span class="kw">let </span>spawn_pt = pt.clone();
+            <span class="kw">async move </span>{ spawn_pt.last_trigger_usec_monotonic().<span class="kw">await </span>}
+        }),
+        tokio::spawn({
+            <span class="kw">let </span>spawn_pt = pt.clone();
+            <span class="kw">async move </span>{ spawn_pt.persistent().<span class="kw">await </span>}
+        }),
+        tokio::spawn({
+            <span class="kw">let </span>spawn_pt = pt.clone();
+            <span class="kw">async move </span>{ spawn_pt.next_elapse_usec_monotonic().<span class="kw">await </span>}
+        }),
+        tokio::spawn({
+            <span class="kw">let </span>spawn_pt = pt.clone();
+            <span class="kw">async move </span>{ spawn_pt.next_elapse_usec_realtime().<span class="kw">await </span>}
+        }),
+        tokio::spawn({
+            <span class="kw">let </span>spawn_pt = pt.clone();
+            <span class="kw">async move </span>{ spawn_pt.randomized_delay_usec().<span class="kw">await </span>}
+        }),
+        tokio::spawn({
+            <span class="kw">let </span>spawn_pt = pt.clone();
+            <span class="kw">async move </span>{ spawn_pt.remain_after_elapse().<span class="kw">await </span>}
+        }),
     );
 
-    timer_stats.accuracy_usec = accuracy_usec<span class="question-mark">?</span>;
-    timer_stats.fixed_random_delay = fixed_random_delay<span class="question-mark">?</span>;
-    timer_stats.last_trigger_usec = last_trigger_usec<span class="question-mark">?</span>;
-    timer_stats.last_trigger_usec_monotonic = last_trigger_usec_monotonic<span class="question-mark">?</span>;
-    timer_stats.persistent = persistent<span class="question-mark">?</span>;
-    timer_stats.next_elapse_usec_monotonic = next_elapse_usec_monotonic<span class="question-mark">?</span>;
-    timer_stats.next_elapse_usec_realtime = next_elapse_usec_realtime<span class="question-mark">?</span>;
-    timer_stats.randomized_delay_usec = randomized_delay_usec<span class="question-mark">?</span>;
-    timer_stats.remain_after_elapse = remain_after_elapse<span class="question-mark">?</span>;
+    timer_stats.accuracy_usec = accuracy_usec<span class="question-mark">??</span>;
+    timer_stats.fixed_random_delay = fixed_random_delay<span class="question-mark">??</span>;
+    timer_stats.last_trigger_usec = last_trigger_usec<span class="question-mark">??</span>;
+    timer_stats.last_trigger_usec_monotonic = last_trigger_usec_monotonic<span class="question-mark">??</span>;
+    timer_stats.persistent = persistent<span class="question-mark">??</span>;
+    timer_stats.next_elapse_usec_monotonic = next_elapse_usec_monotonic<span class="question-mark">??</span>;
+    timer_stats.next_elapse_usec_realtime = next_elapse_usec_realtime<span class="question-mark">??</span>;
+    timer_stats.randomized_delay_usec = randomized_delay_usec<span class="question-mark">??</span>;
+    timer_stats.remain_after_elapse = remain_after_elapse<span class="question-mark">??</span>;
 
     <span class="kw">if </span>timer_stats.persistent {
         stats.timer_persistent_units += <span class="number">1</span>;
