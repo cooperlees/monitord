@@ -286,7 +286,7 @@ All monitord's dbus is done via async (tokio) [zbus](https://crates.io/crates/zb
 systemd Dbus APIs are in use in the following modules:
 
 - machines
-  - `MangerProxy::list_machines()`
+  - `ManagerProxy::list_machines()`
   - Can do most other calls then on the machine's systemd/dbus
 - networkd
   - `ManagerProxy::list_links()`
