@@ -317,7 +317,7 @@ systemd Dbus APIs are in use in the following modules:
   - `UnitProxy::active_enter_timestamp`
   - `UnitProxy::active_exit_timestamp`
   - `UnitProxy::inactive_exit_timestamp()`
-  - `UnitProxy::state_change_timestamp())` - Used for raw stat + time_in_state
+  - `UnitProxy::state_change_timestamp()` - Used for raw stat + time_in_state
 
 Some of these modules can be disabled via configuration. Due to this, monitord might not
 always be running / calling all these DBus calls per run.
