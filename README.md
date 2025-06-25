@@ -299,7 +299,7 @@ systemd Dbus APIs are in use in the following modules:
   - `TimerProxy::unit()` - Find service unit of timer
   - `ManagerProxy::get_unit()`
   - `UnitProxy::state_change_timestamp()`
-  - `UnitProxy::state_chage_timestamp_monotonic()`
+  - `UnitProxy::state_change_timestamp_monotonic()`
 - units
   - `ManagerProxy::list_units()` - Main counting of unit stats
   - `ServiceProxy::cpuusage_nsec()`
