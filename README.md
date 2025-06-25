@@ -277,6 +277,55 @@ You can now log into the container to build + run tests and run the binary now a
   - `systemctl start systemd-networkd`
     - No interfaces will be managed tho by default in the container ...
 
+## API Usage
+
+## DBus
+
+All monitord's dbus is done via async (tokio) [zbus](https://crates.io/crates/zbus) crate.
+
+systemd Dbus APIs are in use in the following modules:
+
+- machines
+  - `MangerProxy::list_machines()`
+  - Can do most other calls then on the machine's systemd/dbus
+- networkd
+  - `ManagerProxy::list_links()`
+  - Would love to stop parsing `/run/systemd/netif/links` and replace via varlink API
+    - https://github.com/systemd/systemd/issues/36877
+- system
+  - `ManagerProxy::get_version()`
+  - `ManagerProxy::system_state()`
+- timer
+  - `TimerProxy::unit()` - Find service unit of timer
+  - `ManagerProxy::get_unit()`
+  - `UnitProxy::state_change_timestamp()`
+  - `UnitProxy::state_chage_timestamp_monotonic()`
+- units
+  - `ManagerProxy::list_units()` - Main counting of unit stats
+  - `ServiceProxy::cpuusage_nsec()`
+  - `ServiceProxy::ioread_bytes()`
+  - `ServiceProxy::ioread_operations()`
+  - `ServiceProxy::memory_current()`
+  - `ServiceProxy::memory_available()`
+  - `ServiceProxy::nrestarts()`
+  - `ServiceProxy::get_processes()`
+  - `ServiceProxy::restart_usec()`
+  - `ServiceProxy::status_errno()`
+  - `ServiceProxy::tasks_current()`
+  - `ServiceProxy::timeout_clean_usec()`
+  - `ServiceProxy::watchdog_usec()`
+  - `UnitProxy::active_enter_timestamp`
+  - `UnitProxy::active_exit_timestamp`
+  - `UnitProxy::inactive_exit_timestamp()`
+  - `UnitProxy::state_change_timestamp())` - Used for raw stat + time_in_state
+
+Some of these modules can be disabled via configuration. Due to this, monitord might not
+always be running / calling all these DBus calls per run.
+
+## Varlink
+
+None yet :(.
+
 ### varlink 101
 
 varlink might one day replace our DBUS usage. Here are some notes on how to work with systemd varlink
