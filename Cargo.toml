@@ -32,7 +32,7 @@ tracing = "0.1"
 tracing-core = "0.1"
 tracing-glog = "0.4"
 tracing-subscriber = "0.3"
-zbus = { version = "5.1.1", features = ["tokio"], default-features = false }
+zbus = { version = "5.1.1", features = ["tokio", "blocking-api"], default-features = false }
 zvariant = "5.1.0"
 zvariant_derive = "5.1.0"
 
