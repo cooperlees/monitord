@@ -24,6 +24,7 @@ use zbus::proxy;
 use zbus::zvariant::Type;
 
 use crate::dbus::zbus_machine::MachineProxy;
+use crate::dbus::zbus_machine::MachineProxyBlocking;
 
 #[derive(Deserialize_tuple, PartialEq, Eq, Debug, Type)]
 pub struct ListedMachine {
