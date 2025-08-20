@@ -9,6 +9,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use tokio::sync::RwLock;
+use tokio::time::timeout;
 use tracing::error;
 use tracing::info;
 
@@ -24,6 +25,7 @@ pub mod timer;
 pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
+const DEFAULT_DBUS_TIMEOUT: u64 = 30;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct MachineStats {
@@ -89,64 +91,65 @@ pub async fn stat_collector(
 
     loop {
         let collect_start_time = Instant::now();
-        let mut ran_collector_count: u8 = 0;
-
         info!("Starting stat collection run");
 
         // Collect pid1 procfs stats
         if config.pid1.enabled {
-            ran_collector_count += 1;
-            join_set.spawn(crate::pid1::update_pid1_stats(
-                1,
-                locked_machine_stats.clone(),
+            join_set.spawn(timeout(
+                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
+                crate::pid1::update_pid1_stats(1, locked_machine_stats.clone()),
             ));
         }
 
         // Run networkd collector if enabled
         if config.networkd.enabled {
-            ran_collector_count += 1;
-            join_set.spawn(crate::networkd::update_networkd_stats(
-                config.networkd.link_state_dir.clone(),
-                None,
-                sdc.clone(),
-                locked_machine_stats.clone(),
+            join_set.spawn(timeout(
+                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
+                crate::networkd::update_networkd_stats(
+                    config.networkd.link_state_dir.clone(),
+                    None,
+                    sdc.clone(),
+                    locked_machine_stats.clone(),
+                ),
             ));
         }
 
         // Run system running (SystemState) state collector
         if config.system_state.enabled {
-            ran_collector_count += 1;
-            join_set.spawn(crate::system::update_system_stats(
-                sdc.clone(),
-                locked_machine_stats.clone(),
+            join_set.spawn(timeout(
+                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
+                crate::system::update_system_stats(sdc.clone(), locked_machine_stats.clone()),
             ));
         }
-        // Not incrementing the ran_collector_count on purpose as this is always on by default
-        join_set.spawn(crate::system::update_version(
-            sdc.clone(),
-            locked_machine_stats.clone(),
+        join_set.spawn(timeout(
+            Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
+            crate::system::update_version(sdc.clone(), locked_machine_stats.clone()),
         ));
 
         // Run service collectors if there are services listed in config
         if config.units.enabled {
-            ran_collector_count += 1;
-            join_set.spawn(crate::units::update_unit_stats(
-                config.clone(),
-                sdc.clone(),
-                locked_machine_stats.clone(),
+            join_set.spawn(timeout(
+                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
+                crate::units::update_unit_stats(
+                    config.clone(),
+                    sdc.clone(),
+                    locked_machine_stats.clone(),
+                ),
             ));
         }
 
         if config.machines.enabled {
-            ran_collector_count += 1;
-            join_set.spawn(crate::machines::update_machines_stats(
-                config.clone(),
-                sdc.clone(),
-                locked_monitord_stats.clone(),
+            join_set.spawn(timeout(
+                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
+                crate::machines::update_machines_stats(
+                    config.clone(),
+                    sdc.clone(),
+                    locked_monitord_stats.clone(),
+                ),
             ));
         }
 
-        if ran_collector_count < 1 {
+        if join_set.len() == 1 {
             error!("No collectors scheduled to run. Exiting");
             std::process::exit(1);
         }
@@ -155,9 +158,12 @@ pub async fn stat_collector(
         while let Some(res) = join_set.join_next().await {
             match res {
                 Ok(r) => match r {
-                    Ok(_) => (),
-                    Err(e) => {
+                    Ok(Ok(_)) => (),
+                    Ok(Err(e)) => {
                         error!("Collection specific failure: {:?}", e);
+                    }
+                    Err(_) => {
+                        error!("One of the collectors timed out");
                     }
                 },
                 Err(e) => {
