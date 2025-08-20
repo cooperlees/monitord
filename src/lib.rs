@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::error;
 use tracing::info;
+use tracing::warn;
 
 pub mod config;
 pub(crate) mod dbus;
@@ -25,7 +26,6 @@ pub mod timer;
 pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
-const DEFAULT_DBUS_TIMEOUT: u64 = 30;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct MachineStats {
@@ -93,77 +93,125 @@ pub async fn stat_collector(
         let collect_start_time = Instant::now();
         info!("Starting stat collection run");
 
+        // Always collect systemd version
+        let sdc_clone = sdc.clone();
+        let stats_clone = locked_machine_stats.clone();
+        join_set.spawn(async move {
+            match timeout(
+                Duration::from_secs(config.monitord.dbus_timeout),
+                crate::system::update_version(sdc_clone, stats_clone),
+            )
+            .await
+            {
+                Ok(r) => r,
+                Err(_) => Err(anyhow::anyhow!("Timeout while collecting systemd version")),
+            }
+        });
+
         // Collect pid1 procfs stats
         if config.pid1.enabled {
-            join_set.spawn(timeout(
-                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
-                crate::pid1::update_pid1_stats(1, locked_machine_stats.clone()),
-            ));
+            let stats_clone = locked_machine_stats.clone();
+            join_set.spawn(async move {
+                match timeout(
+                    Duration::from_secs(config.monitord.dbus_timeout),
+                    crate::pid1::update_pid1_stats(1, stats_clone),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_) => Err(anyhow::anyhow!("Timeout while collecting pid1 stats")),
+                }
+            });
         }
 
         // Run networkd collector if enabled
         if config.networkd.enabled {
-            join_set.spawn(timeout(
-                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
-                crate::networkd::update_networkd_stats(
-                    config.networkd.link_state_dir.clone(),
-                    None,
-                    sdc.clone(),
-                    locked_machine_stats.clone(),
-                ),
-            ));
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_machine_stats.clone();
+            let config_clone = config.clone();
+            join_set.spawn(async move {
+                match timeout(
+                    Duration::from_secs(config_clone.monitord.dbus_timeout),
+                    crate::networkd::update_networkd_stats(
+                        config_clone.networkd.link_state_dir.clone(),
+                        None,
+                        sdc_clone,
+                        stats_clone,
+                    ),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_) => Err(anyhow::anyhow!("Timeout while collecting networkd stats")),
+                }
+            });
         }
 
         // Run system running (SystemState) state collector
         if config.system_state.enabled {
-            join_set.spawn(timeout(
-                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
-                crate::system::update_system_stats(sdc.clone(), locked_machine_stats.clone()),
-            ));
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_machine_stats.clone();
+            join_set.spawn(async move {
+                match timeout(
+                    Duration::from_secs(config.monitord.dbus_timeout),
+                    crate::system::update_system_stats(sdc_clone, stats_clone),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_) => Err(anyhow::anyhow!(
+                        "Timeout while collecting system state stats"
+                    )),
+                }
+            });
         }
-        join_set.spawn(timeout(
-            Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
-            crate::system::update_version(sdc.clone(), locked_machine_stats.clone()),
-        ));
 
         // Run service collectors if there are services listed in config
         if config.units.enabled {
-            join_set.spawn(timeout(
-                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
-                crate::units::update_unit_stats(
-                    config.clone(),
-                    sdc.clone(),
-                    locked_machine_stats.clone(),
-                ),
-            ));
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_machine_stats.clone();
+            let config_clone = config.clone();
+            join_set.spawn(async move {
+                match timeout(
+                    Duration::from_secs(config.monitord.dbus_timeout),
+                    crate::units::update_unit_stats(config_clone, sdc_clone, stats_clone),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_) => Err(anyhow::anyhow!("Timeout while collecting unit stats")),
+                }
+            });
         }
 
         if config.machines.enabled {
-            join_set.spawn(timeout(
-                Duration::from_secs(DEFAULT_DBUS_TIMEOUT),
-                crate::machines::update_machines_stats(
-                    config.clone(),
-                    sdc.clone(),
-                    locked_monitord_stats.clone(),
-                ),
-            ));
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_monitord_stats.clone();
+            let config_clone = config.clone();
+            join_set.spawn(async move {
+                match timeout(
+                    Duration::from_secs(config_clone.monitord.dbus_timeout),
+                    crate::machines::update_machines_stats(config_clone, sdc_clone, stats_clone),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_) => Err(anyhow::anyhow!("Timeout while collecting machine stats")),
+                }
+            });
         }
 
         if join_set.len() == 1 {
-            error!("No collectors scheduled to run. Exiting");
-            std::process::exit(1);
+            warn!("No collectors execpt systemd version scheduled to run. Exiting");
         }
 
         // Check all collection for errors and log if one fails
         while let Some(res) = join_set.join_next().await {
             match res {
                 Ok(r) => match r {
-                    Ok(Ok(_)) => (),
-                    Ok(Err(e)) => {
+                    Ok(_) => (),
+                    Err(e) => {
                         error!("Collection specific failure: {:?}", e);
-                    }
-                    Err(_) => {
-                        error!("One of the collectors timed out");
                     }
                 },
                 Err(e) => {

@@ -34,6 +34,7 @@ pub struct MonitordConfig {
     pub daemon_stats_refresh_secs: u64,
     pub key_prefix: String,
     pub output_format: MonitordOutputFormat,
+    pub dbus_timeout: u64,
 }
 impl Default for MonitordConfig {
     fn default() -> Self {
@@ -43,6 +44,7 @@ impl Default for MonitordConfig {
             daemon_stats_refresh_secs: 30,
             key_prefix: "".to_string(),
             output_format: MonitordOutputFormat::default(),
+            dbus_timeout: 30,
         }
     }
 }
