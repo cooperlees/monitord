@@ -380,6 +380,7 @@ output_format = json-flat
                 daemon_stats_refresh_secs: u64::MIN,
                 key_prefix: String::from("unittest"),
                 output_format: MonitordOutputFormat::JsonPretty,
+                dbus_timeout: 2.into(),
             },
             networkd: NetworkdConfig {
                 enabled: true,
