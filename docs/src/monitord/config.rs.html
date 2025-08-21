@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/config.rs`."><title>config.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-46132b98.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.0 (4d91de4e4 2025-02-17)" data-channel="1.85.0" data-search-js="search-75f5ac3e.js" data-settings-js="settings-0f613d39.js" ><script src="../../static.files/storage-59e33391.js"></script><script defer src="../../static.files/src-script-56102188.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>config.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers">
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/config.rs`."><title>config.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-46132b98.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.1 (4eb161250 2025-03-15)" data-channel="1.85.1" data-search-js="search-75f5ac3e.js" data-settings-js="settings-0f613d39.js" ><script src="../../static.files/storage-59e33391.js"></script><script defer src="../../static.files/src-script-56102188.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>config.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers">
 <a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
@@ -419,7 +419,14 @@
 <a href="#418" id="418">418</a>
 <a href="#419" id="419">419</a>
 <a href="#420" id="420">420</a>
-<a href="#421" id="421">421</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::path::PathBuf;
+<a href="#421" id="421">421</a>
+<a href="#422" id="422">422</a>
+<a href="#423" id="423">423</a>
+<a href="#424" id="424">424</a>
+<a href="#425" id="425">425</a>
+<a href="#426" id="426">426</a>
+<a href="#427" id="427">427</a>
+<a href="#428" id="428">428</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::path::PathBuf;
 <span class="kw">use </span>std::str::FromStr;
 
 <span class="kw">use </span>configparser::ini::Ini;
@@ -455,6 +462,7 @@
     <span class="kw">pub </span>daemon_stats_refresh_secs: u64,
     <span class="kw">pub </span>key_prefix: String,
     <span class="kw">pub </span>output_format: MonitordOutputFormat,
+    <span class="kw">pub </span>dbus_timeout: u64,
 }
 <span class="kw">impl </span>Default <span class="kw">for </span>MonitordConfig {
     <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
@@ -464,6 +472,7 @@
             daemon_stats_refresh_secs: <span class="number">30</span>,
             key_prefix: <span class="string">""</span>.to_string(),
             output_format: MonitordOutputFormat::default(),
+            dbus_timeout: <span class="number">30</span>,
         }
     }
 }
@@ -575,6 +584,9 @@
         <span class="comment">// [monitord] section
         </span><span class="kw">if let </span><span class="prelude-val">Some</span>(dbus_address) = ini_config.get(<span class="string">"monitord"</span>, <span class="string">"dbus_address"</span>) {
             config.monitord.dbus_address = dbus_address;
+        }
+        <span class="kw">if let </span><span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(dbus_timeout)) = ini_config.getuint(<span class="string">"monitord"</span>, <span class="string">"dbus_timeout"</span>) {
+            config.monitord.dbus_timeout = dbus_timeout;
         }
         config.monitord.daemon = read_config_bool(
             <span class="kw-2">&amp;</span>ini_config,
@@ -708,6 +720,7 @@
     <span class="kw">const </span>FULL_CONFIG: <span class="kw-2">&amp;</span>str = <span class="string">r###"
 [monitord]
 dbus_address = unix:path=/system_bus_socket
+dbus_timeout = 2
 daemon = true
 daemon_stats_refresh_secs = 0
 key_prefix = unittest
@@ -799,6 +812,7 @@ output_format = json-flat
                 daemon_stats_refresh_secs: u64::MIN,
                 key_prefix: String::from(<span class="string">"unittest"</span>),
                 output_format: MonitordOutputFormat::JsonPretty,
+                dbus_timeout: <span class="number">2 </span><span class="kw">as </span>u64,
             },
             networkd: NetworkdConfig {
                 enabled: <span class="bool-val">true</span>,
