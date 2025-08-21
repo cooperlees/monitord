@@ -34,6 +34,7 @@ pub struct MonitordConfig {
     pub daemon_stats_refresh_secs: u64,
     pub key_prefix: String,
     pub output_format: MonitordOutputFormat,
+    pub dbus_timeout: u64,
 }
 impl Default for MonitordConfig {
     fn default() -> Self {
@@ -43,6 +44,7 @@ impl Default for MonitordConfig {
             daemon_stats_refresh_secs: 30,
             key_prefix: "".to_string(),
             output_format: MonitordOutputFormat::default(),
+            dbus_timeout: 30,
         }
     }
 }
@@ -154,6 +156,9 @@ impl From<Ini> for Config {
         // [monitord] section
         if let Some(dbus_address) = ini_config.get("monitord", "dbus_address") {
             config.monitord.dbus_address = dbus_address;
+        }
+        if let Ok(Some(dbus_timeout)) = ini_config.getuint("monitord", "dbus_timeout") {
+            config.monitord.dbus_timeout = dbus_timeout;
         }
         config.monitord.daemon = read_config_bool(
             &ini_config,
@@ -287,6 +292,7 @@ mod tests {
     const FULL_CONFIG: &str = r###"
 [monitord]
 dbus_address = unix:path=/system_bus_socket
+dbus_timeout = 2
 daemon = true
 daemon_stats_refresh_secs = 0
 key_prefix = unittest
@@ -378,6 +384,7 @@ output_format = json-flat
                 daemon_stats_refresh_secs: u64::MIN,
                 key_prefix: String::from("unittest"),
                 output_format: MonitordOutputFormat::JsonPretty,
+                dbus_timeout: 2 as u64,
             },
             networkd: NetworkdConfig {
                 enabled: true,
