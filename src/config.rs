@@ -157,7 +157,7 @@ impl From<Ini> for Config {
         if let Some(dbus_address) = ini_config.get("monitord", "dbus_address") {
             config.monitord.dbus_address = dbus_address;
         }
-        if let Some(dbus_timeout) = ini_config.getuint("monitord", "dbus_timeout") {
+        if let Ok(Some(dbus_timeout)) = ini_config.getuint("monitord", "dbus_timeout") {
             config.monitord.dbus_timeout = dbus_timeout;
         }
         config.monitord.daemon = read_config_bool(
