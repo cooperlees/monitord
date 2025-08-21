@@ -157,6 +157,9 @@ impl From<Ini> for Config {
         if let Some(dbus_address) = ini_config.get("monitord", "dbus_address") {
             config.monitord.dbus_address = dbus_address;
         }
+        if let Some(dbus_timeout) = ini_config.getuint("monitord", "dbus_timeout") {
+            config.monitord.dbus_timeout = dbus_timeout;
+        }
         config.monitord.daemon = read_config_bool(
             &ini_config,
             String::from("monitord"),
@@ -289,6 +292,7 @@ mod tests {
     const FULL_CONFIG: &str = r###"
 [monitord]
 dbus_address = unix:path=/system_bus_socket
+dbus_timeout = 2
 daemon = true
 daemon_stats_refresh_secs = 0
 key_prefix = unittest
@@ -380,7 +384,7 @@ output_format = json-flat
                 daemon_stats_refresh_secs: u64::MIN,
                 key_prefix: String::from("unittest"),
                 output_format: MonitordOutputFormat::JsonPretty,
-                dbus_timeout: 2.into(),
+                dbus_timeout: 2 as u64,
             },
             networkd: NetworkdConfig {
                 enabled: true,
