@@ -64,6 +64,9 @@ to match systemd unit files.
 # Set a custom dbus address to connect to
 # OPTIONAL: If not set, we default to the Unix socket below
 dbus_address = unix:path=/run/dbus/system_bus_socket
+# Timeout in seconds for dbus connection/collections
+# OPTIONAL: default is 30 seconds
+dbus_timeout = 30
 # Run as a daemon or 1 time
 daemon = false
 # Time to refresh systemd stats in seconds
