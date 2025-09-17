@@ -9,7 +9,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use tokio::sync::RwLock;
-use tokio::time::timeout;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
@@ -86,7 +85,10 @@ pub async fn stat_collector(
     let locked_machine_stats: Arc<RwLock<MachineStats>> =
         Arc::new(RwLock::new(MachineStats::default()));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
-    let sdc = zbus::Connection::system().await?;
+    let sdc = zbus::connection::Builder::system()?
+        .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
+        .build()
+        .await?;
     let mut join_set = tokio::task::JoinSet::new();
 
     loop {
@@ -94,111 +96,54 @@ pub async fn stat_collector(
         info!("Starting stat collection run");
 
         // Always collect systemd version
-        let sdc_clone = sdc.clone();
-        let stats_clone = locked_machine_stats.clone();
-        join_set.spawn(async move {
-            match timeout(
-                Duration::from_secs(config.monitord.dbus_timeout),
-                crate::system::update_version(sdc_clone, stats_clone),
-            )
-            .await
-            {
-                Ok(r) => r,
-                Err(_) => Err(anyhow::anyhow!("Timeout while collecting systemd version")),
-            }
-        });
+
+        join_set.spawn(crate::system::update_version(
+            sdc.clone(),
+            locked_machine_stats.clone(),
+        ));
 
         // Collect pid1 procfs stats
         if config.pid1.enabled {
-            let stats_clone = locked_machine_stats.clone();
-            join_set.spawn(async move {
-                match timeout(
-                    Duration::from_secs(config.monitord.dbus_timeout),
-                    crate::pid1::update_pid1_stats(1, stats_clone),
-                )
-                .await
-                {
-                    Ok(r) => r,
-                    Err(_) => Err(anyhow::anyhow!("Timeout while collecting pid1 stats")),
-                }
-            });
+            join_set.spawn(crate::pid1::update_pid1_stats(
+                1,
+                locked_machine_stats.clone(),
+            ));
         }
 
         // Run networkd collector if enabled
         if config.networkd.enabled {
-            let sdc_clone = sdc.clone();
-            let stats_clone = locked_machine_stats.clone();
             let config_clone = config.clone();
-            join_set.spawn(async move {
-                match timeout(
-                    Duration::from_secs(config_clone.monitord.dbus_timeout),
-                    crate::networkd::update_networkd_stats(
-                        config_clone.networkd.link_state_dir.clone(),
-                        None,
-                        sdc_clone,
-                        stats_clone,
-                    ),
-                )
-                .await
-                {
-                    Ok(r) => r,
-                    Err(_) => Err(anyhow::anyhow!("Timeout while collecting networkd stats")),
-                }
-            });
+            join_set.spawn(crate::networkd::update_networkd_stats(
+                config_clone.networkd.link_state_dir.clone(),
+                None,
+                sdc.clone(),
+                locked_machine_stats.clone(),
+            ));
         }
 
         // Run system running (SystemState) state collector
         if config.system_state.enabled {
-            let sdc_clone = sdc.clone();
-            let stats_clone = locked_machine_stats.clone();
-            join_set.spawn(async move {
-                match timeout(
-                    Duration::from_secs(config.monitord.dbus_timeout),
-                    crate::system::update_system_stats(sdc_clone, stats_clone),
-                )
-                .await
-                {
-                    Ok(r) => r,
-                    Err(_) => Err(anyhow::anyhow!(
-                        "Timeout while collecting system state stats"
-                    )),
-                }
-            });
+            join_set.spawn(crate::system::update_system_stats(
+                sdc.clone(),
+                locked_machine_stats.clone(),
+            ));
         }
 
         // Run service collectors if there are services listed in config
         if config.units.enabled {
-            let sdc_clone = sdc.clone();
-            let stats_clone = locked_machine_stats.clone();
-            let config_clone = config.clone();
-            join_set.spawn(async move {
-                match timeout(
-                    Duration::from_secs(config.monitord.dbus_timeout),
-                    crate::units::update_unit_stats(config_clone, sdc_clone, stats_clone),
-                )
-                .await
-                {
-                    Ok(r) => r,
-                    Err(_) => Err(anyhow::anyhow!("Timeout while collecting unit stats")),
-                }
-            });
+            join_set.spawn(crate::units::update_unit_stats(
+                config.clone(),
+                sdc.clone(),
+                locked_machine_stats.clone(),
+            ));
         }
 
         if config.machines.enabled {
-            let sdc_clone = sdc.clone();
-            let stats_clone = locked_monitord_stats.clone();
-            let config_clone = config.clone();
-            join_set.spawn(async move {
-                match timeout(
-                    Duration::from_secs(config_clone.monitord.dbus_timeout),
-                    crate::machines::update_machines_stats(config_clone, sdc_clone, stats_clone),
-                )
-                .await
-                {
-                    Ok(r) => r,
-                    Err(_) => Err(anyhow::anyhow!("Timeout while collecting machine stats")),
-                }
-            });
+            join_set.spawn(crate::machines::update_machines_stats(
+                config.clone(),
+                sdc.clone(),
+                locked_monitord_stats.clone(),
+            ));
         }
 
         if join_set.len() == 1 {

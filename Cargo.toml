@@ -32,9 +32,9 @@ tracing = "0.1"
 tracing-core = "0.1"
 tracing-glog = "0.4"
 tracing-subscriber = "0.3"
-zbus = { version = "5.1.1", features = ["tokio"], default-features = false }
-zvariant = "5.1.0"
-zvariant_derive = "5.1.0"
+zbus = { version = "5.11.0", features = ["tokio"], default-features = false }
+zvariant = "5.7.0"
+zvariant_derive = "5.7.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 procfs = "0.15.1"
