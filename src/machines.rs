@@ -60,6 +60,7 @@ pub async fn update_machines_stats(
             leader_pid
         );
         let sdc = zbus::connection::Builder::address(container_address.as_str())?
+            .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
             .build()
             .await?;
         let mut join_set = tokio::task::JoinSet::new();
