@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tracing::debug;
 
+use crate::dbus_stats;
 use crate::networkd;
 use crate::pid1;
 use crate::units;
@@ -401,6 +402,39 @@ fn flatten_machines(
     flat_stats
 }
 
+fn flatten_dbus_stats(
+    optional_dbus_stats: &Option<dbus_stats::DBusStats>,
+    key_prefix: &String,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let dbus_stats = match optional_dbus_stats {
+        Some(ds) => ds,
+        None => {
+            debug!("Skipping flatenning dbus stats as we got None ...");
+            return flat_stats;
+        }
+    };
+
+    let peer_accounting = match &dbus_stats.dbus_broker_peer_accounting {
+        Some(pa) => pa,
+        None => return flat_stats,
+    };
+
+    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("dbus"));
+
+    for peer in peer_accounting.values() {
+        let peer_name = &peer.name;
+        if let Some(ob) = peer.outgoing_bytes {
+            flat_stats.insert(
+                format!("{base_metric_name}.{peer_name}.outgoing_bytes"),
+                ob.into(),
+            );
+        }
+    }
+
+    flat_stats
+}
+
 /// Take the standard returned structs and move all to a flat BTreeMap<str, float|int> like JSON
 fn flatten_stats(
     stats_struct: &MonitordStats,
@@ -428,6 +462,7 @@ fn flatten_stats(
         stats_struct.version.to_string().into(),
     );
     flat_stats.extend(flatten_machines(&stats_struct.machines, key_prefix));
+    flat_stats.extend(flatten_dbus_stats(&stats_struct.dbus_stats, key_prefix));
     flat_stats
 }
 

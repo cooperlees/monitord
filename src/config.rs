@@ -135,6 +135,18 @@ impl Default for MachinesConfig {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DBusStatsConfig {
+    pub enabled: bool,
+}
+impl Default for DBusStatsConfig{
+    fn default() -> Self {
+        DBusStatsConfig {
+            enabled: true,
+        }
+    }
+}
+
 /// Config struct
 /// Each section represents an ini file section
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -147,6 +159,7 @@ pub struct Config {
     pub system_state: SystemStateConfig,
     pub timers: TimersConfig,
     pub units: UnitsConfig,
+    pub dbus_stats: DBusStatsConfig,
 }
 
 impl From<Ini> for Config {
