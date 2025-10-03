@@ -139,7 +139,7 @@ impl Default for MachinesConfig {
 pub struct DBusStatsConfig {
     pub enabled: bool,
 }
-impl Default for DBusStatsConfig{
+impl Default for DBusStatsConfig {
     fn default() -> Self {
         DBusStatsConfig {
             enabled: true,

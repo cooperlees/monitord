@@ -410,7 +410,7 @@ fn flatten_dbus_stats(
     let dbus_stats = match optional_dbus_stats {
         Some(ds) => ds,
         None => {
-            debug!("Skipping flatenning dbus stats as we got None ...");
+            debug!("Skipping flattening dbus stats as we got None ...");
             return flat_stats;
         }
     };

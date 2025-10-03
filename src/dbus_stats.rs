@@ -13,7 +13,7 @@ use zvariant::{OwnedValue, Value, Dict};
 
 use crate::MachineStats;
 
-// Unfortunatelly, various DBus daemons (ex: dbus-broker and dbus-daemon)
+// Unfortunately, various DBus daemons (ex: dbus-broker and dbus-daemon)
 // represent stats differently. Moreover, the stats vary across versions of the same daemon.
 // Hence, the code uses flexible approach providing max available information.
 
@@ -154,7 +154,7 @@ fn parse_peer_struct(peer_value: &Value) -> Option<DBusBrokerPeerAccounting> {
         _ => return None,
     };
 
-    return Some(DBusBrokerPeerAccounting {
+   Some(DBusBrokerPeerAccounting {
         name: name.clone(),
         unix_user_id: get_u32(credentials, "UnixUserID"),
         process_id: get_u32(credentials, "ProcessID"),
@@ -169,7 +169,7 @@ fn parse_peer_struct(peer_value: &Value) -> Option<DBusBrokerPeerAccounting> {
         outgoing_fds: get_u32(stats, "OutgoingFds"),
         activation_request_bytes: get_u32(stats, "ActivationRequestBytes"),
         activation_request_fds: get_u32(stats, "ActivationRequestFds"),
-    });
+    })
 }
 
 fn parse_peer_accounting(owned_value: &OwnedValue) -> Option<HashMap<String, DBusBrokerPeerAccounting>> {
@@ -278,7 +278,7 @@ fn parse_user_struct(user_value: &Value) -> Option<DBusBrokerUserAccounting> {
         }
     }
 
-    return Some(user);
+    Some(user)
 }
                 
 fn parse_user_accounting(owned_value: &OwnedValue) -> Option<HashMap<u32, DBusBrokerUserAccounting>> {
@@ -333,9 +333,11 @@ pub async fn update_dbus_stats(
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    let mut machine_stats = locked_machine_stats.write().await;
     match parse_dbus_stats(&connection).await {
-        Ok(dbus_stats) => machine_stats.dbus_stats = Some(dbus_stats),
+        Ok(dbus_stats) => {
+            let mut machine_stats = locked_machine_stats.write().await;
+            machine_stats.dbus_stats = Some(dbus_stats)
+        },
         Err(err) => error!("dbus stats failed: {:?}", err),
     }
     Ok(())
