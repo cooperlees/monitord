@@ -183,12 +183,11 @@ fn parse_peer_accounting(
         _ => return None,
     };
 
-    let mut result = HashMap::new();
-    for peer_value in peers_value.iter() {
-        if let Some(peer) = parse_peer_struct(peer_value) {
-            result.insert(peer.name.clone(), peer);
-        }
-    }
+    let result = peers_value
+        .iter()
+        .filter_map(parse_peer_struct)
+        .map(|peer| (peer.name.clone(), peer))
+        .collect();
 
     Some(result)
 }
@@ -294,12 +293,11 @@ fn parse_user_accounting(
         _ => return None,
     };
 
-    let mut result = HashMap::new();
-    for user_value in users_value.iter() {
-        if let Some(user) = parse_user_struct(user_value) {
-            result.insert(user.uid, user);
-        }
-    }
+    let result = users_value
+        .iter()
+        .filter_map(parse_user_struct)
+        .map(|user| (user.uid, user))
+        .collect();
 
     Some(result)
 }
