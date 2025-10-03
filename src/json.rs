@@ -421,12 +421,36 @@ fn flatten_dbus_stats(
     };
 
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("dbus"));
+    let fields = [
+        // ignore serial
+        ("active_connections", dbus_stats.active_connections),
+        ("incomplete_connections", dbus_stats.incomplete_connections),
+        ("bus_names", dbus_stats.bus_names),
+        ("peak_bus_names", dbus_stats.peak_bus_names),
+        (
+            "peak_bus_names_per_connection",
+            dbus_stats.peak_bus_names_per_connection,
+        ),
+        ("match_rules", dbus_stats.match_rules),
+        ("peak_match_rules", dbus_stats.peak_match_rules),
+        (
+            "peak_match_rules_per_connection",
+            dbus_stats.peak_match_rules_per_connection,
+        ),
+    ];
+
+    for (field_name, value) in fields {
+        if let Some(val) = value {
+            flat_stats.insert(format!("{base_metric_name}.{field_name}"), val.into());
+        }
+    }
+
     if let Some(peer_accounting) = &dbus_stats.dbus_broker_peer_accounting {
         // process peer accounting if present
         for peer in peer_accounting.values() {
             let peer_name = format_peer_name(&peer.name);
 
-            let fields = [
+            let peer_fields = [
                 ("name_objects", peer.name_objects),
                 ("match_bytes", peer.match_bytes),
                 ("matches", peer.matches),
@@ -439,7 +463,7 @@ fn flatten_dbus_stats(
                 ("activation_request_fds", peer.activation_request_fds),
             ];
 
-            for (field_name, value) in fields {
+            for (field_name, value) in peer_fields {
                 if let Some(val) = value {
                     flat_stats.insert(
                         format!("{base_metric_name}.peer.{peer_name}.{field_name}"),
@@ -454,14 +478,14 @@ fn flatten_dbus_stats(
         // process user accounting if present
         for user in user_accounting.values() {
             let user_uid = user.uid.to_string();
-            let fields = [
+            let user_fields = [
                 ("bytes", user.bytes.clone()),
                 ("fds", user.fds.clone()),
                 ("matches", user.matches.clone()),
                 ("objects", user.objects.clone()),
             ];
 
-            for (field_name, value) in fields {
+            for (field_name, value) in user_fields {
                 if let Some(val) = value {
                     flat_stats.insert(
                         format!("{base_metric_name}.user.{user_uid}.{field_name}.current"),
