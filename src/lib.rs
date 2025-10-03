@@ -15,6 +15,7 @@ use tracing::warn;
 
 pub mod config;
 pub(crate) mod dbus;
+pub mod dbus_stats;
 pub mod json;
 pub mod logging;
 pub mod machines;
@@ -23,7 +24,6 @@ pub mod pid1;
 pub mod system;
 pub mod timer;
 pub mod units;
-pub mod dbus_stats;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
@@ -101,8 +101,8 @@ pub async fn stat_collector(
         // Always collect systemd version
 
         join_set.spawn(crate::system::update_version(
-           sdc.clone(),
-           locked_machine_stats.clone(),
+            sdc.clone(),
+            locked_machine_stats.clone(),
         ));
 
         // Collect pid1 procfs stats

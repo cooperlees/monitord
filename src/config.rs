@@ -141,9 +141,7 @@ pub struct DBusStatsConfig {
 }
 impl Default for DBusStatsConfig {
     fn default() -> Self {
-        DBusStatsConfig {
-            enabled: true,
-        }
+        DBusStatsConfig { enabled: true }
     }
 }
 
@@ -268,6 +266,10 @@ impl From<Ini> for Config {
         if let Some(machines_blocklist) = config_map.get("machines.blocklist") {
             config.machines.blocklist = machines_blocklist.keys().map(|s| s.to_string()).collect();
         }
+
+        // [dbus] section
+        config.dbus_stats.enabled =
+            read_config_bool(&ini_config, String::from("dbus"), String::from("enabled"));
 
         config
     }

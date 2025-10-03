@@ -415,20 +415,17 @@ fn flatten_dbus_stats(
         }
     };
 
-    let peer_accounting = match &dbus_stats.dbus_broker_peer_accounting {
-        Some(pa) => pa,
-        None => return flat_stats,
-    };
-
     let base_metric_name = gen_base_metric_key(key_prefix, &String::from("dbus"));
-
-    for peer in peer_accounting.values() {
-        let peer_name = &peer.name;
-        if let Some(ob) = peer.outgoing_bytes {
-            flat_stats.insert(
-                format!("{base_metric_name}.{peer_name}.outgoing_bytes"),
-                ob.into(),
-            );
+    if let Some(peer_accounting) = &dbus_stats.dbus_broker_peer_accounting {
+        // process peer accounting if present
+        for peer in peer_accounting.values() {
+            let peer_name = &peer.name;
+            if let Some(ob) = peer.outgoing_bytes {
+                flat_stats.insert(
+                    format!("{base_metric_name}.{peer_name}.outgoing_bytes"),
+                    ob.into(),
+                );
+            }
         }
     }
 

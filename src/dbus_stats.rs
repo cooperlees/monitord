@@ -2,14 +2,14 @@
 //!
 //! Handle getting statistics of our Dbus daemon/broker
 
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::sync::RwLock;
 use tracing::error;
 use zbus::fdo::StatsProxy;
-use zvariant::{OwnedValue, Value, Dict};
+use zvariant::{Dict, OwnedValue, Value};
 
 use crate::MachineStats;
 
@@ -56,7 +56,6 @@ pub struct DBusBrokerUserAccounting {
     pub fds: Option<CurMaxPair>,
     pub matches: Option<CurMaxPair>,
     pub objects: Option<CurMaxPair>,
-
     // TODO UserUsage
     // see src/util/user.h
 }
@@ -86,17 +85,20 @@ fn get_u32(dict: &Dict, key: &str) -> Option<u32> {
     })
 }
 
-fn get_u32_vec(dict: &Dict, key: &str) ->  Option<Vec<u32>> {
+fn get_u32_vec(dict: &Dict, key: &str) -> Option<Vec<u32>> {
     let value_key: Value = key.into();
     dict.get(&value_key).ok().and_then(|v| match v.flatten() {
         Some(Value::Array(array)) => {
-            let vec: Vec<u32> = array.iter().filter_map(|item| {
-                if let Value::U32(num) = item {
-                    Some(*num)
-                } else {
-                    None
-                }
-            }).collect();
+            let vec: Vec<u32> = array
+                .iter()
+                .filter_map(|item| {
+                    if let Value::U32(num) = item {
+                        Some(*num)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
             Some(vec)
         }
@@ -154,7 +156,7 @@ fn parse_peer_struct(peer_value: &Value) -> Option<DBusBrokerPeerAccounting> {
         _ => return None,
     };
 
-   Some(DBusBrokerPeerAccounting {
+    Some(DBusBrokerPeerAccounting {
         name: name.clone(),
         unix_user_id: get_u32(credentials, "UnixUserID"),
         process_id: get_u32(credentials, "ProcessID"),
@@ -172,7 +174,9 @@ fn parse_peer_struct(peer_value: &Value) -> Option<DBusBrokerPeerAccounting> {
     })
 }
 
-fn parse_peer_accounting(owned_value: &OwnedValue) -> Option<HashMap<String, DBusBrokerPeerAccounting>> {
+fn parse_peer_accounting(
+    owned_value: &OwnedValue,
+) -> Option<HashMap<String, DBusBrokerPeerAccounting>> {
     let value: &Value = owned_value;
     let peers_value = match value {
         Value::Array(peers_value) => peers_value,
@@ -257,7 +261,7 @@ fn parse_user_struct(user_value: &Value) -> Option<DBusBrokerUserAccounting> {
                 _ => continue,
             };
 
-            let pair = CurMaxPair{
+            let pair = CurMaxPair {
                 cur: match &field_tuple[1] {
                     Value::U32(n) => *n,
                     _ => continue,
@@ -280,8 +284,10 @@ fn parse_user_struct(user_value: &Value) -> Option<DBusBrokerUserAccounting> {
 
     Some(user)
 }
-                
-fn parse_user_accounting(owned_value: &OwnedValue) -> Option<HashMap<u32, DBusBrokerUserAccounting>> {
+
+fn parse_user_accounting(
+    owned_value: &OwnedValue,
+) -> Option<HashMap<u32, DBusBrokerUserAccounting>> {
     let value: &Value = owned_value;
     let users_value = match value {
         Value::Array(users_value) => users_value,
@@ -305,7 +311,7 @@ pub async fn parse_dbus_stats(
     let proxy = StatsProxy::new(connection).await?;
     let stats = proxy.get_stats().await?;
 
-    let dbus_stats = DBusStats{
+    let dbus_stats = DBusStats {
         serial: stats.serial(),
         active_connections: stats.active_connections(),
         incomplete_connections: stats.incomplete_connections(),
@@ -317,10 +323,14 @@ pub async fn parse_dbus_stats(
         peak_match_rules_per_connection: stats.peak_match_rules_per_connection(),
 
         // attempt to parse dbus-broker specific stats
-        dbus_broker_peer_accounting: stats.rest().get("org.bus1.DBus.Debug.Stats.PeerAccounting")
+        dbus_broker_peer_accounting: stats
+            .rest()
+            .get("org.bus1.DBus.Debug.Stats.PeerAccounting")
             .map(parse_peer_accounting)
             .unwrap_or_default(),
-        dbus_broker_user_accounting: stats.rest().get("org.bus1.DBus.Debug.Stats.UserAccounting")
+        dbus_broker_user_accounting: stats
+            .rest()
+            .get("org.bus1.DBus.Debug.Stats.UserAccounting")
             .map(parse_user_accounting)
             .unwrap_or_default(),
     };
@@ -337,7 +347,7 @@ pub async fn update_dbus_stats(
         Ok(dbus_stats) => {
             let mut machine_stats = locked_machine_stats.write().await;
             machine_stats.dbus_stats = Some(dbus_stats)
-        },
+        }
         Err(err) => error!("dbus stats failed: {:?}", err),
     }
     Ok(())
