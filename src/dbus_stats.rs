@@ -8,7 +8,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use tokio::sync::RwLock;
 use tracing::error;
-use zbus::fdo::StatsProxy;
+use zbus::fdo::{DBusProxy, StatsProxy};
+use zbus::names::BusName;
 use zvariant::{Dict, OwnedValue, Value};
 
 use crate::MachineStats;
@@ -20,6 +21,7 @@ use crate::MachineStats;
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct DBusBrokerPeerAccounting {
     pub name: String,
+    pub well_known_name: Option<String>,
 
     // credentials
     pub unix_user_id: Option<u32>,
@@ -39,6 +41,17 @@ pub struct DBusBrokerPeerAccounting {
     pub outgoing_fds: Option<u32>,
     pub activation_request_bytes: Option<u32>,
     pub activation_request_fds: Option<u32>,
+}
+
+impl DBusBrokerPeerAccounting {
+    pub fn get_name_for_metric(&self) -> String {
+        if let Some(ref well_known) = self.well_known_name {
+            return well_known.clone();
+        }
+
+        let name = self.name.strip_prefix(':').unwrap_or(&self.name);
+        name.replace('.', "-")
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
@@ -127,7 +140,10 @@ fn get_u32_vec(dict: &Dict, key: &str) -> Option<Vec<u32>> {
  * }
  */
 
-fn parse_peer_struct(peer_value: &Value) -> Option<DBusBrokerPeerAccounting> {
+fn parse_peer_struct(
+    peer_value: &Value,
+    well_known_to_peer_names: &HashMap<String, String>,
+) -> Option<DBusBrokerPeerAccounting> {
     let peer_struct = match peer_value {
         Value::Structure(peer_struct) => peer_struct,
         _ => return None,
@@ -158,6 +174,7 @@ fn parse_peer_struct(peer_value: &Value) -> Option<DBusBrokerPeerAccounting> {
 
     Some(DBusBrokerPeerAccounting {
         name: name.clone(),
+        well_known_name: well_known_to_peer_names.get(&name).cloned(),
         unix_user_id: get_u32(credentials, "UnixUserID"),
         process_id: get_u32(credentials, "ProcessID"),
         unix_group_ids: get_u32_vec(credentials, "UnixGroupIDs"),
@@ -176,6 +193,7 @@ fn parse_peer_struct(peer_value: &Value) -> Option<DBusBrokerPeerAccounting> {
 
 fn parse_peer_accounting(
     owned_value: &OwnedValue,
+    well_known_to_peer_names: &HashMap<String, String>,
 ) -> Option<HashMap<String, DBusBrokerPeerAccounting>> {
     let value: &Value = owned_value;
     let peers_value = match value {
@@ -185,7 +203,7 @@ fn parse_peer_accounting(
 
     let result = peers_value
         .iter()
-        .filter_map(parse_peer_struct)
+        .filter_map(|peer| parse_peer_struct(peer, well_known_to_peer_names))
         .map(|peer| (peer.name.clone(), peer))
         .collect();
 
@@ -302,12 +320,33 @@ fn parse_user_accounting(
     Some(result)
 }
 
+async fn get_well_known_to_peer_names(
+    dbus_proxy: &DBusProxy<'_>,
+) -> Result<HashMap<String, String>, Box<dyn std::error::Error + Send + Sync>> {
+    let dbus_names = dbus_proxy.list_names().await?;
+    let mut result = HashMap::new();
+
+    for owned_busname in dbus_names.iter() {
+        let name: &BusName = owned_busname;
+        if let BusName::WellKnown(_) = name {
+            // TODO parallelize
+            let owner = dbus_proxy.get_name_owner(name.clone()).await?;
+            result.insert(owner.to_string(), name.to_string());
+        }
+    }
+
+    Ok(result)
+}
+
 /// Pull all units from dbus and count how system is setup and behaving
 pub async fn parse_dbus_stats(
     connection: &zbus::Connection,
 ) -> Result<DBusStats, Box<dyn std::error::Error + Send + Sync>> {
-    let proxy = StatsProxy::new(connection).await?;
-    let stats = proxy.get_stats().await?;
+    let dbus_proxy = DBusProxy::new(connection).await?;
+    let well_known_to_peer_names = get_well_known_to_peer_names(&dbus_proxy).await?;
+
+    let stats_proxy = StatsProxy::new(connection).await?;
+    let stats = stats_proxy.get_stats().await?;
 
     let dbus_stats = DBusStats {
         serial: stats.serial(),
@@ -324,7 +363,7 @@ pub async fn parse_dbus_stats(
         dbus_broker_peer_accounting: stats
             .rest()
             .get("org.bus1.DBus.Debug.Stats.PeerAccounting")
-            .map(parse_peer_accounting)
+            .map(|peer| parse_peer_accounting(peer, &well_known_to_peer_names))
             .unwrap_or_default(),
         dbus_broker_user_accounting: stats
             .rest()

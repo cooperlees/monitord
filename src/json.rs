@@ -402,11 +402,6 @@ fn flatten_machines(
     flat_stats
 }
 
-fn format_peer_name(input: &str) -> String {
-    let trimmed = input.strip_prefix(':').unwrap_or(input);
-    trimmed.replace('.', "-")
-}
-
 fn flatten_dbus_stats(
     optional_dbus_stats: &Option<dbus_stats::DBusStats>,
     key_prefix: &String,
@@ -448,7 +443,7 @@ fn flatten_dbus_stats(
     if let Some(peer_accounting) = &dbus_stats.dbus_broker_peer_accounting {
         // process peer accounting if present
         for peer in peer_accounting.values() {
-            let peer_name = format_peer_name(&peer.name);
+            let peer_name = peer.get_name_for_metric();
 
             let peer_fields = [
                 ("name_objects", peer.name_objects),
