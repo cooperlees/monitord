@@ -402,6 +402,11 @@ fn flatten_machines(
     flat_stats
 }
 
+fn format_peer_name(input: &str) -> String {
+    let trimmed = input.strip_prefix(':').unwrap_or(input);
+    trimmed.replace('.', "-")
+}
+
 fn flatten_dbus_stats(
     optional_dbus_stats: &Option<dbus_stats::DBusStats>,
     key_prefix: &String,
@@ -419,12 +424,54 @@ fn flatten_dbus_stats(
     if let Some(peer_accounting) = &dbus_stats.dbus_broker_peer_accounting {
         // process peer accounting if present
         for peer in peer_accounting.values() {
-            let peer_name = &peer.name;
-            if let Some(ob) = peer.outgoing_bytes {
-                flat_stats.insert(
-                    format!("{base_metric_name}.{peer_name}.outgoing_bytes"),
-                    ob.into(),
-                );
+            let peer_name = format_peer_name(&peer.name);
+
+            let fields = [
+                ("name_objects", peer.name_objects),
+                ("match_bytes", peer.match_bytes),
+                ("matches", peer.matches),
+                ("reply_objects", peer.reply_objects),
+                ("incoming_bytes", peer.incoming_bytes),
+                ("incoming_fds", peer.incoming_fds),
+                ("outgoing_bytes", peer.outgoing_bytes),
+                ("outgoing_fds", peer.outgoing_fds),
+                ("activation_request_bytes", peer.activation_request_bytes),
+                ("activation_request_fds", peer.activation_request_fds),
+            ];
+
+            for (field_name, value) in fields {
+                if let Some(val) = value {
+                    flat_stats.insert(
+                        format!("{base_metric_name}.peer.{peer_name}.{field_name}"),
+                        val.into(),
+                    );
+                }
+            }
+        }
+    }
+
+    if let Some(user_accounting) = &dbus_stats.dbus_broker_user_accounting {
+        // process user accounting if present
+        for user in user_accounting.values() {
+            let user_uid = user.uid.to_string();
+            let fields = [
+                ("bytes", user.bytes.clone()),
+                ("fds", user.fds.clone()),
+                ("matches", user.matches.clone()),
+                ("objects", user.objects.clone()),
+            ];
+
+            for (field_name, value) in fields {
+                if let Some(val) = value {
+                    flat_stats.insert(
+                        format!("{base_metric_name}.user.{user_uid}.{field_name}.current"),
+                        val.cur.into(),
+                    );
+                    flat_stats.insert(
+                        format!("{base_metric_name}.user.{user_uid}.{field_name}.max"),
+                        val.max.into(),
+                    );
+                }
             }
         }
     }
