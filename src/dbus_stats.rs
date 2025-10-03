@@ -8,6 +8,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use tokio::sync::RwLock;
 use tracing::error;
+use users::get_user_by_uid;
 use zbus::fdo::{DBusProxy, StatsProxy};
 use zbus::names::BusName;
 use zvariant::{Dict, OwnedValue, Value};
@@ -71,6 +72,15 @@ pub struct DBusBrokerUserAccounting {
     pub objects: Option<CurMaxPair>,
     // TODO UserUsage
     // see src/util/user.h
+}
+
+impl DBusBrokerUserAccounting {
+    pub fn get_name_for_metric(&self) -> String {
+        match get_user_by_uid(self.uid) {
+            Some(user) => user.name().to_string_lossy().into_owned(),
+            None => self.uid.to_string(),
+        }
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]

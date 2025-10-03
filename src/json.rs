@@ -472,7 +472,7 @@ fn flatten_dbus_stats(
     if let Some(user_accounting) = &dbus_stats.dbus_broker_user_accounting {
         // process user accounting if present
         for user in user_accounting.values() {
-            let user_uid = user.uid.to_string();
+            let user_name = user.get_name_for_metric();
             let user_fields = [
                 ("bytes", user.bytes.clone()),
                 ("fds", user.fds.clone()),
@@ -483,11 +483,11 @@ fn flatten_dbus_stats(
             for (field_name, value) in user_fields {
                 if let Some(val) = value {
                     flat_stats.insert(
-                        format!("{base_metric_name}.user.{user_uid}.{field_name}.current"),
+                        format!("{base_metric_name}.user.{user_name}.{field_name}.current"),
                         val.cur.into(),
                     );
                     flat_stats.insert(
-                        format!("{base_metric_name}.user.{user_uid}.{field_name}.max"),
+                        format!("{base_metric_name}.user.{user_name}.{field_name}.max"),
                         val.max.into(),
                     );
                 }
