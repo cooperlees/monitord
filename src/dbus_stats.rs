@@ -3,6 +3,7 @@
 //! Handle getting statistics of our Dbus daemon/broker
 
 use std::collections::HashMap;
+use std::fs;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -21,7 +22,7 @@ use crate::MachineStats;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct DBusBrokerPeerAccounting {
-    pub name: String,
+    pub id: String,
     pub well_known_name: Option<String>,
 
     // credentials
@@ -50,8 +51,20 @@ impl DBusBrokerPeerAccounting {
             return well_known.clone();
         }
 
-        let name = self.name.strip_prefix(':').unwrap_or(&self.name);
-        name.replace('.', "-")
+        let formated_id = self.id.strip_prefix(':')
+            .unwrap_or(&self.id)
+            .replace(',', "-");
+
+        if let Some(ref pid) = self.process_id {
+            let path = format!("/proc/{}/comm", pid);
+            if let Ok(name) = fs::read_to_string(&path) {
+                // There might be multiple connections from the same process.
+                // As result, need to suffix result with connection_id for uniqueness
+                return format!("{}-{}", name.trim().to_string(), formated_id);
+            }
+        }
+
+        return formated_id;
     }
 }
 
@@ -160,10 +173,10 @@ fn parse_peer_struct(
     };
 
     match peer_struct.fields() {
-        [Value::Str(name), Value::Dict(credentials), Value::Dict(stats)] => {
+        [Value::Str(id), Value::Dict(credentials), Value::Dict(stats)] => {
             return Some(DBusBrokerPeerAccounting {
-                name: name.to_string(),
-                well_known_name: well_known_to_peer_names.get(name.as_str()).cloned(),
+                id: id.to_string(),
+                well_known_name: well_known_to_peer_names.get(id.as_str()).cloned(),
                 unix_user_id: get_u32(credentials, "UnixUserID"),
                 process_id: get_u32(credentials, "ProcessID"),
                 unix_group_ids: get_u32_vec(credentials, "UnixGroupIDs"),
@@ -196,7 +209,7 @@ fn parse_peer_accounting(
     let result = peers_value
         .iter()
         .filter_map(|peer| parse_peer_struct(peer, well_known_to_peer_names))
-        .map(|peer| (peer.name.clone(), peer))
+        .map(|peer| (peer.id.clone(), peer))
         .collect();
 
     Some(result)
