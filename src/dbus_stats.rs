@@ -51,7 +51,9 @@ impl DBusBrokerPeerAccounting {
             return well_known.clone();
         }
 
-        let formated_id = self.id.strip_prefix(':')
+        let formated_id = self
+            .id
+            .strip_prefix(':')
             .unwrap_or(&self.id)
             .replace(',', "-");
 
@@ -60,11 +62,11 @@ impl DBusBrokerPeerAccounting {
             if let Ok(name) = fs::read_to_string(&path) {
                 // There might be multiple connections from the same process.
                 // As result, need to suffix result with connection_id for uniqueness
-                return format!("{}-{}", name.trim().to_string(), formated_id);
+                return format!("{}-{}", name.trim(), formated_id);
             }
         }
 
-        return formated_id;
+        formated_id
     }
 }
 
@@ -88,6 +90,13 @@ pub struct DBusBrokerUserAccounting {
 }
 
 impl DBusBrokerUserAccounting {
+    fn new(uid: u32) -> Self {
+        Self {
+            uid,
+            ..Default::default()
+        }
+    }
+
     pub fn get_name_for_metric(&self) -> String {
         match get_user_by_uid(self.uid) {
             Some(user) => user.name().to_string_lossy().into_owned(),
@@ -173,8 +182,8 @@ fn parse_peer_struct(
     };
 
     match peer_struct.fields() {
-        [Value::Str(id), Value::Dict(credentials), Value::Dict(stats)] => {
-            return Some(DBusBrokerPeerAccounting {
+        [Value::Str(id), Value::Dict(credentials), Value::Dict(stats), ..] => {
+            Some(DBusBrokerPeerAccounting {
                 id: id.to_string(),
                 well_known_name: well_known_to_peer_names.get(id.as_str()).cloned(),
                 unix_user_id: get_u32(credentials, "UnixUserID"),
@@ -192,7 +201,7 @@ fn parse_peer_struct(
                 activation_request_fds: get_u32(stats, "ActivationRequestFds"),
             })
         }
-        _ => return None,
+        _ => None,
     }
 }
 
@@ -251,49 +260,33 @@ fn parse_user_struct(user_value: &Value) -> Option<DBusBrokerUserAccounting> {
         _ => return None,
     };
 
-    let fields = user_struct.fields();
-    if fields.len() < 2 {
-        return None;
-    }
-
-    // 1. Extract name (Str)
-    let uid = match &fields[0] {
-        Value::U32(n) => *n,
-        _ => return None,
-    };
-
-    // 2. Extract user stats
-    let user_stats = match &fields[1] {
-        Value::Array(a) => a,
-        _ => return None,
-    };
-
-    let mut user = DBusBrokerUserAccounting::default();
-    user.uid = uid;
-
-    for user_stat in user_stats.iter() {
-        if let Value::Structure(user_stat) = user_stat {
-            match user_stat.fields() {
-                [Value::Str(name), Value::U32(cur), Value::U32(max)] => {
-                    let pair = CurMaxPair {
-                        cur: *cur,
-                        max: *max,
-                    };
-
-                    match name.as_str() {
-                        "Bytes" => user.bytes = Some(pair),
-                        "Fds" => user.fds = Some(pair),
-                        "Matches" => user.matches = Some(pair),
-                        "Objects" => user.objects = Some(pair),
-                        _ => {} // ignore other fields
+    match user_struct.fields() {
+        [Value::U32(uid), Value::Array(user_stats), ..] => {
+            let mut user = DBusBrokerUserAccounting::new(*uid);
+            for user_stat in user_stats.iter() {
+                if let Value::Structure(user_stat) = user_stat {
+                    if let [Value::Str(name), Value::U32(cur), Value::U32(max), ..] =
+                        user_stat.fields()
+                    {
+                        let pair = CurMaxPair {
+                            cur: *cur,
+                            max: *max,
+                        };
+                        match name.as_str() {
+                            "Bytes" => user.bytes = Some(pair),
+                            "Fds" => user.fds = Some(pair),
+                            "Matches" => user.matches = Some(pair),
+                            "Objects" => user.objects = Some(pair),
+                            _ => {} // ignore other fields
+                        }
                     }
                 }
-                _ => {}
             }
-        }
-    }
 
-    Some(user)
+            Some(user)
+        }
+        _ => None,
+    }
 }
 
 fn parse_user_accounting(
