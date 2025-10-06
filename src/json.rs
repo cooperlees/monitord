@@ -483,13 +483,11 @@ fn flatten_dbus_stats(
             for (field_name, value) in user_fields {
                 if let Some(val) = value {
                     flat_stats.insert(
-                        format!("{base_metric_name}.user.{user_name}.{field_name}.current"),
+                        format!("{base_metric_name}.user.{user_name}.{field_name}"),
                         val.cur.into(),
                     );
-                    flat_stats.insert(
-                        format!("{base_metric_name}.user.{user_name}.{field_name}.max"),
-                        val.max.into(),
-                    );
+
+                    // little value in reporting max values in real life
                 }
             }
         }
