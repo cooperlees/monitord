@@ -51,7 +51,9 @@ impl DBusBrokerPeerAccounting {
             return well_known.clone();
         }
 
-        let formated_id = self.id.strip_prefix(':')
+        let formated_id = self
+            .id
+            .strip_prefix(':')
             .unwrap_or(&self.id)
             .replace(',', "-");
 
