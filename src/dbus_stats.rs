@@ -159,46 +159,28 @@ fn parse_peer_struct(
         _ => return None,
     };
 
-    let fields = peer_struct.fields();
-    if fields.len() < 3 {
-        return None;
+    match peer_struct.fields() {
+        [Value::Str(name), Value::Dict(credentials), Value::Dict(stats)] => {
+            return Some(DBusBrokerPeerAccounting {
+                name: name.to_string(),
+                well_known_name: well_known_to_peer_names.get(name.as_str()).cloned(),
+                unix_user_id: get_u32(credentials, "UnixUserID"),
+                process_id: get_u32(credentials, "ProcessID"),
+                unix_group_ids: get_u32_vec(credentials, "UnixGroupIDs"),
+                name_objects: get_u32(stats, "NameObjects"),
+                match_bytes: get_u32(stats, "MatchBytes"),
+                matches: get_u32(stats, "Matches"),
+                reply_objects: get_u32(stats, "ReplyObjects"),
+                incoming_bytes: get_u32(stats, "IncomingBytes"),
+                incoming_fds: get_u32(stats, "IncomingFds"),
+                outgoing_bytes: get_u32(stats, "OutgoingBytes"),
+                outgoing_fds: get_u32(stats, "OutgoingFds"),
+                activation_request_bytes: get_u32(stats, "ActivationRequestBytes"),
+                activation_request_fds: get_u32(stats, "ActivationRequestFds"),
+            })
+        }
+        _ => return None,
     }
-
-    // 1. Extract name (Str)
-    let name = match &fields[0] {
-        Value::Str(s) => s.to_string(),
-        _ => return None,
-    };
-
-    // 2. Extract credentials dict
-    let credentials = match &fields[1] {
-        Value::Dict(d) => d,
-        _ => return None,
-    };
-
-    // 3. Extract stats dict
-    let stats = match &fields[2] {
-        Value::Dict(d) => d,
-        _ => return None,
-    };
-
-    Some(DBusBrokerPeerAccounting {
-        name: name.clone(),
-        well_known_name: well_known_to_peer_names.get(&name).cloned(),
-        unix_user_id: get_u32(credentials, "UnixUserID"),
-        process_id: get_u32(credentials, "ProcessID"),
-        unix_group_ids: get_u32_vec(credentials, "UnixGroupIDs"),
-        name_objects: get_u32(stats, "NameObjects"),
-        match_bytes: get_u32(stats, "MatchBytes"),
-        matches: get_u32(stats, "Matches"),
-        reply_objects: get_u32(stats, "ReplyObjects"),
-        incoming_bytes: get_u32(stats, "IncomingBytes"),
-        incoming_fds: get_u32(stats, "IncomingFds"),
-        outgoing_bytes: get_u32(stats, "OutgoingBytes"),
-        outgoing_fds: get_u32(stats, "OutgoingFds"),
-        activation_request_bytes: get_u32(stats, "ActivationRequestBytes"),
-        activation_request_fds: get_u32(stats, "ActivationRequestFds"),
-    })
 }
 
 fn parse_peer_accounting(
@@ -278,33 +260,22 @@ fn parse_user_struct(user_value: &Value) -> Option<DBusBrokerUserAccounting> {
 
     for user_stat in user_stats.iter() {
         if let Value::Structure(user_stat) = user_stat {
-            let field_tuple = user_stat.fields();
-            if field_tuple.len() < 3 {
-                continue;
-            }
+            match user_stat.fields() {
+                [Value::Str(name), Value::U32(cur), Value::U32(max)] => {
+                    let pair = CurMaxPair {
+                        cur: *cur,
+                        max: *max,
+                    };
 
-            let name = match &field_tuple[0] {
-                Value::Str(s) => s.to_string(),
-                _ => continue,
-            };
-
-            let pair = CurMaxPair {
-                cur: match &field_tuple[1] {
-                    Value::U32(n) => *n,
-                    _ => continue,
-                },
-                max: match &field_tuple[2] {
-                    Value::U32(n) => *n,
-                    _ => continue,
-                },
-            };
-
-            match name.as_str() {
-                "Bytes" => user.bytes = Some(pair),
-                "Fds" => user.fds = Some(pair),
-                "Matches" => user.matches = Some(pair),
-                "Objects" => user.objects = Some(pair),
-                _ => {} // ignore other fields
+                    match name.as_str() {
+                        "Bytes" => user.bytes = Some(pair),
+                        "Fds" => user.fds = Some(pair),
+                        "Matches" => user.matches = Some(pair),
+                        "Objects" => user.objects = Some(pair),
+                        _ => {} // ignore other fields
+                    }
+                }
+                _ => {}
             }
         }
     }
