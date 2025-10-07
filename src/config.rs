@@ -356,6 +356,9 @@ bar
 
 [machines.blocklist]
 foo2
+
+[dbus]
+enabled = true
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -425,6 +428,7 @@ output_format = json-flat
                 allowlist: Vec::from([String::from("foo"), String::from("bar")]),
                 blocklist: Vec::from([String::from("foo2")]),
             },
+            dbus_stats: DBusStatsConfig { enabled: true },
         };
 
         let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
