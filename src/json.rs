@@ -676,6 +676,7 @@ mod tests {
                 .try_into()
                 .expect("Unable to make SystemdVersion struct"),
             machines: HashMap::from([(String::from("foo"), MachineStats::default())]),
+            dbus_stats: None,
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
