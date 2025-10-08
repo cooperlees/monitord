@@ -15,6 +15,7 @@ use tracing::warn;
 
 pub mod config;
 pub(crate) mod dbus;
+pub mod dbus_stats;
 pub mod json;
 pub mod logging;
 pub mod machines;
@@ -33,6 +34,7 @@ pub struct MachineStats {
     pub system_state: system::SystemdSystemState,
     pub units: units::SystemdUnitStats,
     pub version: system::SystemdVersion,
+    pub dbus_stats: Option<dbus_stats::DBusStats>,
 }
 
 /// Main monitord stats struct collection all enabled stats
@@ -43,6 +45,7 @@ pub struct MonitordStats {
     pub system_state: system::SystemdSystemState,
     pub units: units::SystemdUnitStats,
     pub version: system::SystemdVersion,
+    pub dbus_stats: Option<dbus_stats::DBusStats>,
     pub machines: HashMap<String, MachineStats>,
 }
 
@@ -146,6 +149,13 @@ pub async fn stat_collector(
             ));
         }
 
+        if config.dbus_stats.enabled {
+            join_set.spawn(crate::dbus_stats::update_dbus_stats(
+                sdc.clone(),
+                locked_machine_stats.clone(),
+            ));
+        }
+
         if join_set.len() == 1 {
             warn!("No collectors execpt systemd version scheduled to run. Exiting");
         }
@@ -174,6 +184,7 @@ pub async fn stat_collector(
             monitord_stats.system_state = machine_stats.system_state;
             monitord_stats.version = machine_stats.version.clone();
             monitord_stats.units = machine_stats.units.clone();
+            monitord_stats.dbus_stats = machine_stats.dbus_stats.clone();
         }
 
         let elapsed_runtime_ms = collect_start_time.elapsed().as_millis();

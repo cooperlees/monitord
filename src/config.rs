@@ -135,6 +135,16 @@ impl Default for MachinesConfig {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DBusStatsConfig {
+    pub enabled: bool,
+}
+impl Default for DBusStatsConfig {
+    fn default() -> Self {
+        DBusStatsConfig { enabled: true }
+    }
+}
+
 /// Config struct
 /// Each section represents an ini file section
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -147,6 +157,7 @@ pub struct Config {
     pub system_state: SystemStateConfig,
     pub timers: TimersConfig,
     pub units: UnitsConfig,
+    pub dbus_stats: DBusStatsConfig,
 }
 
 impl From<Ini> for Config {
@@ -256,6 +267,10 @@ impl From<Ini> for Config {
             config.machines.blocklist = machines_blocklist.keys().map(|s| s.to_string()).collect();
         }
 
+        // [dbus] section
+        config.dbus_stats.enabled =
+            read_config_bool(&ini_config, String::from("dbus"), String::from("enabled"));
+
         config
     }
 }
@@ -341,6 +356,9 @@ bar
 
 [machines.blocklist]
 foo2
+
+[dbus]
+enabled = true
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -410,6 +428,7 @@ output_format = json-flat
                 allowlist: Vec::from([String::from("foo"), String::from("bar")]),
                 blocklist: Vec::from([String::from("foo2")]),
             },
+            dbus_stats: DBusStatsConfig { enabled: true },
         };
 
         let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");

@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tracing::debug;
 
+use crate::dbus_stats;
 use crate::networkd;
 use crate::pid1;
 use crate::units;
@@ -401,6 +402,100 @@ fn flatten_machines(
     flat_stats
 }
 
+fn flatten_dbus_stats(
+    optional_dbus_stats: &Option<dbus_stats::DBusStats>,
+    key_prefix: &String,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let dbus_stats = match optional_dbus_stats {
+        Some(ds) => ds,
+        None => {
+            debug!("Skipping flattening dbus stats as we got None ...");
+            return flat_stats;
+        }
+    };
+
+    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("dbus"));
+    let fields = [
+        // ignore serial
+        ("active_connections", dbus_stats.active_connections),
+        ("incomplete_connections", dbus_stats.incomplete_connections),
+        ("bus_names", dbus_stats.bus_names),
+        ("peak_bus_names", dbus_stats.peak_bus_names),
+        (
+            "peak_bus_names_per_connection",
+            dbus_stats.peak_bus_names_per_connection,
+        ),
+        ("match_rules", dbus_stats.match_rules),
+        ("peak_match_rules", dbus_stats.peak_match_rules),
+        (
+            "peak_match_rules_per_connection",
+            dbus_stats.peak_match_rules_per_connection,
+        ),
+    ];
+
+    for (field_name, value) in fields {
+        if let Some(val) = value {
+            flat_stats.insert(format!("{base_metric_name}.{field_name}"), val.into());
+        }
+    }
+
+    if let Some(peer_accounting) = &dbus_stats.dbus_broker_peer_accounting {
+        // process peer accounting if present
+        for peer in peer_accounting.values() {
+            let peer_name = peer.get_name_for_metric();
+
+            let peer_fields = [
+                ("name_objects", peer.name_objects),
+                ("match_bytes", peer.match_bytes),
+                ("matches", peer.matches),
+                ("reply_objects", peer.reply_objects),
+                ("incoming_bytes", peer.incoming_bytes),
+                ("incoming_fds", peer.incoming_fds),
+                ("outgoing_bytes", peer.outgoing_bytes),
+                ("outgoing_fds", peer.outgoing_fds),
+                ("activation_request_bytes", peer.activation_request_bytes),
+                ("activation_request_fds", peer.activation_request_fds),
+            ];
+
+            for (field_name, value) in peer_fields {
+                if let Some(val) = value {
+                    flat_stats.insert(
+                        format!("{base_metric_name}.peer.{peer_name}.{field_name}"),
+                        val.into(),
+                    );
+                }
+            }
+        }
+    }
+
+    if let Some(user_accounting) = &dbus_stats.dbus_broker_user_accounting {
+        // process user accounting if present
+        for user in user_accounting.values() {
+            let user_name = user.get_name_for_metric();
+            let user_fields = [
+                ("bytes", user.bytes.clone()),
+                ("fds", user.fds.clone()),
+                ("matches", user.matches.clone()),
+                ("objects", user.objects.clone()),
+            ];
+
+            for (field_name, value) in user_fields {
+                if let Some(val) = value {
+                    flat_stats.insert(
+                        format!("{base_metric_name}.user.{user_name}.{field_name}"),
+                        val.cur.into(),
+                    );
+
+                    // little value in reporting max values in real life
+                }
+            }
+        }
+    }
+
+    flat_stats
+}
+
 /// Take the standard returned structs and move all to a flat BTreeMap<str, float|int> like JSON
 fn flatten_stats(
     stats_struct: &MonitordStats,
@@ -428,6 +523,7 @@ fn flatten_stats(
         stats_struct.version.to_string().into(),
     );
     flat_stats.extend(flatten_machines(&stats_struct.machines, key_prefix));
+    flat_stats.extend(flatten_dbus_stats(&stats_struct.dbus_stats, key_prefix));
     flat_stats
 }
 
@@ -580,6 +676,7 @@ mod tests {
                 .try_into()
                 .expect("Unable to make SystemdVersion struct"),
             machines: HashMap::from([(String::from("foo"), MachineStats::default())]),
+            dbus_stats: None,
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
