@@ -376,3 +376,77 @@ pub async fn update_dbus_stats(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use zvariant::{Array, Dict, OwnedValue, Signature, StructureBuilder, Value};
+
+    #[test]
+    fn test_parse_peer_accounting_returns_map() {
+        // Dict signatures
+        let sig_s = Signature::from_bytes(b"s").unwrap();
+        let sig_v = Signature::from_bytes(b"v").unwrap();
+        let sig_u = Signature::from_bytes(b"u").unwrap();
+
+        // Build credentials dict: a{sv}
+        let mut credentials = Dict::new(&sig_s, &sig_v);
+        credentials
+            .add("UnixUserID", OwnedValue::from(1000u32))
+            .unwrap();
+        credentials
+            .add("ProcessID", OwnedValue::from(1234u32))
+            .unwrap();
+        // UnixGroupIDs as a Value::Array, then to OwnedValue for 'v'
+        let gids = Array::from(vec![Value::U32(100), Value::U32(200)]);
+        credentials
+            .add(
+                "UnixGroupIDs",
+                OwnedValue::try_from(Value::Array(gids)).unwrap(),
+            )
+            .unwrap();
+
+        // Build stats dict: a{su}
+        let mut stats = Dict::new(&sig_s, &sig_u);
+        stats.add("NameObjects", 5u32).unwrap();
+        stats.add("Matches", 10u32).unwrap();
+        stats.add("IncomingBytes", 1024u32).unwrap();
+        stats.add("OutgoingBytes", 2048u32).unwrap();
+
+        // Build the peer structure from Values to match parse_peer_struct pattern:
+        let peer_struct = Value::Structure(
+            StructureBuilder::new()
+                .add_field(Value::Str(":1.123".into()))
+                .add_field(Value::Dict(credentials))
+                .add_field(Value::Dict(stats))
+                .add_field(Value::Str("".into()))
+                .build()
+                .unwrap(),
+        );
+        // Let the Array infer element signature from Value::Structure
+        let peers_array = Array::from(vec![peer_struct]);
+
+        // Wrap into OwnedValue to pass to parse_peer_accounting
+        let owned_peers = OwnedValue::try_from(Value::Array(peers_array)).unwrap();
+
+        // Empty well-known map should not filter anything out
+        let well_known_map: HashMap<String, String> = HashMap::new();
+        let result = parse_peer_accounting(&owned_peers, &well_known_map);
+
+        assert!(result.is_some(), "parse_peer_accounting returned None");
+        let map = result.unwrap();
+        eprintln!("Parsed map:\n{:#?}", map); // debug output
+        assert_eq!(map.len(), 1, "expected a single peer parsed");
+        let peer = map.get(":1.123").expect("peer :1.123 missing");
+        assert_eq!(peer.id, ":1.123");
+        assert_eq!(peer.well_known_name, None);
+        assert_eq!(peer.unix_user_id, Some(1000));
+        assert_eq!(peer.process_id, Some(1234));
+        assert_eq!(peer.unix_group_ids, Some(vec![100, 200]));
+        assert_eq!(peer.name_objects, Some(5));
+        assert_eq!(peer.matches, Some(10));
+        assert_eq!(peer.incoming_bytes, Some(1024));
+        assert_eq!(peer.outgoing_bytes, Some(2048));
+    }
+}
