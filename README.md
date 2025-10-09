@@ -79,6 +79,12 @@ key_prefix = monitord
 # Supported: json, json-flat, json-pretty
 output_format = json
 
+# Grab as much stats from DBus GetStats call
+# we can from running dbus daemon
+# More tested on dbus-broker daemon
+[dbus]
+enabled = false
+
 # Grab networkd stats from files + networkctl
 [networkd]
 enabled = true
@@ -158,6 +164,24 @@ Is semi pretty too + custom. All unittested ...
 
 ```json
 {
+  "dbus.peer.1-0.activation_request_bytes": 0,
+  "dbus.peer.1-0.activation_request_fds": 0,
+  "dbus.peer.1-0.incoming_bytes": 16,
+  "dbus.peer.1-0.incoming_fds": 0,
+  "dbus.peer.1-0.match_bytes": 1393,
+  "dbus.peer.1-0.matches": 1,
+  "dbus.peer.1-0.name_objects": 1,
+  "dbus.peer.1-0.outgoing_bytes": 0,
+  "dbus.peer.1-0.outgoing_fds": 0,
+  "dbus.peer.1-0.reply_objects": 0,
+  "dbus.user.0.bytes.current": 536841828,
+  "dbus.user.0.bytes.max": 536870912,
+  "dbus.user.0.fds.current": 4092,
+  "dbus.user.0.fds.max": 4096,
+  "dbus.user.0.matches.current": 16371,
+  "dbus.user.0.matches.max": 16384,
+  "dbus.user.0.objects.current": 16777210,
+  "dbus.user.0.objects.max": 16777216,
   "networkd.eno4.address_state": 3,
   "networkd.eno4.admin_state": 4,
   "networkd.eno4.carrier_state": 5,
