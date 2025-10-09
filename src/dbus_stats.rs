@@ -181,6 +181,8 @@ fn parse_peer_struct(
         _ => return None,
     };
 
+    eprintln!("COOPER 1a - peer_struct: {:?}", peer_struct);
+    eprintln!("COOPER 1b - peer_struct fields: {:?}", peer_struct.fields());
     match peer_struct.fields() {
         [Value::Str(id), Value::Dict(credentials), Value::Dict(stats), ..] => {
             Some(DBusBrokerPeerAccounting {
@@ -201,7 +203,10 @@ fn parse_peer_struct(
                 activation_request_fds: get_u32(stats, "ActivationRequestFds"),
             })
         }
-        _ => None,
+        _ => {
+            eprintln!("COOPER 2");
+            None
+        },
     }
 }
 
@@ -375,4 +380,58 @@ pub async fn update_dbus_stats(
         Err(err) => error!("dbus stats failed: {:?}", err),
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zvariant::{Array, Dict, Signature, StructureBuilder, Value};
+
+    #[test]
+    fn test_parse_peer_struct_valid() {
+        // Create credentials dict with proper variant signature
+        let key_sig = Signature::try_from("s").unwrap();
+        let val_sig = Signature::try_from("v").unwrap();
+        let mut credentials = Dict::new(&key_sig, &val_sig);
+        credentials.add("UnixUserID", Value::U32(1000)).unwrap();
+        credentials.add("ProcessID", Value::U32(1234)).unwrap();
+        let group_ids = Value::Array(Array::from(vec![Value::U32(100), Value::U32(200)]));
+        credentials.add("UnixGroupIDs", group_ids).unwrap();
+
+        // Create stats dict
+        let key_sig2 = Signature::try_from("s").unwrap();
+        let val_sig2 = Signature::try_from("u").unwrap();
+        let mut stats = Dict::new(&key_sig2, &val_sig2);
+        stats.add("NameObjects", 5u32).unwrap();
+        stats.add("Matches", 10u32).unwrap();
+        stats.add("IncomingBytes", 1024u32).unwrap();
+        stats.add("OutgoingBytes", 2048u32).unwrap();
+
+        // Create peer structure using StructureBuilder
+        // Note: credentials and stats are Dict types, we need to convert them to Value::Dict
+        let peer_struct = Value::Structure(
+            StructureBuilder::new()
+                .add_field(Value::Str(":1.123".into()))
+                .add_field(Value::Dict(credentials.into())) // TODO: Needs to not be a Dict(Dict())
+                .add_field(Value::Dict(stats.into())) // TODO: Needs to not be a Dict(Dict())
+                .add_field(Value::Str("".into())) // ignore LinuxSecurityLabel
+                .build()
+                .unwrap(),
+        );
+
+        let well_known_map = HashMap::new();
+        let result = parse_peer_struct(&peer_struct, &well_known_map);
+
+        assert!(result.is_some(), "parse_peer_struct returned None");
+        let peer = result.unwrap();
+        assert_eq!(peer.id, ":1.123");
+        assert_eq!(peer.unix_user_id, Some(1000));
+        assert_eq!(peer.process_id, Some(1234));
+        assert_eq!(peer.unix_group_ids, Some(vec![100, 200]));
+        assert_eq!(peer.name_objects, Some(5));
+        assert_eq!(peer.matches, Some(10));
+        assert_eq!(peer.incoming_bytes, Some(1024));
+        assert_eq!(peer.outgoing_bytes, Some(2048));
+        assert_eq!(peer.well_known_name, None);
+    }
 }
