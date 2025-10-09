@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["MonitordOutputFormat"],"struct":["Config","MachinesConfig","MonitordConfig","NetworkdConfig","Pid1Config","SystemStateConfig","TimersConfig","UnitsConfig"]};
+window.SIDEBAR_ITEMS = {"enum":["MonitordOutputFormat"],"struct":["Config","DBusStatsConfig","MachinesConfig","MonitordConfig","NetworkdConfig","Pid1Config","SystemStateConfig","TimersConfig","UnitsConfig"]};
