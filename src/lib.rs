@@ -157,7 +157,7 @@ pub async fn stat_collector(
         }
 
         if join_set.len() == 1 {
-            warn!("No collectors execpt systemd version scheduled to run. Exiting");
+            warn!("No collectors except systemd version scheduled to run. Exiting");
         }
 
         // Check all collection for errors and log if one fails
