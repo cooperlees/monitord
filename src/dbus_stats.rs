@@ -72,21 +72,30 @@ impl DBusBrokerPeerAccounting {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct CurMaxPair {
+    // dbus-broker maintains current value in an inverted form i.e. usage is max - cur
     pub cur: u32,
     pub max: u32,
+}
+
+impl CurMaxPair {
+    pub fn get_usage(&self) -> u32 {
+        // There is a theoretical possibility of max < cur due to varios factors.
+        // I'll leave it for now to avoid premature optimizations.
+        self.max - self.cur
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct DBusBrokerUserAccounting {
     pub uid: u32,
 
-    // stats
+    // aggregated stats
     pub bytes: Option<CurMaxPair>,
     pub fds: Option<CurMaxPair>,
     pub matches: Option<CurMaxPair>,
     pub objects: Option<CurMaxPair>,
-    // TODO UserUsage
-    // see src/util/user.h
+    // UserUsage provides detailed breakdown of the aggregated numbers.
+    // However, dbus-broker exposes usage as real values (not inverted, see CurMaxPair).
 }
 
 impl DBusBrokerUserAccounting {

@@ -484,10 +484,8 @@ fn flatten_dbus_stats(
                 if let Some(val) = value {
                     flat_stats.insert(
                         format!("{base_metric_name}.user.{user_name}.{field_name}"),
-                        val.cur.into(),
+                        val.get_usage().into(),
                     );
-
-                    // little value in reporting max values in real life
                 }
             }
         }
