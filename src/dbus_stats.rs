@@ -3,7 +3,6 @@
 //! Handle getting statistics of our Dbus daemon/broker
 
 use std::collections::HashMap;
-use std::fs;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -43,31 +42,6 @@ pub struct DBusBrokerPeerAccounting {
     pub outgoing_fds: Option<u32>,
     pub activation_request_bytes: Option<u32>,
     pub activation_request_fds: Option<u32>,
-}
-
-impl DBusBrokerPeerAccounting {
-    pub fn get_name_for_metric(&self) -> String {
-        if let Some(ref well_known) = self.well_known_name {
-            return well_known.clone();
-        }
-
-        let formated_id = self
-            .id
-            .strip_prefix(':')
-            .unwrap_or(&self.id)
-            .replace(',', "-");
-
-        if let Some(ref pid) = self.process_id {
-            let path = format!("/proc/{}/comm", pid);
-            if let Ok(name) = fs::read_to_string(&path) {
-                // There might be multiple connections from the same process.
-                // As result, need to suffix result with connection_id for uniqueness
-                return format!("{}-{}", name.trim(), formated_id);
-            }
-        }
-
-        formated_id
-    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
