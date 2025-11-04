@@ -441,9 +441,11 @@ fn flatten_dbus_stats(
     }
 
     if let Some(peer_accounting) = &dbus_stats.dbus_broker_peer_accounting {
-        // process peer accounting if present
+        // process peer accounting with well-known names
         for peer in peer_accounting.values() {
-            let peer_name = peer.get_name_for_metric();
+            let Some(peer_name) = &peer.well_known_name else {
+                continue;
+            };
 
             let peer_fields = [
                 ("name_objects", peer.name_objects),
