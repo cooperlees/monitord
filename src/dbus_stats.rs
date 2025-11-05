@@ -193,7 +193,7 @@ impl DBusStats {
                 result
                     .entry(cgroup_name.clone())
                     .or_insert_with(|| DBusBrokerCGroupAccounting {
-                        name: cgroup_name.clone(),
+                        name: cgroup_name,
                         ..Default::default()
                     });
 
