@@ -53,7 +53,7 @@ pub struct CurMaxPair {
 
 impl CurMaxPair {
     pub fn get_usage(&self) -> u32 {
-        // There is a theoretical possibility of max < cur due to varios factors.
+        // There is a theoretical possibility of max < cur due to various factors.
         // I'll leave it for now to avoid premature optimizations.
         self.max - self.cur
     }
