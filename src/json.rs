@@ -471,6 +471,33 @@ fn flatten_dbus_stats(
         }
     }
 
+    if let Some(cgroup_accounting) = dbus_stats.cgroup_accounting() {
+        for cgroup in cgroup_accounting.values() {
+            let cgroup_name = &cgroup.name;
+            let cgroup_fields = [
+                ("name_objects", cgroup.name_objects),
+                ("match_bytes", cgroup.match_bytes),
+                ("matches", cgroup.matches),
+                ("reply_objects", cgroup.reply_objects),
+                ("incoming_bytes", cgroup.incoming_bytes),
+                ("incoming_fds", cgroup.incoming_fds),
+                ("outgoing_bytes", cgroup.outgoing_bytes),
+                ("outgoing_fds", cgroup.outgoing_fds),
+                ("activation_request_bytes", cgroup.activation_request_bytes),
+                ("activation_request_fds", cgroup.activation_request_fds),
+            ];
+
+            for (field_name, value) in cgroup_fields {
+                if let Some(val) = value {
+                    flat_stats.insert(
+                        format!("{base_metric_name}.cgroup.{cgroup_name}.{field_name}"),
+                        val.into(),
+                    );
+                }
+            }
+        }
+    }
+
     if let Some(user_accounting) = &dbus_stats.dbus_broker_user_accounting {
         // process user accounting if present
         for user in user_accounting.values() {

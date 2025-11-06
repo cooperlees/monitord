@@ -3,6 +3,8 @@
 //! Handle getting statistics of our Dbus daemon/broker
 
 use std::collections::HashMap;
+use std::fs;
+use std::io;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -44,6 +46,74 @@ pub struct DBusBrokerPeerAccounting {
     pub activation_request_fds: Option<u32>,
 }
 
+impl DBusBrokerPeerAccounting {
+    pub fn get_cgroup_name(&self) -> Result<String, io::Error> {
+        let pid = self
+            .process_id
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "missing process_id"))?;
+
+        let path = format!("/proc/{}/cgroup", pid);
+        let content = fs::read_to_string(&path)?;
+
+        // ex: 0::/system.slice/metalos.classic.metald.service
+        let cgroup = content.strip_prefix("0::").ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "unexpected cgroup format")
+        })?;
+
+        Ok(cgroup.trim().trim_matches('/').replace('/', "-"))
+    }
+}
+
+/* DBusBrokerCGroupAccounting is not present in org.freedesktop.DBus.Debug.Stats.GetStats output.
+ * We group by cgroup to avoid reporting individual peer stats which blows cardinality.
+ * This approach is not ideal, but good enough to identify abusive clients. */
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+pub struct DBusBrokerCGroupAccounting {
+    pub name: String,
+
+    // stats
+    pub name_objects: Option<u32>,
+    pub match_bytes: Option<u32>,
+    pub matches: Option<u32>,
+    pub reply_objects: Option<u32>,
+    pub incoming_bytes: Option<u32>,
+    pub incoming_fds: Option<u32>,
+    pub outgoing_bytes: Option<u32>,
+    pub outgoing_fds: Option<u32>,
+    pub activation_request_bytes: Option<u32>,
+    pub activation_request_fds: Option<u32>,
+}
+
+impl DBusBrokerCGroupAccounting {
+    pub fn combine_with_peer(&mut self, peer: &DBusBrokerPeerAccounting) {
+        fn sum(a: &mut Option<u32>, b: &Option<u32>) {
+            *a = match (a.take(), b) {
+                (Some(x), Some(y)) => Some(x + y),
+                (Some(x), None) => Some(x),
+                (None, Some(y)) => Some(*y),
+                (None, None) => None,
+            };
+        }
+
+        sum(&mut self.name_objects, &peer.name_objects);
+        sum(&mut self.match_bytes, &peer.match_bytes);
+        sum(&mut self.matches, &peer.matches);
+        sum(&mut self.reply_objects, &peer.reply_objects);
+        sum(&mut self.incoming_bytes, &peer.incoming_bytes);
+        sum(&mut self.incoming_fds, &peer.incoming_fds);
+        sum(&mut self.outgoing_bytes, &peer.outgoing_bytes);
+        sum(&mut self.outgoing_fds, &peer.outgoing_fds);
+        sum(
+            &mut self.activation_request_bytes,
+            &peer.activation_request_bytes,
+        );
+        sum(
+            &mut self.activation_request_fds,
+            &peer.activation_request_fds,
+        );
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct CurMaxPair {
     // dbus-broker maintains current value in an inverted form i.e. usage is max - cur
@@ -53,7 +123,7 @@ pub struct CurMaxPair {
 
 impl CurMaxPair {
     pub fn get_usage(&self) -> u32 {
-        // There is a theoretical possibility of max < cur due to varios factors.
+        // There is a theoretical possibility of max < cur due to various factors.
         // I'll leave it for now to avoid premature optimizations.
         self.max - self.cur
     }
@@ -103,6 +173,35 @@ pub struct DBusStats {
     // dbus-broker specific stats
     pub dbus_broker_peer_accounting: Option<HashMap<String, DBusBrokerPeerAccounting>>,
     pub dbus_broker_user_accounting: Option<HashMap<u32, DBusBrokerUserAccounting>>,
+}
+
+impl DBusStats {
+    pub fn cgroup_accounting(&self) -> Option<HashMap<String, DBusBrokerCGroupAccounting>> {
+        let peer_accounting = self.dbus_broker_peer_accounting.as_ref()?;
+        let mut result: HashMap<String, DBusBrokerCGroupAccounting> = HashMap::new();
+
+        for peer in peer_accounting.values() {
+            let cgroup_name = match peer.get_cgroup_name() {
+                Ok(name) => name,
+                Err(err) => {
+                    error!("Failed to get cgroup name for peer {}: {}", peer.id, err);
+                    continue;
+                }
+            };
+
+            let entry =
+                result
+                    .entry(cgroup_name.clone())
+                    .or_insert_with(|| DBusBrokerCGroupAccounting {
+                        name: cgroup_name,
+                        ..Default::default()
+                    });
+
+            entry.combine_with_peer(peer);
+        }
+
+        Some(result)
+    }
 }
 
 fn get_u32(dict: &Dict, key: &str) -> Option<u32> {
