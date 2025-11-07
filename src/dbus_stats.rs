@@ -473,7 +473,7 @@ pub async fn parse_dbus_stats(
             .map(|user| parse_user_accounting(config, user))
             .unwrap_or_default(),
 
-        // have to keeps settings since cgroup stats depends on peer stats
+        // have to keep settings since cgroup stats depends on peer stats
         peer_stats: config.dbus_stats.peer_stats,
         cgroup_stats: config.dbus_stats.cgroup_stats,
     };
