@@ -103,6 +103,7 @@ pub async fn update_machines_stats(
 
         if config.dbus_stats.enabled {
             join_set.spawn(crate::dbus_stats::update_dbus_stats(
+                config.clone(),
                 sdc.clone(),
                 locked_machine_stats.clone(),
             ));

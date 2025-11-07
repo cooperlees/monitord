@@ -173,10 +173,25 @@ pub struct DBusStats {
     // dbus-broker specific stats
     pub dbus_broker_peer_accounting: Option<HashMap<String, DBusBrokerPeerAccounting>>,
     pub dbus_broker_user_accounting: Option<HashMap<u32, DBusBrokerUserAccounting>>,
+
+    // config options
+    pub peer_stats: bool,
+    pub cgroup_stats: bool,
 }
 
 impl DBusStats {
+    pub fn peer_accounting(&self) -> Option<&HashMap<String, DBusBrokerPeerAccounting>> {
+        match self.peer_stats {
+            true => self.dbus_broker_peer_accounting.as_ref(),
+            false => None,
+        }
+    }
+
     pub fn cgroup_accounting(&self) -> Option<HashMap<String, DBusBrokerCGroupAccounting>> {
+        if !self.cgroup_stats {
+            return None;
+        }
+
         let peer_accounting = self.dbus_broker_peer_accounting.as_ref()?;
         let mut result: HashMap<String, DBusBrokerCGroupAccounting> = HashMap::new();
 
@@ -201,6 +216,10 @@ impl DBusStats {
         }
 
         Some(result)
+    }
+
+    pub fn user_accounting(&self) -> Option<&HashMap<u32, DBusBrokerUserAccounting>> {
+        self.dbus_broker_user_accounting.as_ref()
     }
 }
 
@@ -288,9 +307,16 @@ fn parse_peer_struct(
 }
 
 fn parse_peer_accounting(
+    config: &crate::config::Config,
     owned_value: &OwnedValue,
     well_known_to_peer_names: &HashMap<String, String>,
 ) -> Option<HashMap<String, DBusBrokerPeerAccounting>> {
+    // need to keep collecting peer stats when cgroup_stats=true
+    // since cgroup_stats is a derivative of peer stats
+    if !config.dbus_stats.peer_stats && !config.dbus_stats.cgroup_stats {
+        return None;
+    }
+
     let value: &Value = owned_value;
     let peers_value = match value {
         Value::Array(peers_value) => peers_value,
@@ -372,8 +398,14 @@ fn parse_user_struct(user_value: &Value) -> Option<DBusBrokerUserAccounting> {
 }
 
 fn parse_user_accounting(
+    config: &crate::config::Config,
     owned_value: &OwnedValue,
 ) -> Option<HashMap<u32, DBusBrokerUserAccounting>> {
+    // reject collecting user stats when told so
+    if !config.dbus_stats.user_stats {
+        return None;
+    }
+
     let value: &Value = owned_value;
     let users_value = match value {
         Value::Array(users_value) => users_value,
@@ -409,6 +441,7 @@ async fn get_well_known_to_peer_names(
 
 /// Pull all units from dbus and count how system is setup and behaving
 pub async fn parse_dbus_stats(
+    config: &crate::config::Config,
     connection: &zbus::Connection,
 ) -> Result<DBusStats, Box<dyn std::error::Error + Send + Sync>> {
     let dbus_proxy = DBusProxy::new(connection).await?;
@@ -432,13 +465,17 @@ pub async fn parse_dbus_stats(
         dbus_broker_peer_accounting: stats
             .rest()
             .get("org.bus1.DBus.Debug.Stats.PeerAccounting")
-            .map(|peer| parse_peer_accounting(peer, &well_known_to_peer_names))
+            .map(|peer| parse_peer_accounting(config, peer, &well_known_to_peer_names))
             .unwrap_or_default(),
         dbus_broker_user_accounting: stats
             .rest()
             .get("org.bus1.DBus.Debug.Stats.UserAccounting")
-            .map(parse_user_accounting)
+            .map(|user| parse_user_accounting(config, user))
             .unwrap_or_default(),
+
+        // have to keeps settings since cgroup stats depends on peer stats
+        peer_stats: config.dbus_stats.peer_stats,
+        cgroup_stats: config.dbus_stats.cgroup_stats,
     };
 
     Ok(dbus_stats)
@@ -446,10 +483,11 @@ pub async fn parse_dbus_stats(
 
 /// Async wrapper than can update dbus stats when passed a locked struct
 pub async fn update_dbus_stats(
+    config: crate::config::Config,
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    match parse_dbus_stats(&connection).await {
+    match parse_dbus_stats(&config, &connection).await {
         Ok(dbus_stats) => {
             let mut machine_stats = locked_machine_stats.write().await;
             machine_stats.dbus_stats = Some(dbus_stats)
