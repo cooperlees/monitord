@@ -138,10 +138,18 @@ impl Default for MachinesConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DBusStatsConfig {
     pub enabled: bool,
+    pub user_stats: bool,
+    pub peer_stats: bool,
+    pub cgroup_stats: bool,
 }
 impl Default for DBusStatsConfig {
     fn default() -> Self {
-        DBusStatsConfig { enabled: true }
+        DBusStatsConfig {
+            enabled: true,
+            user_stats: false,
+            peer_stats: false,
+            cgroup_stats: false,
+        }
     }
 }
 
@@ -270,6 +278,21 @@ impl From<Ini> for Config {
         // [dbus] section
         config.dbus_stats.enabled =
             read_config_bool(&ini_config, String::from("dbus"), String::from("enabled"));
+        config.dbus_stats.user_stats = read_config_bool(
+            &ini_config,
+            String::from("dbus"),
+            String::from("user_stats"),
+        );
+        config.dbus_stats.peer_stats = read_config_bool(
+            &ini_config,
+            String::from("dbus"),
+            String::from("peer_stats"),
+        );
+        config.dbus_stats.cgroup_stats = read_config_bool(
+            &ini_config,
+            String::from("dbus"),
+            String::from("cgroup_stats"),
+        );
 
         config
     }
@@ -359,6 +382,9 @@ foo2
 
 [dbus]
 enabled = true
+user_stats = true
+peer_stats = true
+cgroup_stats = true
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -428,7 +454,12 @@ output_format = json-flat
                 allowlist: Vec::from([String::from("foo"), String::from("bar")]),
                 blocklist: Vec::from([String::from("foo2")]),
             },
-            dbus_stats: DBusStatsConfig { enabled: true },
+            dbus_stats: DBusStatsConfig {
+                enabled: true,
+                user_stats: true,
+                peer_stats: true,
+                cgroup_stats: true,
+            },
         };
 
         let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");

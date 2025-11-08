@@ -440,7 +440,7 @@ fn flatten_dbus_stats(
         }
     }
 
-    if let Some(peer_accounting) = &dbus_stats.dbus_broker_peer_accounting {
+    if let Some(peer_accounting) = dbus_stats.peer_accounting() {
         // process peer accounting with well-known names
         for peer in peer_accounting.values() {
             let Some(peer_name) = &peer.well_known_name else {
@@ -498,7 +498,7 @@ fn flatten_dbus_stats(
         }
     }
 
-    if let Some(user_accounting) = &dbus_stats.dbus_broker_user_accounting {
+    if let Some(user_accounting) = dbus_stats.user_accounting() {
         // process user accounting if present
         for user in user_accounting.values() {
             let user_name = user.get_name_for_metric();
