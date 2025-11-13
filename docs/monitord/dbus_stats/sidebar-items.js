@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["parse_dbus_stats","update_dbus_stats"],"struct":["CurMaxPair","DBusBrokerPeerAccounting","DBusBrokerUserAccounting","DBusStats"]};
+window.SIDEBAR_ITEMS = {"fn":["parse_dbus_stats","update_dbus_stats"],"struct":["CurMaxPair","DBusBrokerCGroupAccounting","DBusBrokerPeerAccounting","DBusBrokerUserAccounting","DBusStats"]};

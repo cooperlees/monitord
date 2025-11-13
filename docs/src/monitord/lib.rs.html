@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-aa0817cf.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.90.0 (1159e78c4 2025-09-14)" data-channel="1.90.0" data-search-js="search-fa3e91e5.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-68b7e25d.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-eebb9057.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>lib.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! # monitord Crate
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-e56847b5.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.91.0 (f8297e351 2025-10-28) (Fedora 1.91.0-1.fc43)" data-channel="1.91.0" data-search-js="search-e256b49e.js" data-stringdex-js="stringdex-c3e638e9.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-6dc2a7f3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>lib.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! # monitord Crate
 <a href=#2 id=2 data-nosnippet>2</a>//!
 <a href=#3 id=3 data-nosnippet>3</a>//! `monitord` is a library to gather statistics about systemd.
 <a href=#4 id=4 data-nosnippet>4</a>
@@ -151,64 +151,65 @@
 <a href=#151 id=151 data-nosnippet>151</a>
 <a href=#152 id=152 data-nosnippet>152</a>        <span class="kw">if </span>config.dbus_stats.enabled {
 <a href=#153 id=153 data-nosnippet>153</a>            join_set.spawn(<span class="kw">crate</span>::dbus_stats::update_dbus_stats(
-<a href=#154 id=154 data-nosnippet>154</a>                sdc.clone(),
-<a href=#155 id=155 data-nosnippet>155</a>                locked_machine_stats.clone(),
-<a href=#156 id=156 data-nosnippet>156</a>            ));
-<a href=#157 id=157 data-nosnippet>157</a>        }
-<a href=#158 id=158 data-nosnippet>158</a>
-<a href=#159 id=159 data-nosnippet>159</a>        <span class="kw">if </span>join_set.len() == <span class="number">1 </span>{
-<a href=#160 id=160 data-nosnippet>160</a>            <span class="macro">warn!</span>(<span class="string">"No collectors execpt systemd version scheduled to run. Exiting"</span>);
-<a href=#161 id=161 data-nosnippet>161</a>        }
-<a href=#162 id=162 data-nosnippet>162</a>
-<a href=#163 id=163 data-nosnippet>163</a>        <span class="comment">// Check all collection for errors and log if one fails
-<a href=#164 id=164 data-nosnippet>164</a>        </span><span class="kw">while let </span><span class="prelude-val">Some</span>(res) = join_set.join_next().<span class="kw">await </span>{
-<a href=#165 id=165 data-nosnippet>165</a>            <span class="kw">match </span>res {
-<a href=#166 id=166 data-nosnippet>166</a>                <span class="prelude-val">Ok</span>(r) =&gt; <span class="kw">match </span>r {
-<a href=#167 id=167 data-nosnippet>167</a>                    <span class="prelude-val">Ok</span>(<span class="kw">_</span>) =&gt; (),
-<a href=#168 id=168 data-nosnippet>168</a>                    <span class="prelude-val">Err</span>(e) =&gt; {
-<a href=#169 id=169 data-nosnippet>169</a>                        <span class="macro">error!</span>(<span class="string">"Collection specific failure: {:?}"</span>, e);
-<a href=#170 id=170 data-nosnippet>170</a>                    }
-<a href=#171 id=171 data-nosnippet>171</a>                },
-<a href=#172 id=172 data-nosnippet>172</a>                <span class="prelude-val">Err</span>(e) =&gt; {
-<a href=#173 id=173 data-nosnippet>173</a>                    <span class="macro">error!</span>(<span class="string">"Join error: {:?}"</span>, e);
-<a href=#174 id=174 data-nosnippet>174</a>                }
-<a href=#175 id=175 data-nosnippet>175</a>            }
-<a href=#176 id=176 data-nosnippet>176</a>        }
-<a href=#177 id=177 data-nosnippet>177</a>
-<a href=#178 id=178 data-nosnippet>178</a>        {
-<a href=#179 id=179 data-nosnippet>179</a>            <span class="comment">// Update monitord stats with machine stats
-<a href=#180 id=180 data-nosnippet>180</a>            </span><span class="kw">let </span><span class="kw-2">mut </span>monitord_stats = locked_monitord_stats.write().<span class="kw">await</span>;
-<a href=#181 id=181 data-nosnippet>181</a>            <span class="kw">let </span>machine_stats = locked_machine_stats.read().<span class="kw">await</span>;
-<a href=#182 id=182 data-nosnippet>182</a>            monitord_stats.pid1 = machine_stats.pid1.clone();
-<a href=#183 id=183 data-nosnippet>183</a>            monitord_stats.networkd = machine_stats.networkd.clone();
-<a href=#184 id=184 data-nosnippet>184</a>            monitord_stats.system_state = machine_stats.system_state;
-<a href=#185 id=185 data-nosnippet>185</a>            monitord_stats.version = machine_stats.version.clone();
-<a href=#186 id=186 data-nosnippet>186</a>            monitord_stats.units = machine_stats.units.clone();
-<a href=#187 id=187 data-nosnippet>187</a>            monitord_stats.dbus_stats = machine_stats.dbus_stats.clone();
-<a href=#188 id=188 data-nosnippet>188</a>        }
-<a href=#189 id=189 data-nosnippet>189</a>
-<a href=#190 id=190 data-nosnippet>190</a>        <span class="kw">let </span>elapsed_runtime_ms = collect_start_time.elapsed().as_millis();
-<a href=#191 id=191 data-nosnippet>191</a>
-<a href=#192 id=192 data-nosnippet>192</a>        <span class="macro">info!</span>(<span class="string">"stat collection run took {}ms"</span>, elapsed_runtime_ms);
-<a href=#193 id=193 data-nosnippet>193</a>        <span class="kw">if </span>output_stats {
-<a href=#194 id=194 data-nosnippet>194</a>            <span class="kw">let </span>monitord_stats = locked_monitord_stats.read().<span class="kw">await</span>;
-<a href=#195 id=195 data-nosnippet>195</a>            print_stats(
-<a href=#196 id=196 data-nosnippet>196</a>                <span class="kw-2">&amp;</span>config.monitord.key_prefix,
-<a href=#197 id=197 data-nosnippet>197</a>                <span class="kw-2">&amp;</span>config.monitord.output_format,
-<a href=#198 id=198 data-nosnippet>198</a>                <span class="kw-2">&amp;</span>monitord_stats,
-<a href=#199 id=199 data-nosnippet>199</a>            );
-<a href=#200 id=200 data-nosnippet>200</a>        }
-<a href=#201 id=201 data-nosnippet>201</a>        <span class="kw">if </span>!config.monitord.daemon {
-<a href=#202 id=202 data-nosnippet>202</a>            <span class="kw">break</span>;
-<a href=#203 id=203 data-nosnippet>203</a>        }
-<a href=#204 id=204 data-nosnippet>204</a>        <span class="kw">let </span>sleep_time_ms = collect_interval_ms - elapsed_runtime_ms;
-<a href=#205 id=205 data-nosnippet>205</a>        <span class="macro">info!</span>(<span class="string">"stat collection sleeping for {}s 😴"</span>, sleep_time_ms / <span class="number">1000</span>);
-<a href=#206 id=206 data-nosnippet>206</a>        tokio::time::sleep(Duration::from_millis(
-<a href=#207 id=207 data-nosnippet>207</a>            sleep_time_ms
-<a href=#208 id=208 data-nosnippet>208</a>                .try_into()
-<a href=#209 id=209 data-nosnippet>209</a>                .expect(<span class="string">"Sleep time does not fit into a u64 :O"</span>),
-<a href=#210 id=210 data-nosnippet>210</a>        ))
-<a href=#211 id=211 data-nosnippet>211</a>        .<span class="kw">await</span>;
-<a href=#212 id=212 data-nosnippet>212</a>    }
-<a href=#213 id=213 data-nosnippet>213</a>    <span class="prelude-val">Ok</span>(())
-<a href=#214 id=214 data-nosnippet>214</a>}</code></pre></div></section></main></body></html>
+<a href=#154 id=154 data-nosnippet>154</a>                config.clone(),
+<a href=#155 id=155 data-nosnippet>155</a>                sdc.clone(),
+<a href=#156 id=156 data-nosnippet>156</a>                locked_machine_stats.clone(),
+<a href=#157 id=157 data-nosnippet>157</a>            ));
+<a href=#158 id=158 data-nosnippet>158</a>        }
+<a href=#159 id=159 data-nosnippet>159</a>
+<a href=#160 id=160 data-nosnippet>160</a>        <span class="kw">if </span>join_set.len() == <span class="number">1 </span>{
+<a href=#161 id=161 data-nosnippet>161</a>            <span class="macro">warn!</span>(<span class="string">"No collectors except systemd version scheduled to run. Exiting"</span>);
+<a href=#162 id=162 data-nosnippet>162</a>        }
+<a href=#163 id=163 data-nosnippet>163</a>
+<a href=#164 id=164 data-nosnippet>164</a>        <span class="comment">// Check all collection for errors and log if one fails
+<a href=#165 id=165 data-nosnippet>165</a>        </span><span class="kw">while let </span><span class="prelude-val">Some</span>(res) = join_set.join_next().<span class="kw">await </span>{
+<a href=#166 id=166 data-nosnippet>166</a>            <span class="kw">match </span>res {
+<a href=#167 id=167 data-nosnippet>167</a>                <span class="prelude-val">Ok</span>(r) =&gt; <span class="kw">match </span>r {
+<a href=#168 id=168 data-nosnippet>168</a>                    <span class="prelude-val">Ok</span>(<span class="kw">_</span>) =&gt; (),
+<a href=#169 id=169 data-nosnippet>169</a>                    <span class="prelude-val">Err</span>(e) =&gt; {
+<a href=#170 id=170 data-nosnippet>170</a>                        <span class="macro">error!</span>(<span class="string">"Collection specific failure: {:?}"</span>, e);
+<a href=#171 id=171 data-nosnippet>171</a>                    }
+<a href=#172 id=172 data-nosnippet>172</a>                },
+<a href=#173 id=173 data-nosnippet>173</a>                <span class="prelude-val">Err</span>(e) =&gt; {
+<a href=#174 id=174 data-nosnippet>174</a>                    <span class="macro">error!</span>(<span class="string">"Join error: {:?}"</span>, e);
+<a href=#175 id=175 data-nosnippet>175</a>                }
+<a href=#176 id=176 data-nosnippet>176</a>            }
+<a href=#177 id=177 data-nosnippet>177</a>        }
+<a href=#178 id=178 data-nosnippet>178</a>
+<a href=#179 id=179 data-nosnippet>179</a>        {
+<a href=#180 id=180 data-nosnippet>180</a>            <span class="comment">// Update monitord stats with machine stats
+<a href=#181 id=181 data-nosnippet>181</a>            </span><span class="kw">let </span><span class="kw-2">mut </span>monitord_stats = locked_monitord_stats.write().<span class="kw">await</span>;
+<a href=#182 id=182 data-nosnippet>182</a>            <span class="kw">let </span>machine_stats = locked_machine_stats.read().<span class="kw">await</span>;
+<a href=#183 id=183 data-nosnippet>183</a>            monitord_stats.pid1 = machine_stats.pid1.clone();
+<a href=#184 id=184 data-nosnippet>184</a>            monitord_stats.networkd = machine_stats.networkd.clone();
+<a href=#185 id=185 data-nosnippet>185</a>            monitord_stats.system_state = machine_stats.system_state;
+<a href=#186 id=186 data-nosnippet>186</a>            monitord_stats.version = machine_stats.version.clone();
+<a href=#187 id=187 data-nosnippet>187</a>            monitord_stats.units = machine_stats.units.clone();
+<a href=#188 id=188 data-nosnippet>188</a>            monitord_stats.dbus_stats = machine_stats.dbus_stats.clone();
+<a href=#189 id=189 data-nosnippet>189</a>        }
+<a href=#190 id=190 data-nosnippet>190</a>
+<a href=#191 id=191 data-nosnippet>191</a>        <span class="kw">let </span>elapsed_runtime_ms = collect_start_time.elapsed().as_millis();
+<a href=#192 id=192 data-nosnippet>192</a>
+<a href=#193 id=193 data-nosnippet>193</a>        <span class="macro">info!</span>(<span class="string">"stat collection run took {}ms"</span>, elapsed_runtime_ms);
+<a href=#194 id=194 data-nosnippet>194</a>        <span class="kw">if </span>output_stats {
+<a href=#195 id=195 data-nosnippet>195</a>            <span class="kw">let </span>monitord_stats = locked_monitord_stats.read().<span class="kw">await</span>;
+<a href=#196 id=196 data-nosnippet>196</a>            print_stats(
+<a href=#197 id=197 data-nosnippet>197</a>                <span class="kw-2">&amp;</span>config.monitord.key_prefix,
+<a href=#198 id=198 data-nosnippet>198</a>                <span class="kw-2">&amp;</span>config.monitord.output_format,
+<a href=#199 id=199 data-nosnippet>199</a>                <span class="kw-2">&amp;</span>monitord_stats,
+<a href=#200 id=200 data-nosnippet>200</a>            );
+<a href=#201 id=201 data-nosnippet>201</a>        }
+<a href=#202 id=202 data-nosnippet>202</a>        <span class="kw">if </span>!config.monitord.daemon {
+<a href=#203 id=203 data-nosnippet>203</a>            <span class="kw">break</span>;
+<a href=#204 id=204 data-nosnippet>204</a>        }
+<a href=#205 id=205 data-nosnippet>205</a>        <span class="kw">let </span>sleep_time_ms = collect_interval_ms - elapsed_runtime_ms;
+<a href=#206 id=206 data-nosnippet>206</a>        <span class="macro">info!</span>(<span class="string">"stat collection sleeping for {}s 😴"</span>, sleep_time_ms / <span class="number">1000</span>);
+<a href=#207 id=207 data-nosnippet>207</a>        tokio::time::sleep(Duration::from_millis(
+<a href=#208 id=208 data-nosnippet>208</a>            sleep_time_ms
+<a href=#209 id=209 data-nosnippet>209</a>                .try_into()
+<a href=#210 id=210 data-nosnippet>210</a>                .expect(<span class="string">"Sleep time does not fit into a u64 :O"</span>),
+<a href=#211 id=211 data-nosnippet>211</a>        ))
+<a href=#212 id=212 data-nosnippet>212</a>        .<span class="kw">await</span>;
+<a href=#213 id=213 data-nosnippet>213</a>    }
+<a href=#214 id=214 data-nosnippet>214</a>    <span class="prelude-val">Ok</span>(())
+<a href=#215 id=215 data-nosnippet>215</a>}</code></pre></div></section></main></body></html>
