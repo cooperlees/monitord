@@ -264,6 +264,29 @@ Is semi pretty too + custom. All unittested ...
 
 Normal `serde_json` pretty representations of each components structs.
 
+## dbus stats
+
+You're going to need to be root or allow permissiong to pull dbus stats.
+For dbus-broker here is example config allow a user `monitord` to query
+`getStats`
+
+```xml
+[cooper@l33t ~]# cat /etc/dbus-1/system.d/allow_monitord_stats.conf
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE busconfig PUBLIC
+ "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <policy user="monitord">
+    <allow send_destination="org.freedesktop.DBus"
+           send_interface="org.freedesktop.DBus.Debug.Stats"
+           send_member="GetStats"
+           send_path="/org/freedesktop/DBus"
+           send_type="method_call"/>
+  </policy>
+</busconfig>
+```
+
 ## Development
 
 To do test runs (requires `systemd` and `systemd-networkd` _installed_)
