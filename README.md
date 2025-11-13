@@ -84,6 +84,12 @@ output_format = json
 # More tested on dbus-broker daemon
 [dbus]
 enabled = false
+# user/peer stats as reported by dbus-broker
+user_stats = false
+peer_stats = false
+# cgroup stats is an aggregation of peer_stats by cgroup.
+# It's handy to avoid blowing up metrics cardinality due to peer ids.
+cgroup_stats = false
 
 # Grab networkd stats from files + networkctl
 [networkd]
