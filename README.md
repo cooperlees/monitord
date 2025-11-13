@@ -83,13 +83,14 @@ output_format = json
 # we can from running dbus daemon
 # More tested on dbus-broker daemon
 [dbus]
-# Summary counters
+# Summary counters - both dbus-broker + dbus-daemon
 enabled = false
-# user/peer stats as reported by dbus-broker
+# dbus.user.* metrics: user stats as reported by dbus-broker
 user_stats = false
+# dbus.oeer.* metrics: peer stats as reported by dbus-broker
 peer_stats = false
-# cgroup stats is an aggregation of peer_stats by cgroup.
-# It's handy to avoid blowing up metrics cardinality due to peer ids.
+# dbus.cgroup.* stats is an aggregation of peer_stats by cgroup
+# by dbus-broker
 cgroup_stats = false
 
 # Grab networkd stats from files + networkctl
@@ -179,6 +180,30 @@ Is semi pretty too + custom. All unittested ...
   "dbus.peak_bus_names_per_connection": 2,
   "dbus.peak_match_rules": 33,
   "dbus.peak_match_rules_per_connection": 13,
+  "dbus.cgroup.system.slice-systemd-logind.service.activation_request_bytes": 0,
+  "dbus.cgroup.system.slice-systemd-logind.service.activation_request_fds": 0,
+  "dbus.cgroup.system.slice-systemd-logind.service.incoming_bytes": 16,
+  "dbus.cgroup.system.slice-systemd-logind.service.incoming_fds": 0,
+  "dbus.cgroup.system.slice-systemd-logind.service.match_bytes": 6942,
+  "dbus.cgroup.system.slice-systemd-logind.service.matches": 5,
+  "dbus.cgroup.system.slice-systemd-logind.service.name_objects": 1,
+  "dbus.cgroup.system.slice-systemd-logind.service.outgoing_bytes": 0,
+  "dbus.cgroup.system.slice-systemd-logind.service.outgoing_fds": 0,
+  "dbus.cgroup.system.slice-systemd-logind.service.reply_objects": 0,
+  "dbus.peer.org.freedesktop.systemd1.activation_request_bytes": 0,
+  "dbus.peer.org.freedesktop.systemd1.activation_request_fds": 0,
+  "dbus.peer.org.freedesktop.systemd1.incoming_bytes": 16,
+  "dbus.peer.org.freedesktop.systemd1.incoming_fds": 0,
+  "dbus.peer.org.freedesktop.systemd1.match_bytes": 46533,
+  "dbus.peer.org.freedesktop.systemd1.matches": 33,
+  "dbus.peer.org.freedesktop.systemd1.name_objects": 1,
+  "dbus.peer.org.freedesktop.systemd1.outgoing_bytes": 0,
+  "dbus.peer.org.freedesktop.systemd1.outgoing_fds": 0,
+  "dbus.peer.org.freedesktop.systemd1.reply_objects": 0,
+  "dbus.user.cooper.bytes": 919236,
+  "dbus.user.cooper.fds": 78,
+  "dbus.user.cooper.matches": 510,
+  "dbus.user.cooper.objects": 80,
   "networkd.eno4.address_state": 3,
   "networkd.eno4.admin_state": 4,
   "networkd.eno4.carrier_state": 5,
