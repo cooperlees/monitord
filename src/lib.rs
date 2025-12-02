@@ -115,9 +115,8 @@ pub async fn stat_collector(
 
         // Run networkd collector if enabled
         if config.networkd.enabled {
-            let config_clone = config.clone();
             join_set.spawn(crate::networkd::update_networkd_stats(
-                config_clone.networkd.link_state_dir.clone(),
+                config.networkd.link_state_dir.clone(),
                 None,
                 sdc.clone(),
                 locked_machine_stats.clone(),
