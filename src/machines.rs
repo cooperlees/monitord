@@ -9,8 +9,8 @@ use crate::MonitordStats;
 
 pub fn filter_machines(
     machines: Vec<crate::dbus::zbus_machines::ListedMachine>,
-    allowlist: Vec<String>,
-    blocklist: Vec<String>,
+    allowlist: &[String],
+    blocklist: &[String],
 ) -> Vec<crate::dbus::zbus_machines::ListedMachine> {
     machines
         .into_iter()
@@ -31,12 +31,12 @@ pub async fn get_machines(
 
     for machine in filter_machines(
         machines,
-        config.machines.allowlist.clone(),
-        config.machines.blocklist.clone(),
+        &config.machines.allowlist,
+        &config.machines.blocklist,
     ) {
         let m = c.get_machine(&machine.name).await?;
         let leader_pid = m.leader().await?;
-        results.insert(machine.name.to_string(), leader_pid);
+        results.insert(machine.name, leader_pid);
     }
 
     Ok(results)
@@ -131,7 +131,7 @@ pub async fn update_machines_stats(
             let machine_stats = locked_machine_stats.read().await;
             monitord_stats
                 .machines
-                .insert(machine.clone(), machine_stats.clone());
+                .insert(machine, machine_stats.clone());
         }
     }
 
@@ -167,7 +167,7 @@ mod tests {
         let allowlist = vec!["foo".to_string(), "baz".to_string()];
         let blocklist = vec!["bar".to_string()];
 
-        let filtered = super::filter_machines(machines, allowlist, blocklist);
+        let filtered = super::filter_machines(machines, &allowlist, &blocklist);
 
         assert_eq!(filtered.len(), 2);
         assert_eq!(filtered[0].name, "foo");
