@@ -9,8 +9,8 @@ use crate::MonitordStats;
 
 pub fn filter_machines(
     machines: Vec<crate::dbus::zbus_machines::ListedMachine>,
-    allowlist: &Vec<String>,
-    blocklist: &Vec<String>,
+    allowlist: &[String],
+    blocklist: &[String],
 ) -> Vec<crate::dbus::zbus_machines::ListedMachine> {
     machines
         .into_iter()
