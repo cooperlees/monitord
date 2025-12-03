@@ -29,7 +29,7 @@ fn flatten_networkd(
     key_prefix: &String,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("networkd"));
+    let base_metric_name = gen_base_metric_key(key_prefix, "networkd");
 
     let managed_interfaces_key = format!("{}.managed_interfaces", base_metric_name);
     flat_stats.insert(
@@ -90,7 +90,7 @@ fn flatten_pid1(
         }
     };
 
-    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("pid1"));
+    let base_metric_name = gen_base_metric_key(key_prefix, "pid1");
 
     flat_stats.insert(
         format!("{}.cpu_time_kernel", base_metric_name),
@@ -121,12 +121,12 @@ fn flatten_services(
     key_prefix: &String,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("services"));
+    let base_metric_name = gen_base_metric_key(key_prefix, "services");
 
     for (service_name, service_stats) in service_stats_hash.iter() {
         for field_name in units::SERVICE_FIELD_NAMES {
             let key = format!("{base_metric_name}.{service_name}.{field_name}");
-            match field_name.to_string().as_str() {
+            match *field_name {
                 "active_enter_timestamp" => {
                     flat_stats.insert(key, service_stats.active_enter_timestamp.into());
                 }
@@ -189,12 +189,12 @@ fn flatten_timers(
     key_prefix: &String,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("timers"));
+    let base_metric_name = gen_base_metric_key(key_prefix, "timers");
 
     for (timer_name, timer_stats) in timer_stats_hash.iter() {
         for field_name in crate::timer::TimerStats::FIELD_NAMES_AS_ARRAY.iter() {
             let key = format!("{base_metric_name}.{timer_name}.{field_name}");
-            match field_name.to_string().as_str() {
+            match *field_name {
                 "accuracy_usec" => {
                     flat_stats.insert(key, timer_stats.accuracy_usec.into());
                 }
@@ -248,12 +248,12 @@ fn flatten_unit_states(
     key_prefix: &String,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("unit_states"));
+    let base_metric_name = gen_base_metric_key(key_prefix, "unit_states");
 
     for (unit_name, unit_state_stats) in unit_states_hash.iter() {
         for field_name in units::UNIT_STATES_FIELD_NAMES {
             let key = format!("{base_metric_name}.{unit_name}.{field_name}");
-            match field_name.to_string().as_str() {
+            match *field_name {
                 "active_state" => {
                     flat_stats.insert(key, (unit_state_stats.active_state as u64).into());
                 }
@@ -291,7 +291,7 @@ fn flatten_units(
     let fields_to_ignore = Vec::from(["service_stats"]);
 
     let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("units"));
+    let base_metric_name = gen_base_metric_key(key_prefix, "units");
 
     // TODO: Work out a smarter way to do this rather than hard code mappings
     for field_name in units::UNIT_FIELD_NAMES {
@@ -386,7 +386,7 @@ fn flatten_machines(
         flat_stats.extend(flatten_units(&stats.units, &machine_key_prefix));
         flat_stats.extend(flatten_pid1(&stats.pid1, &machine_key_prefix));
         flat_stats.insert(
-            gen_base_metric_key(&machine_key_prefix, &String::from("system-state")),
+            gen_base_metric_key(&machine_key_prefix, "system-state"),
             (stats.system_state as u64).into(),
         );
         flat_stats.extend(flatten_services(
@@ -415,7 +415,7 @@ fn flatten_dbus_stats(
         }
     };
 
-    let base_metric_name = gen_base_metric_key(key_prefix, &String::from("dbus"));
+    let base_metric_name = gen_base_metric_key(key_prefix, "dbus");
     let fields = [
         // ignore serial
         ("active_connections", dbus_stats.active_connections),
