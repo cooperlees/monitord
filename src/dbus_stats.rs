@@ -204,13 +204,12 @@ impl DBusStats {
                 }
             };
 
-            let entry =
-                result
-                    .entry(cgroup_name.clone())
-                    .or_insert_with(|| DBusBrokerCGroupAccounting {
-                        name: cgroup_name,
-                        ..Default::default()
-                    });
+            let entry = result.entry(cgroup_name).or_insert_with_key(|cgroup_name| {
+                DBusBrokerCGroupAccounting {
+                    name: cgroup_name.clone(),
+                    ..Default::default()
+                }
+            });
 
             entry.combine_with_peer(peer);
         }
