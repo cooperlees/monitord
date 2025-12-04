@@ -16,6 +16,7 @@ categories = ["network-programming", "os::linux-apis"]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive", "std", "help"], default-features = false }
 configparser = { version = "3.1.0", features = ["indexmap"] }
+futures-util = "0.3"
 indexmap = "2.9"
 int-enum = "1.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -35,6 +36,7 @@ uzers = "0.12"
 zbus = { version = "5.11.0", features = ["tokio"], default-features = false }
 zvariant = "5.7.0"
 zvariant_derive = "5.7.0"
+zlink = "0.4.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 procfs = "0.18"

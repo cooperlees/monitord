@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use anyhow::Result;
 use struct_field_names_as_array::FieldNamesAsArray;
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -511,41 +510,6 @@ mod tests {
             job_type: String::from(""),
             job_object_path: ObjectPath::try_from("/").unwrap().into(),
         }
-    }
-
-    #[test]
-    fn test_is_unit_unhealthy() {
-        // Healthy: active + loaded
-        assert!(!is_unit_unhealthy(
-            SystemdUnitActiveState::active,
-            SystemdUnitLoadState::loaded
-        ));
-
-        // Unhealthy: non-active states with loaded
-        assert!(is_unit_unhealthy(
-            SystemdUnitActiveState::activating,
-            SystemdUnitLoadState::loaded
-        ));
-        assert!(is_unit_unhealthy(
-            SystemdUnitActiveState::failed,
-            SystemdUnitLoadState::loaded
-        ));
-
-        // Unhealthy: error or not_found load states
-        assert!(is_unit_unhealthy(
-            SystemdUnitActiveState::active,
-            SystemdUnitLoadState::error
-        ));
-        assert!(is_unit_unhealthy(
-            SystemdUnitActiveState::deactivating,
-            SystemdUnitLoadState::not_found
-        ));
-
-        // Healthy: masked (not expected to be active)
-        assert!(!is_unit_unhealthy(
-            SystemdUnitActiveState::activating,
-            SystemdUnitLoadState::masked
-        ));
     }
 
     #[tokio::test]

@@ -192,6 +192,16 @@ pub struct VerifyConfig {
     pub blocklist: HashSet<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VarlinkConfig {
+    pub enabled: bool,
+}
+impl Default for VarlinkConfig {
+    fn default() -> Self {
+        VarlinkConfig { enabled: false }
+    }
+}
+
 /// Config struct
 /// Each section represents an ini file section
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -207,6 +217,7 @@ pub struct Config {
     pub dbus_stats: DBusStatsConfig,
     pub boot_blame: BootBlameConfig,
     pub verify: VerifyConfig,
+    pub varlink: VarlinkConfig,
 }
 
 impl TryFrom<Ini> for Config {
@@ -325,6 +336,9 @@ impl TryFrom<Ini> for Config {
             config.verify.blocklist = verify_blocklist.keys().map(|s| s.to_string()).collect();
         }
 
+        // [varlink] section
+        config.varlink.enabled = read_config_bool(&ini_config, "varlink", "enabled")?;
+
         Ok(config)
     }
 }
@@ -427,6 +441,9 @@ foo.service
 
 [boot.blocklist]
 bar.service
+
+[varlink]
+enabled = true
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -513,6 +530,7 @@ output_format = json-flat
                 allowlist: HashSet::new(),
                 blocklist: HashSet::new(),
             },
+            varlink: VarlinkConfig { enabled: true },
         };
 
         let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");

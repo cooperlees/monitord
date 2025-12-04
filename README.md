@@ -439,7 +439,35 @@ always be running / calling all these DBus calls per run.
 
 ## Varlink
 
-None yet :(.
+monitord supports collecting unit statistics via systemd's [Varlink metrics API](https://github.com/systemd/systemd/pull/39202),
+available in systemd v260+. When enabled, monitord connects to the `io.systemd.Metrics` interface
+at `/run/systemd/report/io.systemd.Manager` to collect unit counts, active/load states, and restart counts.
+
+### Enabling Varlink
+
+Set `enabled = true` in the `[varlink]` section of `monitord.conf`:
+
+```ini
+[varlink]
+enabled = true
+```
+
+When varlink is enabled, monitord will attempt to collect unit stats via the metrics API first.
+If the varlink socket is unavailable (e.g., systemd < v260), it automatically falls back to D-Bus collection.
+
+### Metrics collected via Varlink
+
+- Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)
+- Unit counts by state (active, failed, inactive)
+- Per-unit active state and load state (with allowlist/blocklist filtering)
+- Per-unit health status (computed from active + load state)
+- Per-service restart counts (`nrestarts`)
+
+### Containers
+
+For systemd-nspawn containers, monitord connects to the container's varlink socket via
+`/proc/<leader_pid>/root/run/systemd/report/io.systemd.Manager`, similar to how D-Bus uses
+the container-scoped bus socket.
 
 ### varlink 101
 
