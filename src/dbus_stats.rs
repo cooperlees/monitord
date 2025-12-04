@@ -495,3 +495,140 @@ pub async fn update_dbus_stats(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::convert::TryFrom;
+    use zvariant::{Array, OwnedValue, Str, Structure, Value};
+
+    #[test]
+    fn test_cur_max_pair_usage() {
+        let p = CurMaxPair { cur: 10, max: 100 };
+        assert_eq!(p.get_usage(), 90);
+    }
+
+    #[test]
+    fn test_cgroup_accounting_gating_and_skip_errors() {
+        let disabled = DBusStats {
+            cgroup_stats: false,
+            peer_stats: true,
+            dbus_broker_peer_accounting: Some(HashMap::new()),
+            ..Default::default()
+        };
+        assert!(disabled.cgroup_accounting().is_none());
+
+        let mut peers: HashMap<String, DBusBrokerPeerAccounting> = HashMap::new();
+        peers.insert(
+            ":1.77".to_string(),
+            DBusBrokerPeerAccounting {
+                id: ":1.77".to_string(),
+                process_id: None,
+                ..Default::default()
+            },
+        );
+
+        let enabled = DBusStats {
+            cgroup_stats: true,
+            peer_stats: true,
+            dbus_broker_peer_accounting: Some(peers),
+            ..Default::default()
+        };
+
+        let cg_map = enabled.cgroup_accounting().expect("map should exist");
+        assert!(cg_map.is_empty());
+    }
+
+    #[test]
+    fn test_combine_with_peer_option_summing() {
+        let mut cg = DBusBrokerCGroupAccounting {
+            name: "cg1".to_string(),
+            name_objects: Some(5),
+            match_bytes: None,
+            matches: Some(3),
+            reply_objects: None,
+            incoming_bytes: Some(10),
+            incoming_fds: None,
+            outgoing_bytes: Some(7),
+            outgoing_fds: Some(2),
+            activation_request_bytes: None,
+            activation_request_fds: Some(1),
+        };
+
+        let peer = DBusBrokerPeerAccounting {
+            id: ":1.1".to_string(),
+            well_known_name: Some("com.example".to_string()),
+            unix_user_id: Some(1000),
+            process_id: Some(1234),
+            unix_group_ids: Some(vec![1000]),
+            name_objects: Some(2),
+            match_bytes: Some(4),
+            matches: None,
+            reply_objects: Some(1),
+            incoming_bytes: None,
+            incoming_fds: Some(5),
+            outgoing_bytes: Some(3),
+            outgoing_fds: None,
+            activation_request_bytes: Some(8),
+            activation_request_fds: None,
+        };
+
+        cg.combine_with_peer(&peer);
+
+        assert_eq!(cg.name_objects, Some(7));
+        assert_eq!(cg.match_bytes, Some(4));
+        assert_eq!(cg.matches, Some(3));
+        assert_eq!(cg.reply_objects, Some(1));
+        assert_eq!(cg.incoming_bytes, Some(10));
+        assert_eq!(cg.incoming_fds, Some(5));
+        assert_eq!(cg.outgoing_bytes, Some(10));
+        assert_eq!(cg.outgoing_fds, Some(2));
+        assert_eq!(cg.activation_request_bytes, Some(8));
+        assert_eq!(cg.activation_request_fds, Some(1));
+    }
+
+    #[test]
+    fn test_parse_user_accounting_gating_and_parse() {
+        // When user_stats=false, should return None
+        let mut cfg = crate::config::Config::default();
+        cfg.dbus_stats.user_stats = false;
+        let empty_val = Value::Array(Array::from(Vec::<Value>::new()));
+        let empty_owned = OwnedValue::try_from(empty_val).expect("owned value conversion");
+        assert!(parse_user_accounting(&cfg, &empty_owned).is_none());
+
+        // When user_stats=true, empty array should return Some(empty map)
+        cfg.dbus_stats.user_stats = true;
+        let empty_val = Value::Array(Array::from(Vec::<Value>::new()));
+        let owned = OwnedValue::try_from(empty_val).unwrap();
+        let parsed = parse_user_accounting(&cfg, &owned).expect("should parse empty");
+        assert_eq!(parsed.len(), 0);
+
+        // Non-array input should return None
+        let non_array = OwnedValue::try_from(Value::U32(0)).unwrap();
+        assert!(parse_user_accounting(&cfg, &non_array).is_none());
+    }
+
+    #[test]
+    fn test_parse_user_struct_invalid_returns_none() {
+        // Build an invalid structure (wrong field types/order) to ensure None is returned
+        let invalid = Value::Structure(Structure::from((
+            Value::Str(Str::from_static("not_uid")),
+            Value::U32(10),
+            Value::U32(20),
+        )));
+        assert!(parse_user_struct(&invalid).is_none());
+    }
+
+    #[test]
+    fn test_user_metric_name_fallback() {
+        // Use a likely-nonexistent uid to force fallback to stringified uid
+        let user = DBusBrokerUserAccounting {
+            uid: 999_999,
+            bytes: Some(CurMaxPair { cur: 5, max: 10 }),
+            ..Default::default()
+        };
+        // If users crate can’t resolve uid, it should fallback to uid string
+        let name = user.get_name_for_metric();
+        assert_eq!(name, "999999");
+    }
+}
