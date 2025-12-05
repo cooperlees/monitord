@@ -603,7 +603,7 @@ mod tests {
         assert_eq!(parsed.len(), 0);
 
         // Non-array input should return None
-        let non_array = OwnedValue::try_from(Value::U32(0)).unwrap();
+        let non_array = OwnedValue::try_from(Value::U32(0)).expect("should convert u32 value");
         assert!(parse_user_accounting(&cfg, &non_array).is_none());
     }
 
