@@ -598,7 +598,7 @@ mod tests {
         // When user_stats=true, empty array should return Some(empty map)
         cfg.dbus_stats.user_stats = true;
         let empty_val = Value::Array(Array::from(Vec::<Value>::new()));
-        let owned = OwnedValue::try_from(empty_val).unwrap();
+        let owned = OwnedValue::try_from(empty_val).expect("should convert empty array");
         let parsed = parse_user_accounting(&cfg, &owned).expect("should parse empty");
         assert_eq!(parsed.len(), 0);
 
