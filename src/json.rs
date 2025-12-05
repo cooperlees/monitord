@@ -27,15 +27,15 @@ fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
 fn flatten_networkd(
     networkd_stats: &networkd::NetworkdState,
     key_prefix: &String,
-) -> BTreeMap<String, serde_json::Value> {
-    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+) -> Vec<(String, serde_json::Value)> {
+    let mut flat_stats = vec![];
     let base_metric_name = gen_base_metric_key(key_prefix, "networkd");
 
     let managed_interfaces_key = format!("{}.managed_interfaces", base_metric_name);
-    flat_stats.insert(
+    flat_stats.push((
         managed_interfaces_key,
         networkd_stats.managed_interfaces.into(),
-    );
+    ));
 
     if networkd_stats.interfaces_state.is_empty() {
         debug!("No networkd interfaces to add to flat JSON");
@@ -44,34 +44,34 @@ fn flatten_networkd(
 
     for interface in &networkd_stats.interfaces_state {
         let interface_base = format!("{}.{}", base_metric_name, interface.name);
-        flat_stats.insert(
+        flat_stats.push((
             format!("{interface_base}.address_state"),
             (interface.address_state as u64).into(),
-        );
-        flat_stats.insert(
+        ));
+        flat_stats.push((
             format!("{interface_base}.admin_state"),
             (interface.admin_state as u64).into(),
-        );
-        flat_stats.insert(
+        ));
+        flat_stats.push((
             format!("{interface_base}.carrier_state"),
             (interface.carrier_state as u64).into(),
-        );
-        flat_stats.insert(
+        ));
+        flat_stats.push((
             format!("{interface_base}.ipv4_address_state"),
             (interface.ipv4_address_state as u64).into(),
-        );
-        flat_stats.insert(
+        ));
+        flat_stats.push((
             format!("{interface_base}.ipv6_address_state"),
             (interface.ipv6_address_state as u64).into(),
-        );
-        flat_stats.insert(
+        ));
+        flat_stats.push((
             format!("{interface_base}.oper_state"),
             (interface.oper_state as u64).into(),
-        );
-        flat_stats.insert(
+        ));
+        flat_stats.push((
             format!("{interface_base}.required_for_online"),
             (interface.required_for_online as u64).into(),
-        );
+        ));
     }
     flat_stats
 }
@@ -79,48 +79,47 @@ fn flatten_networkd(
 fn flatten_pid1(
     optional_pid1_stats: &Option<pid1::Pid1Stats>,
     key_prefix: &String,
-) -> BTreeMap<String, serde_json::Value> {
-    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-    // If we're not collcting pid1 stats don't add
+) -> Vec<(String, serde_json::Value)> {
+    // If we're not collecting pid1 stats don't add
     let pid1_stats = match optional_pid1_stats {
         Some(ps) => ps,
         None => {
-            debug!("Skipping flatenning pid1 stats as we got None ...");
-            return flat_stats;
+            debug!("Skipping flattening pid1 stats as we got None ...");
+            return Vec::new();
         }
     };
 
     let base_metric_name = gen_base_metric_key(key_prefix, "pid1");
 
-    flat_stats.insert(
-        format!("{}.cpu_time_kernel", base_metric_name),
-        pid1_stats.cpu_time_kernel.into(),
-    );
-    flat_stats.insert(
-        format!("{}.cpu_user_kernel", base_metric_name),
-        pid1_stats.cpu_time_user.into(),
-    );
-    flat_stats.insert(
-        format!("{}.memory_usage_bytes", base_metric_name),
-        pid1_stats.memory_usage_bytes.into(),
-    );
-    flat_stats.insert(
-        format!("{}.fd_count", base_metric_name),
-        pid1_stats.fd_count.into(),
-    );
-    flat_stats.insert(
-        format!("{}.tasks", base_metric_name),
-        pid1_stats.tasks.into(),
-    );
-
-    flat_stats
+    vec![
+        (
+            format!("{}.cpu_time_kernel", base_metric_name),
+            pid1_stats.cpu_time_kernel.into(),
+        ),
+        (
+            format!("{}.cpu_user_kernel", base_metric_name),
+            pid1_stats.cpu_time_user.into(),
+        ),
+        (
+            format!("{}.memory_usage_bytes", base_metric_name),
+            pid1_stats.memory_usage_bytes.into(),
+        ),
+        (
+            format!("{}.fd_count", base_metric_name),
+            pid1_stats.fd_count.into(),
+        ),
+        (
+            format!("{}.tasks", base_metric_name),
+            pid1_stats.tasks.into(),
+        ),
+    ]
 }
 
 fn flatten_services(
     service_stats_hash: &HashMap<String, units::ServiceStats>,
     key_prefix: &String,
-) -> BTreeMap<String, serde_json::Value> {
-    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+) -> Vec<(String, serde_json::Value)> {
+    let mut flat_stats = Vec::new();
     let base_metric_name = gen_base_metric_key(key_prefix, "services");
 
     for (service_name, service_stats) in service_stats_hash.iter() {
@@ -128,52 +127,52 @@ fn flatten_services(
             let key = format!("{base_metric_name}.{service_name}.{field_name}");
             match *field_name {
                 "active_enter_timestamp" => {
-                    flat_stats.insert(key, service_stats.active_enter_timestamp.into());
+                    flat_stats.push((key, service_stats.active_enter_timestamp.into()));
                 }
                 "active_exit_timestamp" => {
-                    flat_stats.insert(key, service_stats.active_exit_timestamp.into());
+                    flat_stats.push((key, service_stats.active_exit_timestamp.into()));
                 }
                 "cpuusage_nsec" => {
-                    flat_stats.insert(key, service_stats.cpuusage_nsec.into());
+                    flat_stats.push((key, service_stats.cpuusage_nsec.into()));
                 }
                 "inactive_exit_timestamp" => {
-                    flat_stats.insert(key, service_stats.inactive_exit_timestamp.into());
+                    flat_stats.push((key, service_stats.inactive_exit_timestamp.into()));
                 }
                 "ioread_bytes" => {
-                    flat_stats.insert(key, service_stats.ioread_bytes.into());
+                    flat_stats.push((key, service_stats.ioread_bytes.into()));
                 }
                 "ioread_operations" => {
-                    flat_stats.insert(key, service_stats.ioread_operations.into());
+                    flat_stats.push((key, service_stats.ioread_operations.into()));
                 }
                 "memory_available" => {
-                    flat_stats.insert(key, service_stats.memory_available.into());
+                    flat_stats.push((key, service_stats.memory_available.into()));
                 }
                 "memory_current" => {
-                    flat_stats.insert(key, service_stats.memory_current.into());
+                    flat_stats.push((key, service_stats.memory_current.into()));
                 }
                 "nrestarts" => {
-                    flat_stats.insert(key, service_stats.nrestarts.into());
+                    flat_stats.push((key, service_stats.nrestarts.into()));
                 }
                 "processes" => {
-                    flat_stats.insert(key, service_stats.processes.into());
+                    flat_stats.push((key, service_stats.processes.into()));
                 }
                 "restart_usec" => {
-                    flat_stats.insert(key, service_stats.restart_usec.into());
+                    flat_stats.push((key, service_stats.restart_usec.into()));
                 }
                 "state_change_timestamp" => {
-                    flat_stats.insert(key, service_stats.state_change_timestamp.into());
+                    flat_stats.push((key, service_stats.state_change_timestamp.into()));
                 }
                 "status_errno" => {
-                    flat_stats.insert(key, service_stats.status_errno.into());
+                    flat_stats.push((key, service_stats.status_errno.into()));
                 }
                 "tasks_current" => {
-                    flat_stats.insert(key, service_stats.tasks_current.into());
+                    flat_stats.push((key, service_stats.tasks_current.into()));
                 }
                 "timeout_clean_usec" => {
-                    flat_stats.insert(key, service_stats.timeout_clean_usec.into());
+                    flat_stats.push((key, service_stats.timeout_clean_usec.into()));
                 }
                 "watchdog_usec" => {
-                    flat_stats.insert(key, service_stats.watchdog_usec.into());
+                    flat_stats.push((key, service_stats.watchdog_usec.into()));
                 }
                 _ => {
                     debug!("Got a unhandled stat: '{}'", field_name);
@@ -187,8 +186,8 @@ fn flatten_services(
 fn flatten_timers(
     timer_stats_hash: &HashMap<String, crate::timer::TimerStats>,
     key_prefix: &String,
-) -> BTreeMap<String, serde_json::Value> {
-    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+) -> Vec<(String, serde_json::Value)> {
+    let mut flat_stats = Vec::new();
     let base_metric_name = gen_base_metric_key(key_prefix, "timers");
 
     for (timer_name, timer_stats) in timer_stats_hash.iter() {
@@ -196,43 +195,43 @@ fn flatten_timers(
             let key = format!("{base_metric_name}.{timer_name}.{field_name}");
             match *field_name {
                 "accuracy_usec" => {
-                    flat_stats.insert(key, timer_stats.accuracy_usec.into());
+                    flat_stats.push((key, timer_stats.accuracy_usec.into()));
                 }
                 "fixed_random_delay" => {
-                    flat_stats.insert(key, (timer_stats.fixed_random_delay as u64).into());
+                    flat_stats.push((key, (timer_stats.fixed_random_delay as u64).into()));
                 }
                 "last_trigger_usec" => {
-                    flat_stats.insert(key, timer_stats.last_trigger_usec.into());
+                    flat_stats.push((key, timer_stats.last_trigger_usec.into()));
                 }
                 "last_trigger_usec_monotonic" => {
-                    flat_stats.insert(key, timer_stats.last_trigger_usec_monotonic.into());
+                    flat_stats.push((key, timer_stats.last_trigger_usec_monotonic.into()));
                 }
                 "next_elapse_usec_monotonic" => {
-                    flat_stats.insert(key, timer_stats.next_elapse_usec_monotonic.into());
+                    flat_stats.push((key, timer_stats.next_elapse_usec_monotonic.into()));
                 }
                 "next_elapse_usec_realtime" => {
-                    flat_stats.insert(key, timer_stats.next_elapse_usec_realtime.into());
+                    flat_stats.push((key, timer_stats.next_elapse_usec_realtime.into()));
                 }
                 "persistent" => {
-                    flat_stats.insert(key, (timer_stats.persistent as u64).into());
+                    flat_stats.push((key, (timer_stats.persistent as u64).into()));
                 }
                 "randomized_delay_usec" => {
-                    flat_stats.insert(key, timer_stats.randomized_delay_usec.into());
+                    flat_stats.push((key, timer_stats.randomized_delay_usec.into()));
                 }
                 "remain_after_elapse" => {
-                    flat_stats.insert(key, (timer_stats.remain_after_elapse as u64).into());
+                    flat_stats.push((key, (timer_stats.remain_after_elapse as u64).into()));
                 }
                 "service_unit_last_state_change_usec" => {
-                    flat_stats.insert(
+                    flat_stats.push((
                         key,
                         (timer_stats.service_unit_last_state_change_usec).into(),
-                    );
+                    ));
                 }
                 "service_unit_last_state_change_usec_monotonic" => {
-                    flat_stats.insert(
+                    flat_stats.push((
                         key,
                         (timer_stats.service_unit_last_state_change_usec_monotonic).into(),
-                    );
+                    ));
                 }
                 _ => {
                     debug!("Got a unhandled stat: '{}'", field_name);
@@ -246,8 +245,8 @@ fn flatten_timers(
 fn flatten_unit_states(
     unit_states_hash: &HashMap<String, units::UnitStates>,
     key_prefix: &String,
-) -> BTreeMap<String, serde_json::Value> {
-    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+) -> Vec<(String, serde_json::Value)> {
+    let mut flat_stats = Vec::new();
     let base_metric_name = gen_base_metric_key(key_prefix, "unit_states");
 
     for (unit_name, unit_state_stats) in unit_states_hash.iter() {
@@ -255,22 +254,22 @@ fn flatten_unit_states(
             let key = format!("{base_metric_name}.{unit_name}.{field_name}");
             match *field_name {
                 "active_state" => {
-                    flat_stats.insert(key, (unit_state_stats.active_state as u64).into());
+                    flat_stats.push((key, (unit_state_stats.active_state as u64).into()));
                 }
                 "load_state" => {
-                    flat_stats.insert(key, (unit_state_stats.load_state as u64).into());
+                    flat_stats.push((key, (unit_state_stats.load_state as u64).into()));
                 }
                 "unhealthy" => match unit_state_stats.unhealthy {
                     false => {
-                        flat_stats.insert(key, 0.into());
+                        flat_stats.push((key, 0.into()));
                     }
                     true => {
-                        flat_stats.insert(key, 1.into());
+                        flat_stats.push((key, 1.into()));
                     }
                 },
                 "time_in_state_usecs" => {
                     if let Some(time_in_state_usecs) = unit_state_stats.time_in_state_usecs {
-                        flat_stats.insert(key, time_in_state_usecs.into());
+                        flat_stats.push((key, time_in_state_usecs.into()));
                     }
                 }
                 _ => {
@@ -286,11 +285,11 @@ fn flatten_unit_states(
 fn flatten_units(
     units_stats: &units::SystemdUnitStats,
     key_prefix: &String,
-) -> BTreeMap<String, serde_json::Value> {
+) -> Vec<(String, serde_json::Value)> {
     // fields of the SystemdUnitStats struct we know to ignore so don't log below
     let fields_to_ignore = Vec::from(["service_stats"]);
 
-    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let mut flat_stats = Vec::new();
     let base_metric_name = gen_base_metric_key(key_prefix, "units");
 
     // TODO: Work out a smarter way to do this rather than hard code mappings
@@ -298,64 +297,64 @@ fn flatten_units(
         let key = format!("{base_metric_name}.{field_name}");
         match field_name.to_string().as_str() {
             "active_units" => {
-                flat_stats.insert(key, units_stats.active_units.into());
+                flat_stats.push((key, units_stats.active_units.into()));
             }
             "automount_units" => {
-                flat_stats.insert(key, units_stats.automount_units.into());
+                flat_stats.push((key, units_stats.automount_units.into()));
             }
             "device_units" => {
-                flat_stats.insert(key, units_stats.device_units.into());
+                flat_stats.push((key, units_stats.device_units.into()));
             }
             "failed_units" => {
-                flat_stats.insert(key, units_stats.failed_units.into());
+                flat_stats.push((key, units_stats.failed_units.into()));
             }
             "inactive_units" => {
-                flat_stats.insert(key, units_stats.inactive_units.into());
+                flat_stats.push((key, units_stats.inactive_units.into()));
             }
             "jobs_queued" => {
-                flat_stats.insert(key, units_stats.jobs_queued.into());
+                flat_stats.push((key, units_stats.jobs_queued.into()));
             }
             "loaded_units" => {
-                flat_stats.insert(key, units_stats.loaded_units.into());
+                flat_stats.push((key, units_stats.loaded_units.into()));
             }
             "masked_units" => {
-                flat_stats.insert(key, units_stats.masked_units.into());
+                flat_stats.push((key, units_stats.masked_units.into()));
             }
             "mount_units" => {
-                flat_stats.insert(key, units_stats.mount_units.into());
+                flat_stats.push((key, units_stats.mount_units.into()));
             }
             "not_found_units" => {
-                flat_stats.insert(key, units_stats.not_found_units.into());
+                flat_stats.push((key, units_stats.not_found_units.into()));
             }
             "path_units" => {
-                flat_stats.insert(key, units_stats.path_units.into());
+                flat_stats.push((key, units_stats.path_units.into()));
             }
             "scope_units" => {
-                flat_stats.insert(key, units_stats.scope_units.into());
+                flat_stats.push((key, units_stats.scope_units.into()));
             }
             "service_units" => {
-                flat_stats.insert(key, units_stats.service_units.into());
+                flat_stats.push((key, units_stats.service_units.into()));
             }
             "slice_units" => {
-                flat_stats.insert(key, units_stats.slice_units.into());
+                flat_stats.push((key, units_stats.slice_units.into()));
             }
             "socket_units" => {
-                flat_stats.insert(key, units_stats.socket_units.into());
+                flat_stats.push((key, units_stats.socket_units.into()));
             }
             "target_units" => {
-                flat_stats.insert(key, units_stats.target_units.into());
+                flat_stats.push((key, units_stats.target_units.into()));
             }
             "timer_units" => {
-                flat_stats.insert(key, units_stats.timer_units.into());
+                flat_stats.push((key, units_stats.timer_units.into()));
             }
             "timer_persistent_units" => {
-                flat_stats.insert(key, units_stats.timer_persistent_units.into());
+                flat_stats.push((key, units_stats.timer_persistent_units.into()));
             }
             "timer_remain_after_elapse" => {
-                flat_stats.insert(key, units_stats.timer_remain_after_elapse.into());
+                flat_stats.push((key, units_stats.timer_remain_after_elapse.into()));
             }
             "total_units" => {
-                flat_stats.insert(key, units_stats.total_units.into());
+                flat_stats.push((key, units_stats.total_units.into()));
             }
             _ => {
                 if !fields_to_ignore.contains(field_name) {
