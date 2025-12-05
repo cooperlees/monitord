@@ -80,7 +80,7 @@ fn flatten_pid1(
     optional_pid1_stats: &Option<pid1::Pid1Stats>,
     key_prefix: &String,
 ) -> Vec<(String, serde_json::Value)> {
-    // If we're not collcting pid1 stats don't add
+    // If we're not collecting pid1 stats don't add
     let pid1_stats = match optional_pid1_stats {
         Some(ps) => ps,
         None => {
