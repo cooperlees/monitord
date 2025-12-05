@@ -499,7 +499,6 @@ pub async fn update_dbus_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::convert::TryFrom;
     use zvariant::{Array, OwnedValue, Str, Structure, Value};
 
     #[test]
