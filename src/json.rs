@@ -84,7 +84,7 @@ fn flatten_pid1(
     let pid1_stats = match optional_pid1_stats {
         Some(ps) => ps,
         None => {
-            debug!("Skipping flatenning pid1 stats as we got None ...");
+            debug!("Skipping flattening pid1 stats as we got None ...");
             return Vec::new();
         }
     };
