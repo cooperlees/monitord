@@ -10,7 +10,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use tokio::sync::RwLock;
 use tracing::error;
-use users::get_user_by_uid;
+use uzers::get_user_by_uid;
 use zbus::fdo::{DBusProxy, StatsProxy};
 use zbus::names::BusName;
 use zvariant::{Dict, OwnedValue, Value};
