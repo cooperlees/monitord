@@ -32,7 +32,39 @@ impl From<LogLevels> for LevelFilter {
 }
 
 /// Setup logging with tracing in Glog format for CLI
-pub fn setup_logging(log_filter_level: LevelFilter) {
+/// If `enable_tokio_console` is true and the `tokio-console` feature is enabled,
+/// also spawns the tokio-console server on port 6669 for async runtime debugging.
+///
+/// **Important**: To use tokio-console, you must build with:
+/// ```sh
+/// RUSTFLAGS="--cfg tokio_unstable" cargo build --features tokio-console
+/// ```
+pub fn setup_logging(log_filter_level: LevelFilter, enable_tokio_console: bool) {
+    #[cfg(feature = "tokio-console")]
+    {
+        if enable_tokio_console {
+            console_subscriber::init();
+            tracing::info!(
+                "tokio-console enabled, connect with: tokio-console http://127.0.0.1:6669"
+            );
+            return;
+        }
+    }
+
+    #[cfg(not(feature = "tokio-console"))]
+    {
+        if enable_tokio_console {
+            eprintln!(
+                "Warning: --enable-tokio-console was specified but the 'tokio-console' feature is not enabled. \
+                 Rebuild with `cargo build --features tokio-console` to enable."
+            );
+        }
+    }
+
+    // Suppress unused variable warning when tokio-console feature is enabled
+    #[cfg(feature = "tokio-console")]
+    let _ = enable_tokio_console;
+
     let fmt = fmt::Layer::default()
         .with_writer(std::io::stderr)
         .with_ansi(stderr().is_terminal())

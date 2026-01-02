@@ -18,12 +18,18 @@ struct Cli {
     /// Adjust the console log-level
     #[arg(long, short, value_enum, ignore_case = true, default_value = "Info")]
     log_level: monitord::logging::LogLevels,
+
+    /// Enable tokio-console for async runtime debugging.
+    /// Requires building with --features tokio-console.
+    /// Connect with `tokio-console http://127.0.0.1:6669`
+    #[arg(long, default_value = "false")]
+    enable_tokio_console: bool,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
-    monitord::logging::setup_logging(args.log_level.into());
+    monitord::logging::setup_logging(args.log_level.into(), args.enable_tokio_console);
 
     info!("{}", LONG_ABOUT);
     debug!("CLI Args: {:?}", args);

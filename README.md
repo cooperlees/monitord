@@ -44,6 +44,11 @@ Options:
           [default: Info]
           [possible values: error, warn, info, debug, trace]
 
+      --enable-tokio-console
+          Enable tokio-console for async runtime debugging. Requires building
+          with --features tokio-console. Connect with `tokio-console
+          http://127.0.0.1:6669`
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -348,6 +353,50 @@ You can now log into the container to build + run tests and run the binary now a
   - networkd etc. are not running my default but can be started ...
   - `systemctl start systemd-networkd`
     - No interfaces will be managed tho by default in the container ...
+
+### Debugging with tokio-console
+
+[tokio-console](https://github.com/tokio-rs/console) is a debugger for async Rust programs built on top of tokio.
+It helps diagnose performance issues, deadlocks, and provides visibility into task scheduling.
+
+#### Building with tokio-console support
+
+Build monitord with the `tokio-console` feature enabled. **Important:** You must also set `RUSTFLAGS` to enable tokio's unstable tracing instrumentation:
+
+```bash
+RUSTFLAGS="--cfg tokio_unstable" cargo build --features tokio-console
+```
+
+#### Running with tokio-console
+
+Start monitord with the `--enable-tokio-console` flag:
+
+```bash
+./target/debug/monitord -c monitord.conf --enable-tokio-console
+```
+
+This spawns a console-subscriber server on `http://127.0.0.1:6669`.
+
+#### Connecting with tokio-console
+
+Install the tokio-console CLI tool and connect to the running monitord instance:
+
+```bash
+# Install tokio-console (one-time)
+cargo install tokio-console
+
+# Connect to monitord
+tokio-console http://127.0.0.1:6669
+```
+
+You'll see a live dashboard showing:
+- All async tasks and their states
+- Task poll times and scheduling delays
+- Resource utilization and potential bottlenecks
+
+**Note:** If you use `--enable-tokio-console` without building with the feature, you'll see a warning message suggesting to rebuild with `--features tokio-console`.
+
+**Note:** If tokio-console connects but shows no tasks, ensure you built with `RUSTFLAGS="--cfg tokio_unstable"`. Without this flag, tokio's instrumentation is disabled and no data will be sent to the console.
 
 ## API Usage
 
