@@ -21,3 +21,6 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: doc
+
+      - name: Add .nojekyll
+        run: touch target/doc/.nojekyll
