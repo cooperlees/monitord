@@ -128,6 +128,75 @@
       font-size: 1.1rem;
     }
 
+    /* README content */
+    .readme-content {
+      text-align: left;
+      margin-top: 2rem;
+    }
+    .readme-content h2 {
+      font-size: 1.25rem;
+      margin-top: 2.5em;
+    }
+    .readme-content h3 {
+      font-size: 1.15rem;
+    }
+    .readme-content h4 {
+      font-size: 1.05rem;
+    }
+    .readme-content p {
+      margin: 0.75em 0;
+    }
+    .readme-content ul, .readme-content ol {
+      display: block;
+      padding-left: 2em;
+      margin: 0.75em 0;
+    }
+    .readme-content li {
+      font-size: 1rem;
+    }
+    .readme-content pre {
+      padding: 1em;
+      border-radius: 5px;
+      overflow-x: auto;
+      background-color: var(--sd-highlight-bg, rgba(255, 255, 255, 1));
+    }
+    .readme-content code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.875rem;
+    }
+    .readme-content p code,
+    .readme-content li code {
+      padding: 2px 6px;
+      border-radius: 3px;
+      background-color: var(--sd-highlight-inline-bg, rgba(0, 0, 0, 0.07));
+    }
+    .readme-content pre code {
+      padding: 0;
+      background-color: transparent;
+    }
+    .readme-content strong {
+      font-weight: 600;
+    }
+
+    @media (prefers-color-scheme: light) {
+      .readme-content pre {
+        background-color: rgba(255, 255, 255, 1);
+      }
+      .readme-content p code,
+      .readme-content li code {
+        background-color: rgba(0, 0, 0, 0.07);
+      }
+    }
+    @media (prefers-color-scheme: dark) {
+      .readme-content pre {
+        background-color: rgba(0, 0, 0, 0.6);
+      }
+      .readme-content p code,
+      .readme-content li code {
+        background-color: rgba(255, 255, 255, 0.1);
+      }
+    }
+
     /* Footer */
     footer {
       text-align: center;
@@ -160,9 +229,14 @@
 
     <ul>
       <li><a href="https://github.com/cooperlees/monitord">GitHub</a></li>
-      <li><a href="https://github.com/cooperlees/monitord/blob/main/README.md">README</a></li>
       <li><a href="monitord/index.html">Rust Docs</a></li>
     </ul>
+
+    <hr>
+
+    <div class="readme-content">
+      <!-- README_CONTENT -->
+    </div>
 
     <footer>
       <small><a href="https://github.com/cooperlees/monitord">Website source on GitHub</a></small>
