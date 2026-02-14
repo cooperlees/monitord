@@ -22,5 +22,8 @@ jobs:
         with:
           command: doc
 
-      - name: Add .nojekyll
-        run: touch target/doc/.nojekyll
+      - name: Add landing page, logo, and .nojekyll
+        run: |
+          cp landing_page.html target/doc/index.html
+          cp logos/monitord-logo_1_large.svg target/doc/monitord-logo.svg
+          touch target/doc/.nojekyll
