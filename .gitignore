@@ -12,5 +12,8 @@ Cargo.lock
 # VSCode fun
 .vscode
 
+# Python venv for docs build
+.venv
+
 # Mac
 .DS_Store

@@ -23,7 +23,9 @@ jobs:
           command: doc
           args: --no-deps
 
-      - name: Add landing page and .nojekyll
+      - name: Build landing page with README and add .nojekyll
         run: |
-          cp landing_page.html target/doc/index.html
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet markdown
+          .venv/bin/python build_landing_page.py > target/doc/index.html
           touch target/doc/.nojekyll

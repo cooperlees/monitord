@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Backup github CNAME file
 cp -v docs/CNAME /tmp/
@@ -7,8 +8,13 @@ rm -rf target/doc
 
 cargo doc --no-deps
 
-# Copy landing page into target/doc
-cp -v landing_page.html target/doc/index.html
+# Setup Python venv for README rendering
+python3 -m venv .venv --clear
+.venv/bin/pip install --quiet markdown
+
+# Build landing page with README embedded
+.venv/bin/python build_landing_page.py > target/doc/index.html
+
 # Ensure .nojekyll exists for GitHub Pages
 touch target/doc/.nojekyll
 
