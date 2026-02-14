@@ -12,24 +12,32 @@ def main() -> int:
     template_path = repo_root / "landing_page.html"
     readme_path = repo_root / "README.md"
 
-    template = template_path.read_text()
-    readme_md = readme_path.read_text()
+    template = template_path.read_text(encoding="utf-8")
+    readme_md = readme_path.read_text(encoding="utf-8")
 
-    # Skip the first h1 + tagline (already in the template header)
+    # Find the first top-level heading ("# ") and skip it plus the immediately
+    # following paragraph (non-blank lines) and surrounding blank lines.
     lines = readme_md.splitlines()
     start = 0
+    h1_index = None
     for i, line in enumerate(lines):
-        if i == 0 and line.startswith("# "):
-            continue
-        if i == 1 and line.strip() == "":
-            continue
-        if i == 2 and "know how happy" in line:
-            continue
-        if i == 3 and line.strip() == "":
-            start = i + 1
+        if line.startswith("# "):
+            h1_index = i
             break
-        start = i
-        break
+
+    if h1_index is not None:
+        idx = h1_index + 1
+        n = len(lines)
+        # Skip blank lines right after the H1
+        while idx < n and lines[idx].strip() == "":
+            idx += 1
+        # Skip the tagline/paragraph lines (continuous non-blank lines)
+        while idx < n and lines[idx].strip() != "":
+            idx += 1
+        # Skip any blank lines after the tagline/paragraph
+        while idx < n and lines[idx].strip() == "":
+            idx += 1
+        start = idx
 
     readme_md = "\n".join(lines[start:])
 
@@ -38,7 +46,18 @@ def main() -> int:
         extensions=["fenced_code", "tables"],
     )
 
-    output = template.replace("<!-- README_CONTENT -->", readme_html)
+    placeholder = "<!-- README_CONTENT -->"
+    count = template.count(placeholder)
+    if count == 0:
+        raise RuntimeError(
+            f"Template {template_path} does not contain the expected placeholder {placeholder!r}"
+        )
+    if count > 1:
+        raise RuntimeError(
+            f"Template {template_path} contains the placeholder {placeholder!r} {count} times; expected exactly once"
+        )
+
+    output = template.replace(placeholder, readme_html)
     sys.stdout.write(output)
     return 0
 
