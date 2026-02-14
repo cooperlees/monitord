@@ -23,8 +23,7 @@ jobs:
           command: doc
           args: --no-deps
 
-      - name: Add landing page, logo, and .nojekyll
+      - name: Add landing page and .nojekyll
         run: |
           cp landing_page.html target/doc/index.html
-          cp logos/monitord-logo_1.svg target/doc/monitord-logo.svg
           touch target/doc/.nojekyll

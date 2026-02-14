@@ -73,8 +73,9 @@
     .page-logo {
       display: block;
       padding: 5rem 0 3rem;
+      color: var(--sd-foreground-color);
     }
-    .page-logo > img {
+    .page-logo > svg {
       display: block;
       width: 16em;
       height: auto;
@@ -139,7 +140,18 @@
 <body>
   <div class="container">
     <div class="page-logo">
-      <img src="monitord-logo.svg" alt="monitord logo">
+      <svg role="img" aria-label="monitord logo" width="800" height="200" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
+        <path fill="currentColor" d="M 34 40 L 50 40 C 51.104568 40 52 40.895432 52 42 L 52 158 C 52 159.104568 51.104568 160 50 160 L 34 160 C 32.895432 160 32 159.104568 32 158 L 32 42 C 32 40.895432 32.895432 40 34 40 Z"/>
+        <path fill="currentColor" d="M 34 40 L 65 40 C 66.104568 40 67 40.895432 67 42 L 67 58 C 67 59.104568 66.104568 60 65 60 L 34 60 C 32.895432 60 32 59.104568 32 58 L 32 42 C 32 40.895432 32.895432 40 34 40 Z"/>
+        <path fill="currentColor" d="M 34 140 L 65 140 C 66.104568 140 67 140.895432 67 142 L 67 158 C 67 159.104568 66.104568 160 65 160 L 34 160 C 32.895432 160 32 159.104568 32 158 L 32 142 C 32 140.895432 32.895432 140 34 140 Z"/>
+        <text x="87" y="130" font-family="Helvetica" font-size="68" fill="#30d158">1</text>
+        <path fill="#ff453a" stroke="#ff453a" stroke-width="6" d="M 173 85 C 173 94.941124 164.941132 103 155 103 C 145.058868 103 137 94.941124 137 85 C 137 75.058876 145.058868 67 155 67 C 164.941132 67 173 75.058876 173 85 Z"/>
+        <path fill="#000000" stroke="#ff453a" stroke-width="8" stroke-linecap="round" d="M 168 98 L 185 115"/>
+        <path fill="currentColor" d="M 220 40 L 236 40 C 237.104568 40 238 40.895432 238 42 L 238 158 C 238 159.104568 237.104568 160 236 160 L 220 160 C 218.895432 160 218 159.104568 218 158 L 218 42 C 218 40.895432 218.895432 40 220 40 Z"/>
+        <path fill="currentColor" d="M 205 40 L 236 40 C 237.104568 40 238 40.895432 238 42 L 238 58 C 238 59.104568 237.104568 60 236 60 L 205 60 C 203.895432 60 203 59.104568 203 58 L 203 42 C 203 40.895432 203.895432 40 205 40 Z"/>
+        <path fill="currentColor" d="M 205 140 L 236 140 C 237.104568 140 238 140.895432 238 142 L 238 158 C 238 159.104568 237.104568 160 236 160 L 205 160 C 203.895432 160 203 159.104568 203 158 L 203 142 C 203 140.895432 203.895432 140 205 140 Z"/>
+        <text x="279" y="132" font-family="Helvetica" font-size="72" fill="currentColor">monitord</text>
+      </svg>
     </div>
 
     <h1>monitord ... know how happy your systemd is! <span role="img" aria-label="smiling face">😊</span></h1>
