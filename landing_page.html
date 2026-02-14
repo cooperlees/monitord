@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>monitord - know how happy your systemd is!</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600&display=swap" rel="stylesheet">
   <style>
     /* Color variables matching systemd.io */
     :root {
@@ -25,7 +28,6 @@
       /* Light mode */
       --sd-foreground-color: var(--sd-gray-extradark);
       --sd-background-color: var(--sd-gray-extralight);
-      --sd-logo-color: var(--sd-brand-black);
       --sd-link-color: var(--sd-green);
       --sd-link-font-weight: var(--sd-font-weight-bold);
     }
@@ -35,7 +37,6 @@
         color-scheme: dark;
         --sd-foreground-color: var(--sd-gray);
         --sd-background-color: var(--sd-black);
-        --sd-logo-color: var(--sd-brand-white);
         --sd-link-color: var(--sd-brand-green);
         --sd-link-font-weight: var(--sd-font-weight-normal);
       }
@@ -141,7 +142,7 @@
       <img src="monitord-logo.svg" alt="monitord logo">
     </div>
 
-    <h1>monitord ... know how happy your systemd is! 😊</h1>
+    <h1>monitord ... know how happy your systemd is! <span role="img" aria-label="smiling face">😊</span></h1>
 
     <hr>
 

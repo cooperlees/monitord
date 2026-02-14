@@ -9,7 +9,7 @@ cargo doc --no-deps
 
 # Copy landing page and logo into target/doc
 cp -v landing_page.html target/doc/index.html
-cp -v logos/monitord-logo_1_large.svg target/doc/monitord-logo.svg
+cp -v logos/monitord-logo_1.svg target/doc/monitord-logo.svg
 
 # Ensure .nojekyll exists for GitHub Pages
 touch target/doc/.nojekyll

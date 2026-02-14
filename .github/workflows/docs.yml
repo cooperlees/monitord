@@ -21,9 +21,10 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: doc
+          args: --no-deps
 
       - name: Add landing page, logo, and .nojekyll
         run: |
           cp landing_page.html target/doc/index.html
-          cp logos/monitord-logo_1_large.svg target/doc/monitord-logo.svg
+          cp logos/monitord-logo_1.svg target/doc/monitord-logo.svg
           touch target/doc/.nojekyll
