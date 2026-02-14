@@ -128,6 +128,75 @@
       font-size: 1.1rem;
     }
 
+    /* README content */
+    .readme-content {
+      text-align: left;
+      margin-top: 2rem;
+    }
+    .readme-content h2 {
+      font-size: 1.25rem;
+      margin-top: 2.5em;
+    }
+    .readme-content h3 {
+      font-size: 1.15rem;
+    }
+    .readme-content h4 {
+      font-size: 1.05rem;
+    }
+    .readme-content p {
+      margin: 0.75em 0;
+    }
+    .readme-content ul, .readme-content ol {
+      display: block;
+      padding-left: 2em;
+      margin: 0.75em 0;
+    }
+    .readme-content li {
+      font-size: 1rem;
+    }
+    .readme-content pre {
+      padding: 1em;
+      border-radius: 5px;
+      overflow-x: auto;
+      background-color: var(--sd-highlight-bg, rgba(255, 255, 255, 1));
+    }
+    .readme-content code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.875rem;
+    }
+    .readme-content p code,
+    .readme-content li code {
+      padding: 2px 6px;
+      border-radius: 3px;
+      background-color: var(--sd-highlight-inline-bg, rgba(0, 0, 0, 0.07));
+    }
+    .readme-content pre code {
+      padding: 0;
+      background-color: transparent;
+    }
+    .readme-content strong {
+      font-weight: 600;
+    }
+
+    @media (prefers-color-scheme: light) {
+      .readme-content pre {
+        background-color: rgba(255, 255, 255, 1);
+      }
+      .readme-content p code,
+      .readme-content li code {
+        background-color: rgba(0, 0, 0, 0.07);
+      }
+    }
+    @media (prefers-color-scheme: dark) {
+      .readme-content pre {
+        background-color: rgba(0, 0, 0, 0.6);
+      }
+      .readme-content p code,
+      .readme-content li code {
+        background-color: rgba(255, 255, 255, 0.1);
+      }
+    }
+
     /* Footer */
     footer {
       text-align: center;
@@ -160,9 +229,400 @@
 
     <ul>
       <li><a href="https://github.com/cooperlees/monitord">GitHub</a></li>
-      <li><a href="https://github.com/cooperlees/monitord/blob/main/README.md">README</a></li>
       <li><a href="monitord/index.html">Rust Docs</a></li>
     </ul>
+
+    <hr>
+
+    <div class="readme-content">
+      <p>We offer the following run modes:</p>
+<ul>
+<li>systemd-timer (legacy cron would work too)</li>
+<li>Refer to monitord.timer and monitord.service unit files</li>
+<li>Ensure no <code>daemon:</code> mode options are set in <code>monitord.conf</code></li>
+<li>daemon mode</li>
+<li>Enable daemon mode in configuration file</li>
+<li>Stats will be written to stdout every <code>daemon_stats_refresh_secs</code></li>
+</ul>
+<p>Open to more formats / run methods ... Open an issue to discuss. Depends on the dependencies basically.</p>
+<p><code>monitord</code> is a config driven binary. We plan to keep CLI arguments to a minimum.</p>
+<p><strong>INFO</strong> level logging is enabled to stderr by default. Use <code>-l LEVEL</code> to increase or decrease logging.</p>
+<h2>Install</h2>
+<p>Install via cargo or use as a dependency in your <code>Cargo.toml</code>.</p>
+<ul>
+<li><code>cargo install monitord</code></li>
+<li>Create (copy from repo) a <code>monitord.conf</code></li>
+<li>Defaults to looking for it at /etc/monitord.conf</li>
+<li><code>monitord --help</code></li>
+</ul>
+<pre><code class="language-console">crl-linux:monitord cooper$ monitord --help
+monitord: Know how happy your systemd is! 😊
+
+Usage: monitord [OPTIONS]
+
+Options:
+  -c, --config &lt;CONFIG&gt;
+          Location of your monitord config
+
+          [default: /etc/monitord.conf]
+
+  -l, --log-level &lt;LOG_LEVEL&gt;
+          Adjust the console log-level
+
+          [default: Info]
+          [possible values: error, warn, info, debug, trace]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+</code></pre>
+<h3>Config</h3>
+<p>monitord can have the different components monitored. To enable / disabled set the
+following in our monitord.conf. This file is <a href="https://en.wikipedia.org/wiki/INI_file">ini format</a>
+to match systemd unit files.</p>
+<pre><code class="language-ini"># Pure ini - no yes/no for bools
+
+[monitord]
+# Set a custom dbus address to connect to
+# OPTIONAL: If not set, we default to the Unix socket below
+dbus_address = unix:path=/run/dbus/system_bus_socket
+# Timeout in seconds for dbus connection/collections
+# OPTIONAL: default is 30 seconds
+dbus_timeout = 30
+# Run as a daemon or 1 time
+daemon = false
+# Time to refresh systemd stats in seconds
+# Daemon mode only
+daemon_stats_refresh_secs = 60
+# Prefix flat-json key with this value
+# The value automatically gets a '.' appended (so don't put here)
+key_prefix = monitord
+# cron/systemd timer output format
+# Supported: json, json-flat, json-pretty
+output_format = json
+
+# Grab as much stats from DBus GetStats call
+# we can from running dbus daemon
+# More tested on dbus-broker daemon
+[dbus]
+# Summary counters - both dbus-broker + dbus-daemon
+enabled = false
+# dbus.user.* metrics: user stats as reported by dbus-broker
+user_stats = false
+# dbus.oeer.* metrics: peer stats as reported by dbus-broker
+peer_stats = false
+# dbus.cgroup.* stats is an aggregation of peer_stats by cgroup
+# by dbus-broker
+cgroup_stats = false
+
+# Grab networkd stats from files + networkctl
+[networkd]
+enabled = true
+link_state_dir = /run/systemd/netif/links
+
+# Enable grabbing PID 1 stats via procfs
+[pid1]
+enabled = true
+
+# Services to grab extra stats for
+# .service is important as that's what DBus returns from `list_units`
+[services]
+foo.service
+
+[timers]
+enabled = true
+
+[timers.allowlist]
+foo.timer
+
+[timers.blocklist]
+bar.timer
+
+# Grab unit status counts via dbus
+[units]
+enabled = true
+state_stats = true
+
+# Filter what services you want collect state stats for
+# If both lists are configured blocklist is preferred
+# If neither exist all units state will generate counters
+[units.state_stats.allowlist]
+foo.service
+
+[units.state_stats.blocklist]
+bar.service
+
+# machines config
+[machines]
+enabled = true
+
+# Same rules apply as state_stats lists above
+[machines.allowlist]
+foo
+
+[machines.blocklist]
+bar
+</code></pre>
+<h2>Machines support</h2>
+<p>From version <code>&gt;=0.11</code> monitord supports obtaining the same set of key from
+systemd 'machines' (i.e. <code>machinectl --list</code>).</p>
+<p>The keys are the same format as below in <code>json_flat</code> output but are prefixed with
+the <code>machine</code> keyword and machine name. For example:</p>
+<pre><code class="language-json"># $KEY_PREFIX.machine.$MACHINE_NAME
+{
+  ...
+  &quot;monitord.machine.foo.pid1.fd_count&quot;: 69,
+  ...
+}
+</code></pre>
+<h2>Output Formats</h2>
+<h3>json</h3>
+<p>Normal <code>serde_json</code> non pretty JSON. All on one line. Most compact format.</p>
+<h3>json-flat</h3>
+<p>Move all key value pairs to the top level and . notate compononets + sub values.
+Is semi pretty too + custom. All unittested ...</p>
+<pre><code class="language-json">{
+  &quot;dbus.active_connections&quot;: 10,
+  &quot;dbus.bus_names&quot;: 16,
+  &quot;dbus.incomplete_connections&quot;: 0,
+  &quot;dbus.match_rules&quot;: 26,
+  &quot;dbus.peak_bus_names&quot;: 33,
+  &quot;dbus.peak_bus_names_per_connection&quot;: 2,
+  &quot;dbus.peak_match_rules&quot;: 33,
+  &quot;dbus.peak_match_rules_per_connection&quot;: 13,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.activation_request_bytes&quot;: 0,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.activation_request_fds&quot;: 0,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.incoming_bytes&quot;: 16,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.incoming_fds&quot;: 0,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.match_bytes&quot;: 6942,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.matches&quot;: 5,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.name_objects&quot;: 1,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.outgoing_bytes&quot;: 0,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.outgoing_fds&quot;: 0,
+  &quot;dbus.cgroup.system.slice-systemd-logind.service.reply_objects&quot;: 0,
+  &quot;dbus.peer.org.freedesktop.systemd1.activation_request_bytes&quot;: 0,
+  &quot;dbus.peer.org.freedesktop.systemd1.activation_request_fds&quot;: 0,
+  &quot;dbus.peer.org.freedesktop.systemd1.incoming_bytes&quot;: 16,
+  &quot;dbus.peer.org.freedesktop.systemd1.incoming_fds&quot;: 0,
+  &quot;dbus.peer.org.freedesktop.systemd1.match_bytes&quot;: 46533,
+  &quot;dbus.peer.org.freedesktop.systemd1.matches&quot;: 33,
+  &quot;dbus.peer.org.freedesktop.systemd1.name_objects&quot;: 1,
+  &quot;dbus.peer.org.freedesktop.systemd1.outgoing_bytes&quot;: 0,
+  &quot;dbus.peer.org.freedesktop.systemd1.outgoing_fds&quot;: 0,
+  &quot;dbus.peer.org.freedesktop.systemd1.reply_objects&quot;: 0,
+  &quot;dbus.user.cooper.bytes&quot;: 919236,
+  &quot;dbus.user.cooper.fds&quot;: 78,
+  &quot;dbus.user.cooper.matches&quot;: 510,
+  &quot;dbus.user.cooper.objects&quot;: 80,
+  &quot;networkd.eno4.address_state&quot;: 3,
+  &quot;networkd.eno4.admin_state&quot;: 4,
+  &quot;networkd.eno4.carrier_state&quot;: 5,
+  &quot;networkd.eno4.ipv4_address_state&quot;: 3,
+  &quot;networkd.eno4.ipv6_address_state&quot;: 2,
+  &quot;networkd.eno4.oper_state&quot;: 9,
+  &quot;networkd.eno4.required_for_online&quot;: 1,
+  &quot;networkd.managed_interfaces&quot;: 2,
+  &quot;networkd.wg0.address_state&quot;: 3,
+  &quot;networkd.wg0.admin_state&quot;: 4,
+  &quot;networkd.wg0.carrier_state&quot;: 5,
+  &quot;networkd.wg0.ipv4_address_state&quot;: 3,
+  &quot;networkd.wg0.ipv6_address_state&quot;: 3,
+  &quot;networkd.wg0.oper_state&quot;: 9,
+  &quot;networkd.wg0.required_for_online&quot;: 1,
+  &quot;pid1.cpu_time_kernel&quot;: 48,
+  &quot;pid1.cpu_user_kernel&quot;: 41,
+  &quot;pid1.fd_count&quot;: 245,
+  &quot;pid1.memory_usage_bytes&quot;: 19165184,
+  &quot;pid1.tasks&quot;: 1,
+  &quot;services.chronyd.service.active_enter_timestamp&quot;: 1683556542382710,
+  &quot;services.chronyd.service.active_exit_timestamp&quot;: 0,
+  &quot;services.chronyd.service.cpuusage_nsec&quot;: 328951000,
+  &quot;services.chronyd.service.inactive_exit_timestamp&quot;: 1683556541360626,
+  &quot;services.chronyd.service.ioread_bytes&quot;: 18446744073709551615,
+  &quot;services.chronyd.service.ioread_operations&quot;: 18446744073709551615,
+  &quot;services.chronyd.service.memory_available&quot;: 18446744073709551615,
+  &quot;services.chronyd.service.memory_current&quot;: 5214208,
+  &quot;services.chronyd.service.nrestarts&quot;: 0,
+  &quot;services.chronyd.service.restart_usec&quot;: 100000,
+  &quot;services.chronyd.service.state_change_timestamp&quot;: 1683556542382710,
+  &quot;services.chronyd.service.status_errno&quot;: 0,
+  &quot;services.chronyd.service.tasks_current&quot;: 1,
+  &quot;services.chronyd.service.timeout_clean_usec&quot;: 18446744073709551615,
+  &quot;services.chronyd.service.watchdog_usec&quot;: 0,
+  &quot;system-state&quot;: 3,
+  &quot;timers.fstrim.timer.accuracy_usec&quot;: 3600000000,
+  &quot;timers.fstrim.timer.fixed_random_delay&quot;: 0,
+  &quot;timers.fstrim.timer.last_trigger_usec&quot;: 1743397269608978,
+  &quot;timers.fstrim.timer.last_trigger_usec_monotonic&quot;: 0,
+  &quot;timers.fstrim.timer.next_elapse_usec_monotonic&quot;: 0,
+  &quot;timers.fstrim.timer.next_elapse_usec_realtime&quot;: 1744007133996149,
+  &quot;timers.fstrim.timer.persistent&quot;: 1,
+  &quot;timers.fstrim.timer.randomized_delay_usec&quot;: 6000000000,
+  &quot;timers.fstrim.timer.remain_after_elapse&quot;: 1,
+  &quot;timers.fstrim.timer.service_unit_last_state_change_usec&quot;: 1743517244700135,
+  &quot;timers.fstrim.timer.service_unit_last_state_change_usec_monotonic&quot;: 639312703,
+  &quot;unit_states.chronyd.service.active_state&quot;: 1,
+  &quot;unit_states.chronyd.service.loaded_state&quot;: 1,
+  &quot;unit_states.chronyd.service.unhealthy&quot;: 0,
+  &quot;units.active_units&quot;: 403,
+  &quot;units.automount_units&quot;: 1,
+  &quot;units.device_units&quot;: 150,
+  &quot;units.failed_units&quot;: 0,
+  &quot;units.inactive_units&quot;: 159,
+  &quot;units.jobs_queued&quot;: 0,
+  &quot;units.loaded_units&quot;: 497,
+  &quot;units.masked_units&quot;: 25,
+  &quot;units.mount_units&quot;: 52,
+  &quot;units.not_found_units&quot;: 38,
+  &quot;units.path_units&quot;: 4,
+  &quot;units.scope_units&quot;: 17,
+  &quot;units.service_units&quot;: 199,
+  &quot;units.slice_units&quot;: 7,
+  &quot;units.socket_units&quot;: 28,
+  &quot;units.target_units&quot;: 54,
+  &quot;units.timer_units&quot;: 20,
+  &quot;units.total_units&quot;: 562,
+  &quot;version&quot;: &quot;255.7-1.fc40&quot;
+}
+</code></pre>
+<h3>json-pretty</h3>
+<p>Normal <code>serde_json</code> pretty representations of each components structs.</p>
+<h2>dbus stats</h2>
+<p>You're going to need to be root or allow permissiong to pull dbus stats.
+For dbus-broker here is example config allow a user <code>monitord</code> to query
+<code>getStats</code></p>
+<pre><code class="language-xml">[cooper@l33t ~]# cat /etc/dbus-1/system.d/allow_monitord_stats.conf
+&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;!DOCTYPE busconfig PUBLIC
+ &quot;-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN&quot;
+ &quot;http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd&quot;&gt;
+&lt;busconfig&gt;
+  &lt;policy user=&quot;monitord&quot;&gt;
+    &lt;allow send_destination=&quot;org.freedesktop.DBus&quot;
+           send_interface=&quot;org.freedesktop.DBus.Debug.Stats&quot;
+           send_member=&quot;GetStats&quot;
+           send_path=&quot;/org/freedesktop/DBus&quot;
+           send_type=&quot;method_call&quot;/&gt;
+  &lt;/policy&gt;
+&lt;/busconfig&gt;
+</code></pre>
+<h2>Development</h2>
+<p>To do test runs (requires <code>systemd</code> and <code>systemd-networkd</code> <em>installed</em>)</p>
+<ul>
+<li>
+<p>Pending what you have enabled in your config ...</p>
+</li>
+<li>
+<p><code>cargo run -- -c monitord.conf -l debug</code></p>
+</li>
+</ul>
+<p>Ensure the following pass before submitting a PR (CI checks):</p>
+<ul>
+<li><code>cargo test</code></li>
+<li><code>cargo clippy</code></li>
+<li><code>cargo fmt</code></li>
+</ul>
+<h3>Generate codegen APIs</h3>
+<ul>
+<li><code>cargo install zbus_xmlgen</code></li>
+<li><code>zbus-xmlgen system org.freedesktop.systemd1 /org/freedesktop/systemd1/unit/chronyd_2eservice</code></li>
+</ul>
+<p>Then add the following macros to tell clippy to go away:</p>
+<pre><code class="language-rust">#![allow(warnings)]
+#![allow(clippy)]
+</code></pre>
+<h3>Non Linux development</h3>
+<p>Sometimes I develop from my Mac OS X laptop. So I thought I'd document and
+add the way I build a Fedora Rawhide container and mount the local repo to /repo
+in the container to run monitord and test.</p>
+<ul>
+<li>Build the image (w/git, rust tools and systemd)</li>
+<li><code>docker build -t monitord-dev .</code></li>
+<li>Start via systemd and mount the monitord repo to /repo</li>
+<li><code>docker run --rm --name monitord-dev -it --privileged --tmpfs /run --tmpfs /tmp -v $(pwd):/repo monitord-dev /sbin/init</code><ul>
+<li><code>--rm</code> is optional but will remove the container when stopped</li>
+</ul>
+</li>
+</ul>
+<p>You can now log into the container to build + run tests and run the binary now against systemd.</p>
+<ul>
+<li><code>docker exec -it monitord-dev bash</code></li>
+<li><code>cd /repo ; cargo run -- -c monitord</code></li>
+<li>networkd etc. are not running my default but can be started ...</li>
+<li><code>systemctl start systemd-networkd</code><ul>
+<li>No interfaces will be managed tho by default in the container ...</li>
+</ul>
+</li>
+</ul>
+<h2>API Usage</h2>
+<h2>DBus</h2>
+<p>All monitord's dbus is done via async (tokio) <a href="https://crates.io/crates/zbus">zbus</a> crate.</p>
+<p>systemd Dbus APIs are in use in the following modules:</p>
+<ul>
+<li>machines</li>
+<li><code>ManagerProxy::list_machines()</code></li>
+<li>Can do most other calls then on the machine's systemd/dbus</li>
+<li>networkd</li>
+<li><code>ManagerProxy::list_links()</code></li>
+<li>Would love to stop parsing <code>/run/systemd/netif/links</code> and replace via varlink API<ul>
+<li>https://github.com/systemd/systemd/issues/36877</li>
+</ul>
+</li>
+<li>system</li>
+<li><code>ManagerProxy::get_version()</code></li>
+<li><code>ManagerProxy::system_state()</code></li>
+<li>timer</li>
+<li><code>TimerProxy::unit()</code> - Find service unit of timer</li>
+<li><code>ManagerProxy::get_unit()</code></li>
+<li><code>UnitProxy::state_change_timestamp()</code></li>
+<li><code>UnitProxy::state_change_timestamp_monotonic()</code></li>
+<li>units</li>
+<li><code>ManagerProxy::list_units()</code> - Main counting of unit stats</li>
+<li><code>ServiceProxy::cpuusage_nsec()</code></li>
+<li><code>ServiceProxy::ioread_bytes()</code></li>
+<li><code>ServiceProxy::ioread_operations()</code></li>
+<li><code>ServiceProxy::memory_current()</code></li>
+<li><code>ServiceProxy::memory_available()</code></li>
+<li><code>ServiceProxy::nrestarts()</code></li>
+<li><code>ServiceProxy::get_processes()</code></li>
+<li><code>ServiceProxy::restart_usec()</code></li>
+<li><code>ServiceProxy::status_errno()</code></li>
+<li><code>ServiceProxy::tasks_current()</code></li>
+<li><code>ServiceProxy::timeout_clean_usec()</code></li>
+<li><code>ServiceProxy::watchdog_usec()</code></li>
+<li><code>UnitProxy::active_enter_timestamp</code></li>
+<li><code>UnitProxy::active_exit_timestamp</code></li>
+<li><code>UnitProxy::inactive_exit_timestamp()</code></li>
+<li><code>UnitProxy::state_change_timestamp()</code> - Used for raw stat + time_in_state</li>
+</ul>
+<p>Some of these modules can be disabled via configuration. Due to this, monitord might not
+always be running / calling all these DBus calls per run.</p>
+<h2>Varlink</h2>
+<p>None yet :(.</p>
+<h3>varlink 101</h3>
+<p>varlink might one day replace our DBUS usage. Here are some notes on how to work with systemd varlink
+as there isn't really documentation outside <code>man</code> pages.</p>
+<h4>Checking interfaces</h4>
+<ul>
+<li>varlinkctl is your friend - https://man7.org/linux/man-pages/man1/varlinkctl.1.html</li>
+</ul>
+<p>Here is an example with networkd's interfaces:</p>
+<pre><code>varlinkctl info unix:/run/systemd/netif/io.systemd.Network
+varlinkctl introspect unix:/run/systemd/netif/io.systemd.Network io.systemd.Network
+
+cooper@au:~$ varlinkctl call unix:/run/systemd/netif/io.systemd.Network io.systemd.Network.GetStates '{}' -j | jq
+{
+  &quot;AddressState&quot;: &quot;routable&quot;,
+  &quot;IPv4AddressState&quot;: &quot;routable&quot;,
+  &quot;IPv6AddressState&quot;: &quot;routable&quot;,
+  &quot;CarrierState&quot;: &quot;carrier&quot;,
+  &quot;OnlineState&quot;: &quot;online&quot;,
+  &quot;OperationalState&quot;: &quot;routable&quot;
+}
+</code></pre>
+    </div>
 
     <footer>
       <small><a href="https://github.com/cooperlees/monitord">Website source on GitHub</a></small>
