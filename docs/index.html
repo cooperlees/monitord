@@ -1,1 +1,160 @@
-<meta http-equiv="refresh" content="0; url=monitord">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>monitord - know how happy your systemd is!</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    /* Color variables matching systemd.io */
+    :root {
+      --sd-brand-black: hsl(270, 19%, 13%);
+      --sd-brand-green: hsl(145, 66%, 51%);
+      --sd-brand-white: #fff;
+
+      --sd-black: hsl(270, 7%, 13%);
+      --sd-green: hsl(145, 66%, 43%);
+      --sd-gray-extralight: hsl(30, 10%, 96%);
+      --sd-gray-light: hsl(30, 10%, 92%);
+      --sd-gray: hsl(30, 10%, 85%);
+      --sd-gray-dark: hsl(257, 23%, 20%);
+      --sd-gray-extradark: hsl(257, 23%, 16%);
+
+      --sd-font-weight-normal: 400;
+      --sd-font-weight-bold: 600;
+
+      /* Light mode */
+      --sd-foreground-color: var(--sd-gray-extradark);
+      --sd-background-color: var(--sd-gray-extralight);
+      --sd-link-color: var(--sd-green);
+      --sd-link-font-weight: var(--sd-font-weight-bold);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --sd-foreground-color: var(--sd-gray);
+        --sd-background-color: var(--sd-black);
+        --sd-link-color: var(--sd-brand-green);
+        --sd-link-font-weight: var(--sd-font-weight-normal);
+      }
+    }
+
+    /* Typography */
+    * {
+      -moz-box-sizing: border-box;
+      -webkit-box-sizing: border-box;
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-size: 1rem;
+      font-family: "Heebo", sans-serif;
+      font-weight: 400;
+      line-height: 1.6;
+    }
+    body {
+      color: var(--sd-foreground-color);
+      background-color: var(--sd-background-color);
+    }
+
+    /* Layout */
+    .container {
+      width: 80%;
+      max-width: 720px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    /* Logo */
+    .page-logo {
+      display: block;
+      padding: 5rem 0 3rem;
+    }
+    .page-logo > img {
+      display: block;
+      width: 16em;
+      height: auto;
+      margin: 0 auto;
+    }
+
+    /* Heading */
+    h1 {
+      text-align: center;
+      font-size: 1.87rem;
+      font-weight: 400;
+      font-style: normal;
+      margin: 0 0 2rem;
+      line-height: 1.25;
+    }
+    @media screen and (min-width: 650px) {
+      h1 {
+        font-size: 2.375em;
+      }
+    }
+
+    /* Horizontal rule */
+    hr {
+      margin: 3rem auto 4rem;
+      width: 40%;
+      opacity: 40%;
+    }
+
+    /* Links */
+    a {
+      font-weight: var(--sd-link-font-weight);
+      text-decoration: none;
+      color: var(--sd-link-color);
+      cursor: pointer;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* Link list */
+    ul {
+      list-style: disc;
+      display: inline-block;
+      text-align: left;
+      padding-left: 1.5em;
+      margin: 0;
+    }
+    li {
+      margin: 0.25em 0;
+      font-size: 1.1rem;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 3em 0 3em;
+      font-size: 1em;
+      margin-top: 4rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="page-logo">
+      <img src="monitord-logo.svg" alt="monitord logo">
+    </div>
+
+    <h1>monitord ... know how happy your systemd is! <span role="img" aria-label="smiling face">😊</span></h1>
+
+    <hr>
+
+    <ul>
+      <li><a href="https://github.com/cooperlees/monitord">GitHub</a></li>
+      <li><a href="https://github.com/cooperlees/monitord/blob/main/README.md">README</a></li>
+      <li><a href="monitord/index.html">Rust Docs</a></li>
+    </ul>
+
+    <footer>
+      <small><a href="https://github.com/cooperlees/monitord">Website source on GitHub</a></small>
+    </footer>
+  </div>
+</body>
+</html>
