@@ -336,7 +336,11 @@ pub async fn parse_interface_state_files(
         managed_interface_count += 1;
         let fname = state_file.file_name();
         let interface_id: i32 = i32::from_str(fname.to_str().unwrap_or("0")).unwrap_or(0);
-        match parse_interface_stats(&interface_stats_file_str, interface_id, &network_int_to_name) {
+        match parse_interface_stats(
+            &interface_stats_file_str,
+            interface_id,
+            &network_int_to_name,
+        ) {
             Ok(interface_state) => interfaces_state.push(interface_state),
             Err(err) => error!(
                 "Unable to parse interface statistics for {:?}: {}",
