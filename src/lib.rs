@@ -62,7 +62,7 @@ pub fn print_stats(
         ),
         config::MonitordOutputFormat::JsonFlat => println!(
             "{}",
-            json::flatten(stats, &key_prefix.to_string()).expect("Invalid JSON serialization")
+            json::flatten(stats, key_prefix).expect("Invalid JSON serialization")
         ),
         config::MonitordOutputFormat::JsonPretty => println!(
             "{}",
