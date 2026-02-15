@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use anyhow::Context;
 use configparser::ini::Ini;
 use indexmap::map::IndexMap;
 use int_enum::IntEnum;
@@ -169,8 +170,10 @@ pub struct Config {
     pub dbus_stats: DBusStatsConfig,
 }
 
-impl From<Ini> for Config {
-    fn from(ini_config: Ini) -> Self {
+impl TryFrom<Ini> for Config {
+    type Error = anyhow::Error;
+
+    fn try_from(ini_config: Ini) -> anyhow::Result<Self> {
         let mut config = Config::default();
 
         // [monitord] section
@@ -180,7 +183,7 @@ impl From<Ini> for Config {
         if let Ok(Some(dbus_timeout)) = ini_config.getuint("monitord", "dbus_timeout") {
             config.monitord.dbus_timeout = dbus_timeout;
         }
-        config.monitord.daemon = read_config_bool(&ini_config, "monitord", "daemon");
+        config.monitord.daemon = read_config_bool(&ini_config, "monitord", "daemon")?;
         if let Ok(Some(daemon_stats_refresh_secs)) =
             ini_config.getuint("monitord", "daemon_stats_refresh_secs")
         {
@@ -189,21 +192,20 @@ impl From<Ini> for Config {
         if let Some(key_prefix) = ini_config.get("monitord", "key_prefix") {
             config.monitord.key_prefix = key_prefix;
         }
-        config.monitord.output_format = MonitordOutputFormat::from_str(
-            &ini_config
-                .get("monitord", "output_format")
-                .expect("Need 'output_format' set in config"),
-        )
-        .expect("Need a valid value for the enum");
+        let output_format_str = ini_config
+            .get("monitord", "output_format")
+            .context("Need 'output_format' set in config")?;
+        config.monitord.output_format = MonitordOutputFormat::from_str(&output_format_str)
+            .context("Need a valid value for 'output_format'")?;
 
         // [networkd] section
-        config.networkd.enabled = read_config_bool(&ini_config, "networkd", "enabled");
+        config.networkd.enabled = read_config_bool(&ini_config, "networkd", "enabled")?;
         if let Some(link_state_dir) = ini_config.get("networkd", "link_state_dir") {
             config.networkd.link_state_dir = link_state_dir.into();
         }
 
         // [pid1] section
-        config.pid1.enabled = read_config_bool(&ini_config, "pid1", "enabled");
+        config.pid1.enabled = read_config_bool(&ini_config, "pid1", "enabled")?;
 
         // [services] section
         let config_map = ini_config.get_map().unwrap_or(IndexMap::from([]));
@@ -212,10 +214,10 @@ impl From<Ini> for Config {
         }
 
         // [system-state] section
-        config.system_state.enabled = read_config_bool(&ini_config, "system-state", "enabled");
+        config.system_state.enabled = read_config_bool(&ini_config, "system-state", "enabled")?;
 
         // [timers] section
-        config.timers.enabled = read_config_bool(&ini_config, "timers", "enabled");
+        config.timers.enabled = read_config_bool(&ini_config, "timers", "enabled")?;
         if let Some(timers_allowlist) = config_map.get("timers.allowlist") {
             config.timers.allowlist = timers_allowlist.keys().map(|s| s.to_string()).collect();
         }
@@ -224,8 +226,8 @@ impl From<Ini> for Config {
         }
 
         // [units] section
-        config.units.enabled = read_config_bool(&ini_config, "units", "enabled");
-        config.units.state_stats = read_config_bool(&ini_config, "units", "state_stats");
+        config.units.enabled = read_config_bool(&ini_config, "units", "enabled")?;
+        config.units.state_stats = read_config_bool(&ini_config, "units", "state_stats")?;
         if let Some(state_stats_allowlist) = config_map.get("units.state_stats.allowlist") {
             config.units.state_stats_allowlist = state_stats_allowlist
                 .keys()
@@ -239,10 +241,10 @@ impl From<Ini> for Config {
                 .collect();
         }
         config.units.state_stats_time_in_state =
-            read_config_bool(&ini_config, "units", "state_stats_time_in_state");
+            read_config_bool(&ini_config, "units", "state_stats_time_in_state")?;
 
         // [machines] section
-        config.machines.enabled = read_config_bool(&ini_config, "machines", "enabled");
+        config.machines.enabled = read_config_bool(&ini_config, "machines", "enabled")?;
         if let Some(machines_allowlist) = config_map.get("machines.allowlist") {
             config.machines.allowlist = machines_allowlist.keys().map(|s| s.to_string()).collect();
         }
@@ -251,32 +253,33 @@ impl From<Ini> for Config {
         }
 
         // [dbus] section
-        config.dbus_stats.enabled = read_config_bool(&ini_config, "dbus", "enabled");
-        config.dbus_stats.user_stats = read_config_bool(&ini_config, "dbus", "user_stats");
-        config.dbus_stats.peer_stats = read_config_bool(&ini_config, "dbus", "peer_stats");
-        config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats");
+        config.dbus_stats.enabled = read_config_bool(&ini_config, "dbus", "enabled")?;
+        config.dbus_stats.user_stats = read_config_bool(&ini_config, "dbus", "user_stats")?;
+        config.dbus_stats.peer_stats = read_config_bool(&ini_config, "dbus", "peer_stats")?;
+        config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats")?;
 
-        config
+        Ok(config)
     }
 }
 
 /// Helper function to read "bool" config options
-fn read_config_bool(config: &Ini, section: &str, key: &str) -> bool {
-    let option_bool = match config.getbool(section, key) {
-        Ok(config_option_bool) => config_option_bool,
-        Err(err) => panic!(
-            "Unable to find '{}' key in '{}' section in config file: {}",
-            key, section, err
-        ),
-    };
+fn read_config_bool(config: &Ini, section: &str, key: &str) -> anyhow::Result<bool> {
+    let option_bool = config.getbool(section, key).map_err(|err| {
+        anyhow::anyhow!(
+            "Unable to parse '{}' key in '{}' section: {}",
+            key,
+            section,
+            err
+        )
+    })?;
     match option_bool {
-        Some(bool_value) => bool_value,
+        Some(bool_value) => Ok(bool_value),
         None => {
             error!(
                 "No value for '{}' in '{}' section ... assuming false",
                 key, section
             );
-            false
+            Ok(false)
         }
     }
 }
@@ -371,7 +374,7 @@ output_format = json-flat
             .load(monitord_config.path())
             .expect("Unable to load ini config");
 
-        let expected_config: Config = ini_config.into();
+        let expected_config: Config = ini_config.try_into().expect("Failed to parse config");
         // See our one setting is not the default 'json' enum value
         assert_eq!(
             expected_config.monitord.output_format,
@@ -435,6 +438,24 @@ output_format = json-flat
             .expect("Unable to load ini config");
 
         // See everything set / overloaded ...
-        assert_eq!(expected_config, ini_config.into(),);
+        let actual_config: Config = ini_config.try_into().expect("Failed to parse config");
+        assert_eq!(expected_config, actual_config);
+    }
+
+    #[test]
+    fn test_invalid_config_returns_error() {
+        let invalid_config = "[monitord]\ndaemon = notabool\noutput_format = json\n";
+        let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
+        monitord_config
+            .write_all(invalid_config.as_bytes())
+            .expect("Unable to write out temp config file");
+
+        let mut ini_config = Ini::new();
+        let _config_map = ini_config
+            .load(monitord_config.path())
+            .expect("Unable to load ini config");
+
+        let result: Result<Config, _> = ini_config.try_into();
+        assert!(result.is_err());
     }
 }
