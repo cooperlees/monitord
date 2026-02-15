@@ -539,7 +539,7 @@ pub async fn parse_unit_state(
 
 /// Async wrapper than can update uni stats when passed a locked struct
 pub async fn update_unit_stats(
-    config: crate::config::Config,
+    config: Arc<crate::config::Config>,
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {

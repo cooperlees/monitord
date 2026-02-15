@@ -482,7 +482,7 @@ pub async fn parse_dbus_stats(
 
 /// Async wrapper than can update dbus stats when passed a locked struct
 pub async fn update_dbus_stats(
-    config: crate::config::Config,
+    config: Arc<crate::config::Config>,
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {

@@ -43,7 +43,7 @@ pub async fn get_machines(
 }
 
 pub async fn update_machines_stats(
-    config: crate::config::Config,
+    config: Arc<crate::config::Config>,
     connection: zbus::Connection,
     locked_monitord_stats: Arc<RwLock<MonitordStats>>,
 ) -> anyhow::Result<()> {
@@ -95,7 +95,7 @@ pub async fn update_machines_stats(
 
         if config.units.enabled {
             join_set.spawn(crate::units::update_unit_stats(
-                config.clone(),
+                Arc::clone(&config),
                 sdc.clone(),
                 locked_machine_stats.clone(),
             ));
@@ -103,7 +103,7 @@ pub async fn update_machines_stats(
 
         if config.dbus_stats.enabled {
             join_set.spawn(crate::dbus_stats::update_dbus_stats(
-                config.clone(),
+                Arc::clone(&config),
                 sdc.clone(),
                 locked_machine_stats.clone(),
             ));
