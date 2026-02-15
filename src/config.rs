@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -86,15 +87,15 @@ impl Default for SystemStateConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimersConfig {
     pub enabled: bool,
-    pub allowlist: Vec<String>,
-    pub blocklist: Vec<String>,
+    pub allowlist: HashSet<String>,
+    pub blocklist: HashSet<String>,
 }
 impl Default for TimersConfig {
     fn default() -> Self {
         TimersConfig {
             enabled: true,
-            allowlist: Vec::new(),
-            blocklist: Vec::new(),
+            allowlist: HashSet::new(),
+            blocklist: HashSet::new(),
         }
     }
 }
@@ -103,8 +104,8 @@ impl Default for TimersConfig {
 pub struct UnitsConfig {
     pub enabled: bool,
     pub state_stats: bool,
-    pub state_stats_allowlist: Vec<String>,
-    pub state_stats_blocklist: Vec<String>,
+    pub state_stats_allowlist: HashSet<String>,
+    pub state_stats_blocklist: HashSet<String>,
     pub state_stats_time_in_state: bool,
 }
 impl Default for UnitsConfig {
@@ -112,8 +113,8 @@ impl Default for UnitsConfig {
         UnitsConfig {
             enabled: true,
             state_stats: false,
-            state_stats_allowlist: Vec::new(),
-            state_stats_blocklist: Vec::new(),
+            state_stats_allowlist: HashSet::new(),
+            state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: true,
         }
     }
@@ -122,15 +123,15 @@ impl Default for UnitsConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MachinesConfig {
     pub enabled: bool,
-    pub allowlist: Vec<String>,
-    pub blocklist: Vec<String>,
+    pub allowlist: HashSet<String>,
+    pub blocklist: HashSet<String>,
 }
 impl Default for MachinesConfig {
     fn default() -> Self {
         MachinesConfig {
             enabled: true,
-            allowlist: Vec::new(),
-            blocklist: Vec::new(),
+            allowlist: HashSet::new(),
+            blocklist: HashSet::new(),
         }
     }
 }
@@ -161,7 +162,7 @@ pub struct Config {
     pub monitord: MonitordConfig,
     pub networkd: NetworkdConfig,
     pub pid1: Pid1Config,
-    pub services: Vec<String>,
+    pub services: HashSet<String>,
     pub system_state: SystemStateConfig,
     pub timers: TimersConfig,
     pub units: UnitsConfig,
@@ -396,24 +397,24 @@ output_format = json-flat
                 link_state_dir: "/links".into(),
             },
             pid1: Pid1Config { enabled: true },
-            services: Vec::from([String::from("foo.service"), String::from("bar.service")]),
+            services: HashSet::from([String::from("foo.service"), String::from("bar.service")]),
             system_state: SystemStateConfig { enabled: true },
             timers: TimersConfig {
                 enabled: true,
-                allowlist: Vec::from([String::from("foo.timer")]),
-                blocklist: Vec::from([String::from("bar.timer")]),
+                allowlist: HashSet::from([String::from("foo.timer")]),
+                blocklist: HashSet::from([String::from("bar.timer")]),
             },
             units: UnitsConfig {
                 enabled: true,
                 state_stats: true,
-                state_stats_allowlist: Vec::from([String::from("foo.service")]),
-                state_stats_blocklist: Vec::from([String::from("bar.service")]),
+                state_stats_allowlist: HashSet::from([String::from("foo.service")]),
+                state_stats_blocklist: HashSet::from([String::from("bar.service")]),
                 state_stats_time_in_state: true,
             },
             machines: MachinesConfig {
                 enabled: true,
-                allowlist: Vec::from([String::from("foo"), String::from("bar")]),
-                blocklist: Vec::from([String::from("foo2")]),
+                allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
+                blocklist: HashSet::from([String::from("foo2")]),
             },
             dbus_stats: DBusStatsConfig {
                 enabled: true,
