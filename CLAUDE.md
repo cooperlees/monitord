@@ -55,6 +55,7 @@ Single-crate project (both library and binary). The binary (`main.rs`) parses CL
 
 ## Code Conventions
 
+- Always run `cargo fmt` before committing
 - Async throughout using tokio runtime
 - Error handling: `anyhow::Result` for top-level, `thiserror` for typed errors
 - Enums use `strum` for string conversion and `int-enum`/`serde_repr` for integer mapping
