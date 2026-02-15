@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -9,8 +10,8 @@ use crate::MonitordStats;
 
 pub fn filter_machines(
     machines: Vec<crate::dbus::zbus_machines::ListedMachine>,
-    allowlist: &[String],
-    blocklist: &[String],
+    allowlist: &HashSet<String>,
+    blocklist: &HashSet<String>,
 ) -> Vec<crate::dbus::zbus_machines::ListedMachine> {
     machines
         .into_iter()
@@ -140,6 +141,7 @@ pub async fn update_machines_stats(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use zbus::zvariant::OwnedObjectPath;
 
     #[test]
@@ -164,8 +166,8 @@ mod tests {
                 path: OwnedObjectPath::try_from("/sample/object").unwrap(),
             },
         ];
-        let allowlist = vec!["foo".to_string(), "baz".to_string()];
-        let blocklist = vec!["bar".to_string()];
+        let allowlist = HashSet::from(["foo".to_string(), "baz".to_string()]);
+        let blocklist = HashSet::from(["bar".to_string()]);
 
         let filtered = super::filter_machines(machines, &allowlist, &blocklist);
 

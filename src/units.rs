@@ -554,6 +554,7 @@ pub async fn update_unit_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use strum::IntoEnumIterator;
 
     fn get_unit_file() -> ListedUnit {
@@ -651,7 +652,7 @@ mod tests {
         assert_eq!(expected_stats, stats);
 
         // Create an allow list
-        config.state_stats_allowlist = Vec::from([test_unit_name.clone()]);
+        config.state_stats_allowlist = HashSet::from([test_unit_name.clone()]);
 
         // test no blocklist and only allow list - Should equal the same as no lists above
         let mut allowlist_stats = SystemdUnitStats::default();
@@ -659,7 +660,7 @@ mod tests {
         assert_eq!(expected_stats, allowlist_stats);
 
         // Now add a blocklist
-        config.state_stats_blocklist = Vec::from([test_unit_name]);
+        config.state_stats_blocklist = HashSet::from([test_unit_name]);
 
         // test blocklist with allow list (show it's preferred)
         let mut blocklist_stats = SystemdUnitStats::default();
