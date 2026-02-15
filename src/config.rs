@@ -179,11 +179,7 @@ impl From<Ini> for Config {
         if let Ok(Some(dbus_timeout)) = ini_config.getuint("monitord", "dbus_timeout") {
             config.monitord.dbus_timeout = dbus_timeout;
         }
-        config.monitord.daemon = read_config_bool(
-            &ini_config,
-            String::from("monitord"),
-            String::from("daemon"),
-        );
+        config.monitord.daemon = read_config_bool(&ini_config, "monitord", "daemon");
         if let Ok(Some(daemon_stats_refresh_secs)) =
             ini_config.getuint("monitord", "daemon_stats_refresh_secs")
         {
@@ -200,18 +196,13 @@ impl From<Ini> for Config {
         .expect("Need a valid value for the enum");
 
         // [networkd] section
-        config.networkd.enabled = read_config_bool(
-            &ini_config,
-            String::from("networkd"),
-            String::from("enabled"),
-        );
+        config.networkd.enabled = read_config_bool(&ini_config, "networkd", "enabled");
         if let Some(link_state_dir) = ini_config.get("networkd", "link_state_dir") {
             config.networkd.link_state_dir = link_state_dir.into();
         }
 
         // [pid1] section
-        config.pid1.enabled =
-            read_config_bool(&ini_config, String::from("pid1"), String::from("enabled"));
+        config.pid1.enabled = read_config_bool(&ini_config, "pid1", "enabled");
 
         // [services] section
         let config_map = ini_config.get_map().unwrap_or(IndexMap::from([]));
@@ -220,15 +211,10 @@ impl From<Ini> for Config {
         }
 
         // [system-state] section
-        config.system_state.enabled = read_config_bool(
-            &ini_config,
-            String::from("system-state"),
-            String::from("enabled"),
-        );
+        config.system_state.enabled = read_config_bool(&ini_config, "system-state", "enabled");
 
         // [timers] section
-        config.timers.enabled =
-            read_config_bool(&ini_config, String::from("timers"), String::from("enabled"));
+        config.timers.enabled = read_config_bool(&ini_config, "timers", "enabled");
         if let Some(timers_allowlist) = config_map.get("timers.allowlist") {
             config.timers.allowlist = timers_allowlist.keys().map(|s| s.to_string()).collect();
         }
@@ -237,13 +223,8 @@ impl From<Ini> for Config {
         }
 
         // [units] section
-        config.units.enabled =
-            read_config_bool(&ini_config, String::from("units"), String::from("enabled"));
-        config.units.state_stats = read_config_bool(
-            &ini_config,
-            String::from("units"),
-            String::from("state_stats"),
-        );
+        config.units.enabled = read_config_bool(&ini_config, "units", "enabled");
+        config.units.state_stats = read_config_bool(&ini_config, "units", "state_stats");
         if let Some(state_stats_allowlist) = config_map.get("units.state_stats.allowlist") {
             config.units.state_stats_allowlist = state_stats_allowlist
                 .keys()
@@ -256,18 +237,11 @@ impl From<Ini> for Config {
                 .map(|s| s.to_string())
                 .collect();
         }
-        config.units.state_stats_time_in_state = read_config_bool(
-            &ini_config,
-            String::from("units"),
-            String::from("state_stats_time_in_state"),
-        );
+        config.units.state_stats_time_in_state =
+            read_config_bool(&ini_config, "units", "state_stats_time_in_state");
 
         // [machines] section
-        config.machines.enabled = read_config_bool(
-            &ini_config,
-            String::from("machines"),
-            String::from("enabled"),
-        );
+        config.machines.enabled = read_config_bool(&ini_config, "machines", "enabled");
         if let Some(machines_allowlist) = config_map.get("machines.allowlist") {
             config.machines.allowlist = machines_allowlist.keys().map(|s| s.to_string()).collect();
         }
@@ -276,31 +250,18 @@ impl From<Ini> for Config {
         }
 
         // [dbus] section
-        config.dbus_stats.enabled =
-            read_config_bool(&ini_config, String::from("dbus"), String::from("enabled"));
-        config.dbus_stats.user_stats = read_config_bool(
-            &ini_config,
-            String::from("dbus"),
-            String::from("user_stats"),
-        );
-        config.dbus_stats.peer_stats = read_config_bool(
-            &ini_config,
-            String::from("dbus"),
-            String::from("peer_stats"),
-        );
-        config.dbus_stats.cgroup_stats = read_config_bool(
-            &ini_config,
-            String::from("dbus"),
-            String::from("cgroup_stats"),
-        );
+        config.dbus_stats.enabled = read_config_bool(&ini_config, "dbus", "enabled");
+        config.dbus_stats.user_stats = read_config_bool(&ini_config, "dbus", "user_stats");
+        config.dbus_stats.peer_stats = read_config_bool(&ini_config, "dbus", "peer_stats");
+        config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats");
 
         config
     }
 }
 
 /// Helper function to read "bool" config options
-fn read_config_bool(config: &Ini, section: String, key: String) -> bool {
-    let option_bool = match config.getbool(&section, &key) {
+fn read_config_bool(config: &Ini, section: &str, key: &str) -> bool {
+    let option_bool = match config.getbool(section, key) {
         Ok(config_option_bool) => config_option_bool,
         Err(err) => panic!(
             "Unable to find '{}' key in '{}' section in config file: {}",
