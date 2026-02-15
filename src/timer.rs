@@ -3,8 +3,6 @@
 //! All timer related logic goes here. This will be hitting timer specific
 //! dbus / varlink etc.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tracing::error;
@@ -39,12 +37,10 @@ pub async fn collect_timer_stats(
 ) -> Result<TimerStats> {
     let mut timer_stats = TimerStats::default();
 
-    let pt = Arc::new(
-        crate::dbus::zbus_timer::TimerProxy::builder(connection)
-            .path(unit.unit_object_path.clone())?
-            .build()
-            .await?,
-    );
+    let pt = crate::dbus::zbus_timer::TimerProxy::builder(connection)
+        .path(unit.unit_object_path.clone())?
+        .build()
+        .await?;
     // Get service unit name to check when it last ran to ensure
     // we are triggers the configured service with times set
     let service_unit = pt.unit().await?;
@@ -74,7 +70,8 @@ pub async fn collect_timer_stats(
     timer_stats.service_unit_last_state_change_usec_monotonic =
         service_unit_last_state_change_usec_monotonic?;
 
-    // Grab all the other DBUS data async
+    // Use tokio::join! without tokio::spawn to avoid per-task allocation overhead.
+    // These all share the same D-Bus connection so spawn adds no parallelism benefit.
     let (
         accuracy_usec,
         fixed_random_delay,
@@ -86,53 +83,26 @@ pub async fn collect_timer_stats(
         randomized_delay_usec,
         remain_after_elapse,
     ) = tokio::join!(
-        tokio::spawn({
-            let spawn_pt = pt.clone();
-            async move { spawn_pt.accuracy_usec().await }
-        }),
-        tokio::spawn({
-            let spawn_pt = pt.clone();
-            async move { spawn_pt.fixed_random_delay().await }
-        }),
-        tokio::spawn({
-            let spawn_pt = pt.clone();
-            async move { spawn_pt.last_trigger_usec().await }
-        }),
-        tokio::spawn({
-            let spawn_pt = pt.clone();
-            async move { spawn_pt.last_trigger_usec_monotonic().await }
-        }),
-        tokio::spawn({
-            let spawn_pt = pt.clone();
-            async move { spawn_pt.persistent().await }
-        }),
-        tokio::spawn({
-            let spawn_pt = pt.clone();
-            async move { spawn_pt.next_elapse_usec_monotonic().await }
-        }),
-        tokio::spawn({
-            let spawn_pt = pt.clone();
-            async move { spawn_pt.next_elapse_usec_realtime().await }
-        }),
-        tokio::spawn({
-            let spawn_pt = pt.clone();
-            async move { spawn_pt.randomized_delay_usec().await }
-        }),
-        tokio::spawn({
-            let spawn_pt = pt.clone();
-            async move { spawn_pt.remain_after_elapse().await }
-        }),
+        pt.accuracy_usec(),
+        pt.fixed_random_delay(),
+        pt.last_trigger_usec(),
+        pt.last_trigger_usec_monotonic(),
+        pt.persistent(),
+        pt.next_elapse_usec_monotonic(),
+        pt.next_elapse_usec_realtime(),
+        pt.randomized_delay_usec(),
+        pt.remain_after_elapse(),
     );
 
-    timer_stats.accuracy_usec = accuracy_usec??;
-    timer_stats.fixed_random_delay = fixed_random_delay??;
-    timer_stats.last_trigger_usec = last_trigger_usec??;
-    timer_stats.last_trigger_usec_monotonic = last_trigger_usec_monotonic??;
-    timer_stats.persistent = persistent??;
-    timer_stats.next_elapse_usec_monotonic = next_elapse_usec_monotonic??;
-    timer_stats.next_elapse_usec_realtime = next_elapse_usec_realtime??;
-    timer_stats.randomized_delay_usec = randomized_delay_usec??;
-    timer_stats.remain_after_elapse = remain_after_elapse??;
+    timer_stats.accuracy_usec = accuracy_usec?;
+    timer_stats.fixed_random_delay = fixed_random_delay?;
+    timer_stats.last_trigger_usec = last_trigger_usec?;
+    timer_stats.last_trigger_usec_monotonic = last_trigger_usec_monotonic?;
+    timer_stats.persistent = persistent?;
+    timer_stats.next_elapse_usec_monotonic = next_elapse_usec_monotonic?;
+    timer_stats.next_elapse_usec_realtime = next_elapse_usec_realtime?;
+    timer_stats.randomized_delay_usec = randomized_delay_usec?;
+    timer_stats.remain_after_elapse = remain_after_elapse?;
 
     if timer_stats.persistent {
         stats.timer_persistent_units += 1;

@@ -220,20 +220,17 @@ async fn parse_service(
 ) -> Result<ServiceStats> {
     debug!("Parsing service {} stats", name);
 
-    let sp = Arc::new(
-        crate::dbus::zbus_service::ServiceProxy::builder(connection)
-            .path(object_path.clone())?
-            .build()
-            .await?,
-    );
-    let up = Arc::new(
-        crate::dbus::zbus_unit::UnitProxy::builder(connection)
-            .path(object_path.clone())?
-            .build()
-            .await?,
-    );
+    let sp = crate::dbus::zbus_service::ServiceProxy::builder(connection)
+        .path(object_path.clone())?
+        .build()
+        .await?;
+    let up = crate::dbus::zbus_unit::UnitProxy::builder(connection)
+        .path(object_path.clone())?
+        .build()
+        .await?;
 
-    // TODO: Maybe introduce a semaphore to limit how many execute at once
+    // Use tokio::join! without tokio::spawn to avoid per-task allocation overhead.
+    // These all share the same D-Bus connection so spawn adds no parallelism benefit.
     let (
         active_enter_timestamp,
         active_exit_timestamp,
@@ -252,89 +249,41 @@ async fn parse_service(
         timeout_clean_usec,
         watchdog_usec,
     ) = tokio::join!(
-        tokio::spawn({
-            let spawn_up = up.clone();
-            async move { spawn_up.active_enter_timestamp().await }
-        }),
-        tokio::spawn({
-            let spawn_up = up.clone();
-            async move { spawn_up.active_exit_timestamp().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.cpuusage_nsec().await }
-        }),
-        tokio::spawn({
-            let spawn_up = up.clone();
-            async move { spawn_up.inactive_exit_timestamp().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.ioread_bytes().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.ioread_operations().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.memory_current().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.memory_available().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.nrestarts().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.get_processes().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.restart_usec().await }
-        }),
-        tokio::spawn({
-            let spawn_up = up.clone();
-            async move { spawn_up.state_change_timestamp().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.status_errno().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.tasks_current().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.timeout_clean_usec().await }
-        }),
-        tokio::spawn({
-            let spawn_sp = sp.clone();
-            async move { spawn_sp.watchdog_usec().await }
-        }),
+        up.active_enter_timestamp(),
+        up.active_exit_timestamp(),
+        sp.cpuusage_nsec(),
+        up.inactive_exit_timestamp(),
+        sp.ioread_bytes(),
+        sp.ioread_operations(),
+        sp.memory_current(),
+        sp.memory_available(),
+        sp.nrestarts(),
+        sp.get_processes(),
+        sp.restart_usec(),
+        up.state_change_timestamp(),
+        sp.status_errno(),
+        sp.tasks_current(),
+        sp.timeout_clean_usec(),
+        sp.watchdog_usec(),
     );
 
     Ok(ServiceStats {
-        active_enter_timestamp: active_enter_timestamp??,
-        active_exit_timestamp: active_exit_timestamp??,
-        cpuusage_nsec: cpuusage_nsec??,
-        inactive_exit_timestamp: inactive_exit_timestamp??,
-        ioread_bytes: ioread_bytes??,
-        ioread_operations: ioread_operations??,
-        memory_current: memory_current??,
-        memory_available: memory_available??,
-        nrestarts: nrestarts??,
-        processes: processes??.len().try_into()?,
-        restart_usec: restart_usec??,
-        state_change_timestamp: state_change_timestamp??,
-        status_errno: status_errno??,
-        tasks_current: tasks_current??,
-        timeout_clean_usec: timeout_clean_usec??,
-        watchdog_usec: watchdog_usec??,
+        active_enter_timestamp: active_enter_timestamp?,
+        active_exit_timestamp: active_exit_timestamp?,
+        cpuusage_nsec: cpuusage_nsec?,
+        inactive_exit_timestamp: inactive_exit_timestamp?,
+        ioread_bytes: ioread_bytes?,
+        ioread_operations: ioread_operations?,
+        memory_current: memory_current?,
+        memory_available: memory_available?,
+        nrestarts: nrestarts?,
+        processes: processes?.len().try_into()?,
+        restart_usec: restart_usec?,
+        state_change_timestamp: state_change_timestamp?,
+        status_errno: status_errno?,
+        tasks_current: tasks_current?,
+        timeout_clean_usec: timeout_clean_usec?,
+        watchdog_usec: watchdog_usec?,
     })
 }
 
