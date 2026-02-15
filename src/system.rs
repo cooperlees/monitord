@@ -85,11 +85,7 @@ impl TryFrom<String> for SystemdVersion {
     type Error = MonitordSystemError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        let no_v_version = if let Some(stripped_v) = s.strip_prefix('v') {
-            stripped_v.to_string()
-        } else {
-            s.clone()
-        };
+        let no_v_version = s.strip_prefix('v').unwrap_or(&s);
         let mut parts = no_v_version.split('.');
         let split_count = parts.clone().count();
         let major = parts
@@ -100,14 +96,12 @@ impl TryFrom<String> for SystemdVersion {
         let minor = parts
             .next()
             .with_context(|| "No valid minor version")?
-            .parse::<String>()
-            .with_context(|| format!("Failed to parse minor version: {:?}", s))?;
+            .to_string();
         let mut revision = None;
         if split_count > 3 {
             revision = parts.next().and_then(|s| s.parse::<u32>().ok());
         }
-        let remaining_elements: Vec<&str> = parts.collect();
-        let os = remaining_elements.join(".").to_string();
+        let os = parts.collect::<Vec<&str>>().join(".");
         Ok(SystemdVersion {
             major,
             minor,
