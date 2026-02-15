@@ -233,24 +233,23 @@ pub const NETWORKD_STATE_FILES: &str = "/run/systemd/netif/links";
 
 /// Parse a networkd state file contents + convert int ID to name via DBUS
 pub fn parse_interface_stats(
-    interface_state_str: String,
+    interface_state_str: &str,
     interface_id: i32,
     interface_id_to_name: &HashMap<i32, String>,
 ) -> Result<InterfaceState, String> {
     let mut interface_state = InterfaceState::default();
 
+    // Pull interface name out of list_links generated HashMap (once, not per line)
+    if interface_id > 0 {
+        if let Some(name) = interface_id_to_name.get(&interface_id) {
+            interface_state.name = name.clone();
+        }
+    }
+
     for line in interface_state_str.lines() {
         // Skip comments + lines without =
         if !line.contains('=') {
             continue;
-        }
-
-        // Pull interface name out of list_links generated HashMap
-        if interface_id > 0 {
-            interface_state.name = interface_id_to_name
-                .get(&interface_id)
-                .unwrap_or(&String::from(""))
-                .to_string();
         }
 
         let (key, value) = line
@@ -337,7 +336,11 @@ pub async fn parse_interface_state_files(
         managed_interface_count += 1;
         let fname = state_file.file_name();
         let interface_id: i32 = i32::from_str(fname.to_str().unwrap_or("0")).unwrap_or(0);
-        match parse_interface_stats(interface_stats_file_str, interface_id, &network_int_to_name) {
+        match parse_interface_stats(
+            &interface_stats_file_str,
+            interface_id,
+            &network_int_to_name,
+        ) {
             Ok(interface_state) => interfaces_state.push(interface_state),
             Err(err) => error!(
                 "Unable to parse interface statistics for {:?}: {}",
@@ -427,7 +430,7 @@ MDNS=no
         assert_eq!(
             return_expected_interface_state(),
             parse_interface_stats(
-                MOCK_INTERFACE_STATE.to_string(),
+                MOCK_INTERFACE_STATE,
                 2,
                 &return_mock_int_name_hashmap().expect("Failed to get a mock int name hashmap"),
             )
@@ -439,8 +442,7 @@ MDNS=no
     fn test_parse_interface_stats_json() {
         // 'name' stays as an empty string cause we don't pass in networkctl json or an interface id
         let expected_interface_state_json = r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":2,"ipv6_address_state":3,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###;
-        let stats =
-            parse_interface_stats(MOCK_INTERFACE_STATE.to_string(), 0, &HashMap::new()).unwrap();
+        let stats = parse_interface_stats(MOCK_INTERFACE_STATE, 0, &HashMap::new()).unwrap();
         let stats_json = serde_json::to_string(&stats).unwrap();
         assert_eq!(expected_interface_state_json.to_string(), stats_json);
     }
