@@ -16,8 +16,8 @@ use crate::units;
 use crate::MachineStats;
 use crate::MonitordStats;
 
-/// Add a prefix if config wants contains one
-fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
+/// Add a prefix if the config specifies one
+fn gen_base_metric_key(key_prefix: &str, metric_name: &str) -> String {
     match key_prefix.is_empty() {
         true => String::from(metric_name),
         false => format!("{}.{}", key_prefix, metric_name),
@@ -26,7 +26,7 @@ fn gen_base_metric_key(key_prefix: &String, metric_name: &str) -> String {
 
 fn flatten_networkd(
     networkd_stats: &networkd::NetworkdState,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> Vec<(String, serde_json::Value)> {
     let mut flat_stats = vec![];
     let base_metric_name = gen_base_metric_key(key_prefix, "networkd");
@@ -78,7 +78,7 @@ fn flatten_networkd(
 
 fn flatten_pid1(
     optional_pid1_stats: &Option<pid1::Pid1Stats>,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> Vec<(String, serde_json::Value)> {
     // If we're not collecting pid1 stats don't add
     let pid1_stats = match optional_pid1_stats {
@@ -117,7 +117,7 @@ fn flatten_pid1(
 
 fn flatten_services(
     service_stats_hash: &HashMap<String, units::ServiceStats>,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> Vec<(String, serde_json::Value)> {
     let mut flat_stats = Vec::new();
     let base_metric_name = gen_base_metric_key(key_prefix, "services");
@@ -185,7 +185,7 @@ fn flatten_services(
 
 fn flatten_timers(
     timer_stats_hash: &HashMap<String, crate::timer::TimerStats>,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> Vec<(String, serde_json::Value)> {
     let mut flat_stats = Vec::new();
     let base_metric_name = gen_base_metric_key(key_prefix, "timers");
@@ -244,7 +244,7 @@ fn flatten_timers(
 
 fn flatten_unit_states(
     unit_states_hash: &HashMap<String, units::UnitStates>,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> Vec<(String, serde_json::Value)> {
     let mut flat_stats = Vec::new();
     let base_metric_name = gen_base_metric_key(key_prefix, "unit_states");
@@ -284,7 +284,7 @@ fn flatten_unit_states(
 
 fn flatten_units(
     units_stats: &units::SystemdUnitStats,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> Vec<(String, serde_json::Value)> {
     // fields of the SystemdUnitStats struct we know to ignore so don't log below
     let fields_to_ignore = Vec::from(["service_stats"]);
@@ -295,7 +295,7 @@ fn flatten_units(
     // TODO: Work out a smarter way to do this rather than hard code mappings
     for field_name in units::UNIT_FIELD_NAMES {
         let key = format!("{base_metric_name}.{field_name}");
-        match field_name.to_string().as_str() {
+        match *field_name {
             "active_units" => {
                 flat_stats.push((key, units_stats.active_units.into()));
             }
@@ -368,7 +368,7 @@ fn flatten_units(
 
 fn flatten_machines(
     machines_stats: &HashMap<String, MachineStats>,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut flat_stats = BTreeMap::new();
 
@@ -403,7 +403,7 @@ fn flatten_machines(
 
 fn flatten_dbus_stats(
     optional_dbus_stats: &Option<dbus_stats::DBusStats>,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
     let dbus_stats = match optional_dbus_stats {
@@ -525,13 +525,13 @@ fn flatten_dbus_stats(
 /// Take the standard returned structs and move all to a flat BTreeMap<str, float|int> like JSON
 fn flatten_stats(
     stats_struct: &MonitordStats,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
     flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_pid1(&stats_struct.pid1, key_prefix));
     flat_stats.insert(
-        gen_base_metric_key(key_prefix, &String::from("system-state")),
+        gen_base_metric_key(key_prefix, "system-state"),
         (stats_struct.system_state as u64).into(),
     );
     flat_stats.extend(flatten_services(
@@ -545,7 +545,7 @@ fn flatten_stats(
     ));
     flat_stats.extend(flatten_units(&stats_struct.units, key_prefix));
     flat_stats.insert(
-        gen_base_metric_key(key_prefix, &String::from("version")),
+        gen_base_metric_key(key_prefix, "version"),
         stats_struct.version.to_string().into(),
     );
     flat_stats.extend(flatten_machines(&stats_struct.machines, key_prefix));
@@ -556,7 +556,7 @@ fn flatten_stats(
 /// Take the standard returned structs and move all to a flat JSON str
 pub fn flatten(
     stats_struct: &MonitordStats,
-    key_prefix: &String,
+    key_prefix: &str,
 ) -> Result<String, serde_json::Error> {
     serde_json::to_string_pretty(&flatten_stats(stats_struct, key_prefix))
 }
@@ -764,24 +764,20 @@ mod tests {
 
     #[test]
     fn test_flatten_map() {
-        let json_flat_map = flatten_stats(
-            &return_monitord_stats(),
-            &String::from("JSON serialize failed"),
-        );
+        let json_flat_map = flatten_stats(&return_monitord_stats(), "");
         assert_eq!(102, json_flat_map.len());
     }
 
     #[test]
     fn test_flatten() {
-        let json_flat =
-            flatten(&return_monitord_stats(), &String::from("")).expect("JSON serialize failed");
+        let json_flat = flatten(&return_monitord_stats(), "").expect("JSON serialize failed");
         assert_eq!(EXPECTED_FLAT_JSON, json_flat);
     }
 
     #[test]
     fn test_flatten_prefixed() {
-        let json_flat = flatten(&return_monitord_stats(), &String::from("monitord"))
-            .expect("JSON serialize failed");
+        let json_flat =
+            flatten(&return_monitord_stats(), "monitord").expect("JSON serialize failed");
         let json_flat_unserialized: BTreeMap<String, serde_json::Value> =
             serde_json::from_str(&json_flat).expect("JSON from_str failed");
         for (key, _value) in json_flat_unserialized.iter() {
