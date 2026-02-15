@@ -83,6 +83,7 @@ pub async fn stat_collector(
         collect_interval_ms = (config.monitord.daemon_stats_refresh_secs * 1000).into();
     }
 
+    let config = Arc::new(config);
     let locked_monitord_stats: Arc<RwLock<MonitordStats>> =
         maybe_locked_stats.unwrap_or(Arc::new(RwLock::new(MonitordStats::default())));
     let locked_machine_stats: Arc<RwLock<MachineStats>> =
@@ -134,7 +135,7 @@ pub async fn stat_collector(
         // Run service collectors if there are services listed in config
         if config.units.enabled {
             join_set.spawn(crate::units::update_unit_stats(
-                config.clone(),
+                Arc::clone(&config),
                 sdc.clone(),
                 locked_machine_stats.clone(),
             ));
@@ -142,7 +143,7 @@ pub async fn stat_collector(
 
         if config.machines.enabled {
             join_set.spawn(crate::machines::update_machines_stats(
-                config.clone(),
+                Arc::clone(&config),
                 sdc.clone(),
                 locked_monitord_stats.clone(),
             ));
@@ -150,7 +151,7 @@ pub async fn stat_collector(
 
         if config.dbus_stats.enabled {
             join_set.spawn(crate::dbus_stats::update_dbus_stats(
-                config.clone(),
+                Arc::clone(&config),
                 sdc.clone(),
                 locked_machine_stats.clone(),
             ));
