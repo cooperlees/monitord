@@ -2,11 +2,18 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{debug, error};
 
 use crate::MachineStats;
 use crate::MonitordStats;
+
+#[derive(Error, Debug)]
+pub enum MonitordMachinesError {
+    #[error("Machines D-Bus error: {0}")]
+    ZbusError(#[from] zbus::Error),
+}
 
 pub fn filter_machines(
     machines: Vec<crate::dbus::zbus_machines::ListedMachine>,
@@ -24,7 +31,7 @@ pub fn filter_machines(
 pub async fn get_machines(
     connection: &zbus::Connection,
     config: &crate::config::Config,
-) -> Result<HashMap<String, u32>, zbus::Error> {
+) -> Result<HashMap<String, u32>, MonitordMachinesError> {
     let c = crate::dbus::zbus_machines::ManagerProxy::new(connection).await?;
     let mut results = HashMap::<String, u32>::new();
 

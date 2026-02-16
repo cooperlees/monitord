@@ -2,12 +2,24 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use anyhow::Context;
 use configparser::ini::Ini;
 use indexmap::map::IndexMap;
 use int_enum::IntEnum;
 use strum_macros::EnumString;
+use thiserror::Error;
 use tracing::error;
+
+#[derive(Error, Debug)]
+pub enum MonitordConfigError {
+    #[error("Invalid value for '{key}' in '{section}': {reason}")]
+    InvalidValue {
+        section: String,
+        key: String,
+        reason: String,
+    },
+    #[error("Missing key '{key}' in '{section}'")]
+    MissingKey { section: String, key: String },
+}
 
 #[derive(Clone, Debug, Default, EnumString, Eq, IntEnum, PartialEq, strum_macros::Display)]
 #[repr(u8)]
@@ -171,9 +183,9 @@ pub struct Config {
 }
 
 impl TryFrom<Ini> for Config {
-    type Error = anyhow::Error;
+    type Error = MonitordConfigError;
 
-    fn try_from(ini_config: Ini) -> anyhow::Result<Self> {
+    fn try_from(ini_config: Ini) -> Result<Self, MonitordConfigError> {
         let mut config = Config::default();
 
         // [monitord] section
@@ -192,11 +204,18 @@ impl TryFrom<Ini> for Config {
         if let Some(key_prefix) = ini_config.get("monitord", "key_prefix") {
             config.monitord.key_prefix = key_prefix;
         }
-        let output_format_str = ini_config
-            .get("monitord", "output_format")
-            .context("Need 'output_format' set in config")?;
+        let output_format_str = ini_config.get("monitord", "output_format").ok_or_else(|| {
+            MonitordConfigError::MissingKey {
+                section: "monitord".into(),
+                key: "output_format".into(),
+            }
+        })?;
         config.monitord.output_format = MonitordOutputFormat::from_str(&output_format_str)
-            .context("Need a valid value for 'output_format'")?;
+            .map_err(|e| MonitordConfigError::InvalidValue {
+                section: "monitord".into(),
+                key: "output_format".into(),
+                reason: e.to_string(),
+            })?;
 
         // [networkd] section
         config.networkd.enabled = read_config_bool(&ini_config, "networkd", "enabled")?;
@@ -263,15 +282,15 @@ impl TryFrom<Ini> for Config {
 }
 
 /// Helper function to read "bool" config options
-fn read_config_bool(config: &Ini, section: &str, key: &str) -> anyhow::Result<bool> {
-    let option_bool = config.getbool(section, key).map_err(|err| {
-        anyhow::anyhow!(
-            "Unable to parse '{}' key in '{}' section: {}",
-            key,
-            section,
-            err
-        )
-    })?;
+fn read_config_bool(config: &Ini, section: &str, key: &str) -> Result<bool, MonitordConfigError> {
+    let option_bool =
+        config
+            .getbool(section, key)
+            .map_err(|err| MonitordConfigError::InvalidValue {
+                section: section.into(),
+                key: key.into(),
+                reason: err,
+            })?;
     match option_bool {
         Some(bool_value) => Ok(bool_value),
         None => {

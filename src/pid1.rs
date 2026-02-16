@@ -8,10 +8,20 @@ use std::sync::Arc;
 
 #[cfg(target_os = "linux")]
 use procfs::process::Process;
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::error;
 
 use crate::MachineStats;
+
+#[derive(Error, Debug)]
+pub enum MonitordPid1Error {
+    #[cfg(target_os = "linux")]
+    #[error("Procfs error: {0}")]
+    ProcfsError(#[from] procfs::ProcError),
+    #[error("Integer conversion error: {0}")]
+    IntConversion(#[from] std::num::TryFromIntError),
+}
 
 /// Process-level statistics for PID 1 (systemd) read from procfs.
 /// These metrics help detect regressions or anomalies in the init process itself.
@@ -32,7 +42,7 @@ pub struct Pid1Stats {
 
 /// Get procfs info on pid 1 - <https://manpages.debian.org/buster/manpages/procfs.5.en.html>
 #[cfg(target_os = "linux")]
-pub fn get_pid_stats(pid: i32) -> anyhow::Result<Pid1Stats> {
+pub fn get_pid_stats(pid: i32) -> Result<Pid1Stats, MonitordPid1Error> {
     let bytes_per_page = procfs::page_size();
     let ticks_per_second = procfs::ticks_per_second();
 
@@ -56,7 +66,7 @@ pub fn get_pid_stats(pid: i32) -> anyhow::Result<Pid1Stats> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn get_pid_stats(_pid: i32) -> anyhow::Result<Pid1Stats> {
+pub fn get_pid_stats(_pid: i32) -> Result<Pid1Stats, MonitordPid1Error> {
     error!("pid1 stats not supported on this OS");
     Ok(Pid1Stats::default())
 }
@@ -89,7 +99,7 @@ pub mod tests {
     use super::*;
 
     #[test]
-    pub fn test_get_stats() -> anyhow::Result<()> {
+    pub fn test_get_stats() -> Result<(), MonitordPid1Error> {
         let pid1_stats = get_pid_stats(1)?;
         assert!(pid1_stats.tasks > 0);
         Ok(())
