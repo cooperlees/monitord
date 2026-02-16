@@ -9,17 +9,27 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use anyhow::Result;
 use int_enum::IntEnum;
 use serde_repr::*;
 use struct_field_names_as_array::FieldNamesAsArray;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::error;
 use zbus::zvariant::ObjectPath;
 use zbus::zvariant::OwnedObjectPath;
+
+#[derive(Error, Debug)]
+pub enum MonitordUnitsError {
+    #[error("Units D-Bus error: {0}")]
+    ZbusError(#[from] zbus::Error),
+    #[error("Integer conversion error: {0}")]
+    IntConversion(#[from] std::num::TryFromIntError),
+    #[error("System time error: {0}")]
+    SystemTimeError(#[from] std::time::SystemTimeError),
+}
 
 use crate::timer::TimerStats;
 use crate::MachineStats;
@@ -217,7 +227,7 @@ async fn parse_service(
     connection: &zbus::Connection,
     name: &str,
     object_path: &OwnedObjectPath,
-) -> Result<ServiceStats> {
+) -> Result<ServiceStats, MonitordUnitsError> {
     debug!("Parsing service {} stats", name);
 
     let sp = crate::dbus::zbus_service::ServiceProxy::builder(connection)
@@ -308,7 +318,7 @@ pub fn is_unit_unhealthy(
 async fn get_time_in_state(
     connection: Option<&zbus::Connection>,
     unit: &ListedUnit,
-) -> Result<Option<u64>> {
+) -> Result<Option<u64>, MonitordUnitsError> {
     match connection {
         Some(c) => {
             let up = crate::dbus::zbus_unit::UnitProxy::builder(c)
@@ -341,7 +351,7 @@ pub async fn parse_state(
     unit: &ListedUnit,
     config: &crate::config::UnitsConfig,
     connection: Option<&zbus::Connection>,
-) -> Result<()> {
+) -> Result<(), MonitordUnitsError> {
     if config.state_stats_blocklist.contains(&unit.name) {
         debug!("Skipping state stats for {} due to blocklist", &unit.name);
         return Ok(());
@@ -414,7 +424,7 @@ fn parse_unit(stats: &mut SystemdUnitStats, unit: &ListedUnit) {
 pub async fn parse_unit_state(
     config: &crate::config::Config,
     connection: &zbus::Connection,
-) -> Result<SystemdUnitStats, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<SystemdUnitStats, MonitordUnitsError> {
     if !config.units.state_stats_allowlist.is_empty() {
         debug!(
             "Using unit state allowlist: {:?}",
@@ -557,7 +567,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_state_parse() -> Result<()> {
+    async fn test_state_parse() -> Result<(), MonitordUnitsError> {
         let test_unit_name = String::from("apport-autoreport.timer");
         let expected_stats = SystemdUnitStats {
             active_units: 0,

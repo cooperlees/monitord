@@ -8,10 +8,17 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::time::Instant;
 
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
+
+#[derive(Error, Debug)]
+pub enum MonitordError {
+    #[error("D-Bus connection error: {0}")]
+    ZbusError(#[from] zbus::Error),
+}
 
 pub mod config;
 pub(crate) mod dbus;
@@ -77,7 +84,7 @@ pub async fn stat_collector(
     config: config::Config,
     maybe_locked_stats: Option<Arc<RwLock<MonitordStats>>>,
     output_stats: bool,
-) -> anyhow::Result<()> {
+) -> Result<(), MonitordError> {
     let mut collect_interval_ms: u128 = 0;
     if config.monitord.daemon {
         collect_interval_ms = (config.monitord.daemon_stats_refresh_secs * 1000).into();

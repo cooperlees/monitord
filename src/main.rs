@@ -33,5 +33,5 @@ async fn main() -> anyhow::Result<()> {
         .load(args.config)
         .map_err(|e| anyhow::anyhow!("Config error: {:?}", e))?;
 
-    monitord::stat_collector(config.try_into()?, None, true).await
+    Ok(monitord::stat_collector(config.try_into()?, None, true).await?)
 }

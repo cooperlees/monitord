@@ -7,7 +7,7 @@ use std::fs;
 use std::io;
 use std::sync::Arc;
 
-use anyhow::Result;
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::error;
 use uzers::get_user_by_uid;
@@ -16,6 +16,14 @@ use zbus::names::BusName;
 use zvariant::{Dict, OwnedValue, Value};
 
 use crate::MachineStats;
+
+#[derive(Error, Debug)]
+pub enum MonitordDbusStatsError {
+    #[error("D-Bus error: {0}")]
+    ZbusError(#[from] zbus::Error),
+    #[error("D-Bus fdo error: {0}")]
+    FdoError(#[from] zbus::fdo::Error),
+}
 
 // Unfortunately, various DBus daemons (ex: dbus-broker and dbus-daemon)
 // represent stats differently. Moreover, the stats vary across versions of the same daemon.
@@ -422,7 +430,7 @@ fn parse_user_accounting(
 
 async fn get_well_known_to_peer_names(
     dbus_proxy: &DBusProxy<'_>,
-) -> Result<HashMap<String, String>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<HashMap<String, String>, MonitordDbusStatsError> {
     let dbus_names = dbus_proxy.list_names().await?;
     let mut result = HashMap::new();
 
@@ -442,7 +450,7 @@ async fn get_well_known_to_peer_names(
 pub async fn parse_dbus_stats(
     config: &crate::config::Config,
     connection: &zbus::Connection,
-) -> Result<DBusStats, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<DBusStats, MonitordDbusStatsError> {
     let dbus_proxy = DBusProxy::new(connection).await?;
     let well_known_to_peer_names = get_well_known_to_peer_names(&dbus_proxy).await?;
 

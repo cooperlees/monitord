@@ -7,8 +7,6 @@ use std::convert::TryInto;
 use std::fmt;
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use anyhow::Context;
 use int_enum::IntEnum;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
@@ -22,10 +20,12 @@ use crate::MachineStats;
 
 #[derive(Error, Debug)]
 pub enum MonitordSystemError {
-    #[error("monitord::system failed: {0:#}")]
-    GenericError(#[from] anyhow::Error),
     #[error("Unable to connect to DBUS via zbus: {0:#}")]
     ZbusError(#[from] zbus::Error),
+    #[error("Version parse error: {0}")]
+    VersionParseError(String),
+    #[error("Integer parse error: {0}")]
+    IntParseError(#[from] std::num::ParseIntError),
 }
 
 #[allow(non_camel_case_types)]
@@ -90,12 +90,11 @@ impl TryFrom<String> for SystemdVersion {
         let split_count = parts.clone().count();
         let major = parts
             .next()
-            .with_context(|| "No valid major version")?
-            .parse::<u32>()
-            .with_context(|| format!("Failed to parse major version: {:?}", s))?;
+            .ok_or_else(|| MonitordSystemError::VersionParseError("No valid major version".into()))?
+            .parse::<u32>()?;
         let minor = parts
             .next()
-            .with_context(|| "No valid minor version")?
+            .ok_or_else(|| MonitordSystemError::VersionParseError("No valid minor version".into()))?
             .to_string();
         let mut revision = None;
         if split_count > 3 {
@@ -146,7 +145,7 @@ pub async fn update_system_stats(
     let mut machine_stats = locked_machine_stats.write().await;
     machine_stats.system_state = crate::system::get_system_state(&connection)
         .await
-        .map_err(|e| anyhow!("Error getting system state: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("Error getting system state: {:?}", e))?;
     Ok(())
 }
 
@@ -156,10 +155,7 @@ pub async fn get_version(
     let p = crate::dbus::zbus_systemd::ManagerProxy::new(connection)
         .await
         .map_err(MonitordSystemError::ZbusError)?;
-    let version_string = p
-        .version()
-        .await
-        .with_context(|| "Unable to get systemd version string".to_string())?;
+    let version_string = p.version().await?;
     version_string.try_into()
 }
 
@@ -171,14 +167,13 @@ pub async fn update_version(
     let mut machine_stats = locked_machine_stats.write().await;
     machine_stats.version = crate::system::get_version(&connection)
         .await
-        .map_err(|e| anyhow!("Error getting systemd version: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("Error getting systemd version: {:?}", e))?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Result;
 
     #[test]
     fn test_display_struct() {
@@ -189,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parsing_systemd_versions() -> Result<()> {
+    fn test_parsing_systemd_versions() -> Result<(), MonitordSystemError> {
         let parsed: SystemdVersion = "969.1.69.fc69".to_string().try_into()?;
         assert_eq!(
             SystemdVersion::new(969, String::from("1"), Some(69), String::from("fc69")),
