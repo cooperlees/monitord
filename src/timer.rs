@@ -3,11 +3,17 @@
 //! All timer related logic goes here. This will be hitting timer specific
 //! dbus / varlink etc.
 
-use anyhow::Result;
 use struct_field_names_as_array::FieldNamesAsArray;
+use thiserror::Error;
 use tracing::error;
 
 use crate::units::SystemdUnitStats;
+
+#[derive(Error, Debug)]
+pub enum MonitordTimerError {
+    #[error("Timer D-Bus error: {0}")]
+    ZbusError(#[from] zbus::Error),
+}
 
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
@@ -46,7 +52,7 @@ pub async fn collect_timer_stats(
     connection: &zbus::Connection,
     stats: &mut SystemdUnitStats,
     unit: &crate::units::ListedUnit,
-) -> Result<TimerStats> {
+) -> Result<TimerStats, MonitordTimerError> {
     let mut timer_stats = TimerStats::default();
 
     let pt = crate::dbus::zbus_timer::TimerProxy::builder(connection)

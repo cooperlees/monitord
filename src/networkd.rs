@@ -8,15 +8,23 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::Result;
 use int_enum::IntEnum;
 use serde_repr::*;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::error;
 
 use crate::MachineStats;
+
+#[derive(Error, Debug)]
+pub enum MonitordNetworkdError {
+    #[error("Networkd D-Bus error: {0}")]
+    ZbusError(#[from] zbus::Error),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
 
 /// Address configuration state of a networkd-managed interface.
 /// Ref: <https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h>
@@ -258,7 +266,7 @@ pub struct InterfaceState {
 /// Get interface id + name from dbus list_links API
 async fn get_interface_links(
     connection: &zbus::Connection,
-) -> Result<HashMap<i32, String>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<HashMap<i32, String>, MonitordNetworkdError> {
     let p = crate::dbus::zbus_networkd::ManagerProxy::new(connection).await?;
     let links = p.list_links().await?;
     let mut link_int_to_name: HashMap<i32, String> = HashMap::new();
@@ -284,7 +292,7 @@ pub fn parse_interface_stats(
     interface_state_str: &str,
     interface_id: i32,
     interface_id_to_name: &HashMap<i32, String>,
-) -> Result<InterfaceState, String> {
+) -> Result<InterfaceState, MonitordNetworkdError> {
     let mut interface_state = InterfaceState::default();
 
     // Pull interface name out of list_links generated HashMap (once, not per line)
@@ -345,7 +353,7 @@ pub async fn parse_interface_state_files(
     states_path: &PathBuf,
     maybe_network_int_to_name: Option<HashMap<i32, String>>,
     maybe_connection: Option<&zbus::Connection>,
-) -> Result<NetworkdState, std::io::Error> {
+) -> Result<NetworkdState, MonitordNetworkdError> {
     let mut managed_interface_count: u64 = 0;
     let mut interfaces_state = vec![];
 
@@ -496,7 +504,7 @@ MDNS=no
     }
 
     #[tokio::test]
-    async fn test_parse_interface_state_files() -> Result<()> {
+    async fn test_parse_interface_state_files() -> Result<(), MonitordNetworkdError> {
         let expected_files = NetworkdState {
             interfaces_state: vec![return_expected_interface_state()],
             managed_interfaces: 1,
@@ -523,7 +531,7 @@ MDNS=no
     }
 
     #[test]
-    fn test_enums_to_ints() -> Result<()> {
+    fn test_enums_to_ints() -> Result<(), MonitordNetworkdError> {
         assert_eq!(3, AddressState::routable as u64);
         let carrier_state_int: u8 = u8::from(CarrierState::degraded_carrier);
         assert_eq!(4, carrier_state_int);
