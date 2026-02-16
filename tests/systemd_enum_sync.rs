@@ -11,7 +11,11 @@ use std::path::PathBuf;
 /// Parse C enum from header file content
 /// Returns a HashMap of enum variant name -> value
 /// Also accepts a reference map to resolve enum values that reference other enums
-fn parse_c_enum(content: &str, enum_name: &str, ref_map: Option<&HashMap<String, i32>>) -> HashMap<String, i32> {
+fn parse_c_enum(
+    content: &str,
+    enum_name: &str,
+    ref_map: Option<&HashMap<String, i32>>,
+) -> HashMap<String, i32> {
     let mut result = HashMap::new();
     let mut in_enum = false;
     let mut current_value = 0;
@@ -81,39 +85,41 @@ fn parse_c_enum(content: &str, enum_name: &str, ref_map: Option<&HashMap<String,
 
 #[test]
 fn test_address_state_sync() {
-    let headers_path = env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
+    let headers_path =
+        env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
     let network_util_path = PathBuf::from(&headers_path).join("network-util.h");
-    
+
     if !network_util_path.exists() {
-        eprintln!("Warning: systemd headers not found at {}. Skipping test.", headers_path);
+        eprintln!(
+            "Warning: systemd headers not found at {}. Skipping test.",
+            headers_path
+        );
         return;
     }
 
-    let content = fs::read_to_string(&network_util_path)
-        .expect("Failed to read network-util.h");
-    
+    let content = fs::read_to_string(&network_util_path).expect("Failed to read network-util.h");
+
     let c_enum = parse_c_enum(&content, "LinkAddressState", None);
-    
+
     // Expected Rust enum values from monitord
-    let rust_values = vec![
-        ("off", 0),
-        ("degraded", 1),
-        ("routable", 2),
-    ];
+    let rust_values = vec![("off", 0), ("degraded", 1), ("routable", 2)];
 
     println!("Checking AddressState enum synchronization...");
     println!("Parsed C enum values: {:?}", c_enum);
 
     for (rust_name, rust_value) in rust_values {
         let systemd_name = format!("LINK_ADDRESS_STATE_{}", rust_name.to_uppercase());
-        
+
         if let Some(&c_value) = c_enum.get(&systemd_name) {
             assert_eq!(
                 rust_value, c_value,
                 "AddressState::{} has value {} in Rust but {} in systemd",
                 rust_name, rust_value, c_value
             );
-            println!("✓ AddressState::{} = {} (matches systemd)", rust_name, rust_value);
+            println!(
+                "✓ AddressState::{} = {} (matches systemd)",
+                rust_name, rust_value
+            );
         } else {
             panic!("AddressState::{} not found in systemd header", rust_name);
         }
@@ -122,30 +128,33 @@ fn test_address_state_sync() {
 
 #[test]
 fn test_carrier_state_sync() {
-    let headers_path = env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
+    let headers_path =
+        env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
     let network_util_path = PathBuf::from(&headers_path).join("network-util.h");
-    
+
     if !network_util_path.exists() {
-        eprintln!("Warning: systemd headers not found at {}. Skipping test.", headers_path);
+        eprintln!(
+            "Warning: systemd headers not found at {}. Skipping test.",
+            headers_path
+        );
         return;
     }
 
-    let content = fs::read_to_string(&network_util_path)
-        .expect("Failed to read network-util.h");
-    
+    let content = fs::read_to_string(&network_util_path).expect("Failed to read network-util.h");
+
     // Parse OperState first as CarrierState references it
     let oper_enum = parse_c_enum(&content, "LinkOperationalState", None);
     let c_enum = parse_c_enum(&content, "LinkCarrierState", Some(&oper_enum));
-    
+
     // Expected Rust enum values - note that CarrierState references OperState values
     // So we need to check against the actual OperState integer values
     let rust_values = vec![
-        ("off", 1),           // LINK_OPERSTATE_OFF = 1
-        ("no-carrier", 2),    // LINK_OPERSTATE_NO_CARRIER = 2
-        ("dormant", 3),       // LINK_OPERSTATE_DORMANT = 3
+        ("off", 1),              // LINK_OPERSTATE_OFF = 1
+        ("no-carrier", 2),       // LINK_OPERSTATE_NO_CARRIER = 2
+        ("dormant", 3),          // LINK_OPERSTATE_DORMANT = 3
         ("degraded-carrier", 4), // LINK_OPERSTATE_DEGRADED_CARRIER = 4
-        ("carrier", 5),       // LINK_OPERSTATE_CARRIER = 5
-        ("enslaved", 7),      // LINK_OPERSTATE_ENSLAVED = 7
+        ("carrier", 5),          // LINK_OPERSTATE_CARRIER = 5
+        ("enslaved", 7),         // LINK_OPERSTATE_ENSLAVED = 7
     ];
 
     println!("Checking CarrierState enum synchronization...");
@@ -153,15 +162,21 @@ fn test_carrier_state_sync() {
     println!("Parsed CarrierState enum values: {:?}", c_enum);
 
     for (rust_name, rust_value) in rust_values {
-        let systemd_carrier_name = format!("LINK_CARRIER_STATE_{}", rust_name.to_uppercase().replace('-', "_"));
-        
+        let systemd_carrier_name = format!(
+            "LINK_CARRIER_STATE_{}",
+            rust_name.to_uppercase().replace('-', "_")
+        );
+
         if let Some(&c_value) = c_enum.get(&systemd_carrier_name) {
             assert_eq!(
                 rust_value, c_value,
                 "CarrierState::{} has value {} in Rust but {} in systemd",
                 rust_name, rust_value, c_value
             );
-            println!("✓ CarrierState::{} = {} (matches systemd)", rust_name, rust_value);
+            println!(
+                "✓ CarrierState::{} = {} (matches systemd)",
+                rust_name, rust_value
+            );
         } else {
             panic!("CarrierState::{} not found in systemd header", rust_name);
         }
@@ -170,39 +185,41 @@ fn test_carrier_state_sync() {
 
 #[test]
 fn test_online_state_sync() {
-    let headers_path = env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
+    let headers_path =
+        env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
     let network_util_path = PathBuf::from(&headers_path).join("network-util.h");
-    
+
     if !network_util_path.exists() {
-        eprintln!("Warning: systemd headers not found at {}. Skipping test.", headers_path);
+        eprintln!(
+            "Warning: systemd headers not found at {}. Skipping test.",
+            headers_path
+        );
         return;
     }
 
-    let content = fs::read_to_string(&network_util_path)
-        .expect("Failed to read network-util.h");
-    
+    let content = fs::read_to_string(&network_util_path).expect("Failed to read network-util.h");
+
     let c_enum = parse_c_enum(&content, "LinkOnlineState", None);
-    
+
     // Expected Rust enum values from monitord
-    let rust_values = vec![
-        ("offline", 0),
-        ("partial", 1),
-        ("online", 2),
-    ];
+    let rust_values = vec![("offline", 0), ("partial", 1), ("online", 2)];
 
     println!("Checking OnlineState enum synchronization...");
     println!("Parsed C enum values: {:?}", c_enum);
 
     for (rust_name, rust_value) in rust_values {
         let systemd_name = format!("LINK_ONLINE_STATE_{}", rust_name.to_uppercase());
-        
+
         if let Some(&c_value) = c_enum.get(&systemd_name) {
             assert_eq!(
                 rust_value, c_value,
                 "OnlineState::{} has value {} in Rust but {} in systemd",
                 rust_name, rust_value, c_value
             );
-            println!("✓ OnlineState::{} = {} (matches systemd)", rust_name, rust_value);
+            println!(
+                "✓ OnlineState::{} = {} (matches systemd)",
+                rust_name, rust_value
+            );
         } else {
             panic!("OnlineState::{} not found in systemd header", rust_name);
         }
@@ -211,19 +228,22 @@ fn test_online_state_sync() {
 
 #[test]
 fn test_oper_state_sync() {
-    let headers_path = env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
+    let headers_path =
+        env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
     let network_util_path = PathBuf::from(&headers_path).join("network-util.h");
-    
+
     if !network_util_path.exists() {
-        eprintln!("Warning: systemd headers not found at {}. Skipping test.", headers_path);
+        eprintln!(
+            "Warning: systemd headers not found at {}. Skipping test.",
+            headers_path
+        );
         return;
     }
 
-    let content = fs::read_to_string(&network_util_path)
-        .expect("Failed to read network-util.h");
-    
+    let content = fs::read_to_string(&network_util_path).expect("Failed to read network-util.h");
+
     let c_enum = parse_c_enum(&content, "LinkOperationalState", None);
-    
+
     // Expected Rust enum values from monitord
     let rust_values = vec![
         ("missing", 0),
@@ -241,15 +261,21 @@ fn test_oper_state_sync() {
     println!("Parsed C enum values: {:?}", c_enum);
 
     for (rust_name, rust_value) in rust_values {
-        let systemd_name = format!("LINK_OPERSTATE_{}", rust_name.to_uppercase().replace('-', "_"));
-        
+        let systemd_name = format!(
+            "LINK_OPERSTATE_{}",
+            rust_name.to_uppercase().replace('-', "_")
+        );
+
         if let Some(&c_value) = c_enum.get(&systemd_name) {
             assert_eq!(
                 rust_value, c_value,
                 "OperState::{} has value {} in Rust but {} in systemd",
                 rust_name, rust_value, c_value
             );
-            println!("✓ OperState::{} = {} (matches systemd)", rust_name, rust_value);
+            println!(
+                "✓ OperState::{} = {} (matches systemd)",
+                rust_name, rust_value
+            );
         } else {
             panic!("OperState::{} not found in systemd header", rust_name);
         }
@@ -258,28 +284,31 @@ fn test_oper_state_sync() {
 
 #[test]
 fn test_admin_state_sync() {
-    let headers_path = env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
+    let headers_path =
+        env::var("SYSTEMD_HEADERS_PATH").unwrap_or_else(|_| "/tmp/systemd-headers".to_string());
     let networkd_link_path = PathBuf::from(&headers_path).join("networkd-link.h");
-    
+
     if !networkd_link_path.exists() {
-        eprintln!("Warning: systemd headers not found at {}. Skipping test.", headers_path);
+        eprintln!(
+            "Warning: systemd headers not found at {}. Skipping test.",
+            headers_path
+        );
         return;
     }
 
-    let content = fs::read_to_string(&networkd_link_path)
-        .expect("Failed to read networkd-link.h");
-    
+    let content = fs::read_to_string(&networkd_link_path).expect("Failed to read networkd-link.h");
+
     let c_enum = parse_c_enum(&content, "LinkState", None);
-    
+
     // Expected Rust enum values from monitord
     // Note: monitord uses different names/mappings than systemd
     let rust_values = vec![
-        ("pending", 0),      // LINK_STATE_PENDING
-        ("failed", 5),       // LINK_STATE_FAILED
-        ("configuring", 2),  // LINK_STATE_CONFIGURING
-        ("configured", 3),   // LINK_STATE_CONFIGURED
-        ("unmanaged", 4),    // LINK_STATE_UNMANAGED
-        ("linger", 6),       // LINK_STATE_LINGER
+        ("pending", 0),     // LINK_STATE_PENDING
+        ("failed", 5),      // LINK_STATE_FAILED
+        ("configuring", 2), // LINK_STATE_CONFIGURING
+        ("configured", 3),  // LINK_STATE_CONFIGURED
+        ("unmanaged", 4),   // LINK_STATE_UNMANAGED
+        ("linger", 6),      // LINK_STATE_LINGER
     ];
 
     println!("Checking AdminState enum synchronization...");
@@ -287,16 +316,22 @@ fn test_admin_state_sync() {
 
     for (rust_name, expected_value) in rust_values {
         let systemd_name = format!("LINK_STATE_{}", rust_name.to_uppercase());
-        
+
         if let Some(&c_value) = c_enum.get(&systemd_name) {
             assert_eq!(
                 expected_value, c_value,
                 "AdminState::{} has value {} in Rust but {} in systemd",
                 rust_name, expected_value, c_value
             );
-            println!("✓ AdminState::{} = {} (matches systemd)", rust_name, expected_value);
+            println!(
+                "✓ AdminState::{} = {} (matches systemd)",
+                rust_name, expected_value
+            );
         } else {
-            panic!("AdminState::{} (systemd: {}) not found in systemd header", rust_name, systemd_name);
+            panic!(
+                "AdminState::{} (systemd: {}) not found in systemd header",
+                rust_name, systemd_name
+            );
         }
     }
 }
