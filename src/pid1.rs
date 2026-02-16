@@ -13,12 +13,20 @@ use tracing::error;
 
 use crate::MachineStats;
 
+/// Process-level statistics for PID 1 (systemd) read from procfs.
+/// These metrics help detect regressions or anomalies in the init process itself.
+/// Ref: <https://manpages.debian.org/buster/manpages/procfs.5.en.html>
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct Pid1Stats {
+    /// CPU time spent in kernel mode by PID 1, in seconds (from /proc/1/stat stime, converted from ticks)
     pub cpu_time_kernel: u64,
+    /// CPU time spent in user mode by PID 1, in seconds (from /proc/1/stat utime, converted from ticks)
     pub cpu_time_user: u64,
+    /// Resident set size of PID 1 in bytes (from /proc/1/stat rss, converted from pages)
     pub memory_usage_bytes: u64,
+    /// Number of open file descriptors held by PID 1 (from /proc/1/fd/)
     pub fd_count: u64,
+    /// Number of threads/tasks belonging to PID 1 (from /proc/1/task/)
     pub tasks: u64,
 }
 

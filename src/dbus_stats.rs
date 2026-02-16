@@ -21,28 +21,45 @@ use crate::MachineStats;
 // represent stats differently. Moreover, the stats vary across versions of the same daemon.
 // Hence, the code uses flexible approach providing max available information.
 
+/// Per-peer resource accounting from dbus-broker's PeerAccounting stats.
+/// Each peer represents a single D-Bus connection identified by a unique bus name.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct DBusBrokerPeerAccounting {
+    /// Unique D-Bus connection name (e.g. ":1.42")
     pub id: String,
+    /// Well-known bus name owned by this peer, if any (e.g. "org.freedesktop.NetworkManager")
     pub well_known_name: Option<String>,
 
     // credentials
+    /// Unix UID of the process owning this D-Bus connection
     pub unix_user_id: Option<u32>,
+    /// PID of the process owning this D-Bus connection
     pub process_id: Option<u32>,
+    /// Unix supplementary group IDs of the process owning this connection
     pub unix_group_ids: Option<Vec<u32>>,
     // ignoring LinuxSecurityLabel
     // pub linux_security_label: Option<String>,
 
     // stats
+    /// Number of bus name objects held by this peer
     pub name_objects: Option<u32>,
+    /// Bytes consumed by match rules registered by this peer
     pub match_bytes: Option<u32>,
+    /// Number of match rules registered by this peer for signal filtering
     pub matches: Option<u32>,
+    /// Number of pending reply objects (outstanding method calls awaiting replies)
     pub reply_objects: Option<u32>,
+    /// Total bytes received by this peer from the bus
     pub incoming_bytes: Option<u32>,
+    /// Total file descriptors received by this peer via D-Bus fd-passing
     pub incoming_fds: Option<u32>,
+    /// Total bytes sent by this peer to the bus
     pub outgoing_bytes: Option<u32>,
+    /// Total file descriptors sent by this peer via D-Bus fd-passing
     pub outgoing_fds: Option<u32>,
+    /// Bytes used for D-Bus activation requests by this peer
     pub activation_request_bytes: Option<u32>,
+    /// File descriptors used for D-Bus activation requests by this peer
     pub activation_request_fds: Option<u32>,
 }
 
@@ -64,23 +81,34 @@ impl DBusBrokerPeerAccounting {
     }
 }
 
-/* DBusBrokerCGroupAccounting is not present in org.freedesktop.DBus.Debug.Stats.GetStats output.
- * We group by cgroup to avoid reporting individual peer stats which blows cardinality.
- * This approach is not ideal, but good enough to identify abusive clients. */
+/// Aggregated D-Bus resource accounting grouped by cgroup.
+/// Not directly present in dbus-broker stats; computed by summing peer stats that share a cgroup.
+/// Grouping by cgroup reduces metric cardinality while still identifying abusive clients.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct DBusBrokerCGroupAccounting {
+    /// Cgroup path with slashes replaced by dashes (e.g. "system.slice-sshd.service")
     pub name: String,
 
-    // stats
+    // stats (aggregated sums across all peers in this cgroup)
+    /// Total bus name objects held by peers in this cgroup
     pub name_objects: Option<u32>,
+    /// Total bytes consumed by match rules from peers in this cgroup
     pub match_bytes: Option<u32>,
+    /// Total match rules registered by peers in this cgroup
     pub matches: Option<u32>,
+    /// Total pending reply objects from peers in this cgroup
     pub reply_objects: Option<u32>,
+    /// Total bytes received by peers in this cgroup
     pub incoming_bytes: Option<u32>,
+    /// Total file descriptors received by peers in this cgroup
     pub incoming_fds: Option<u32>,
+    /// Total bytes sent by peers in this cgroup
     pub outgoing_bytes: Option<u32>,
+    /// Total file descriptors sent by peers in this cgroup
     pub outgoing_fds: Option<u32>,
+    /// Total activation request bytes from peers in this cgroup
     pub activation_request_bytes: Option<u32>,
+    /// Total activation request file descriptors from peers in this cgroup
     pub activation_request_fds: Option<u32>,
 }
 
@@ -114,10 +142,13 @@ impl DBusBrokerCGroupAccounting {
     }
 }
 
+/// Current/maximum resource pair as reported by dbus-broker's UserAccounting.
+/// Note: dbus-broker stores the current value in inverted form; actual usage = max - cur.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct CurMaxPair {
-    // dbus-broker maintains current value in an inverted form i.e. usage is max - cur
+    /// Remaining quota (inverted: actual usage = max - cur)
     pub cur: u32,
+    /// Maximum allowed quota for this resource
     pub max: u32,
 }
 
@@ -129,14 +160,20 @@ impl CurMaxPair {
     }
 }
 
+/// Per-user aggregated D-Bus resource limits and usage from dbus-broker's UserAccounting.
+/// Each entry tracks quota consumption across all connections belonging to a Unix user.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct DBusBrokerUserAccounting {
+    /// Unix user ID this accounting entry belongs to
     pub uid: u32,
 
-    // aggregated stats
+    /// Message byte quota: remaining (cur) and maximum (max) allowed bytes across all connections
     pub bytes: Option<CurMaxPair>,
+    /// File descriptor quota: remaining (cur) and maximum (max) allowed FDs across all connections
     pub fds: Option<CurMaxPair>,
+    /// Match rule quota: remaining (cur) and maximum (max) allowed match rules across all connections
     pub matches: Option<CurMaxPair>,
+    /// Object quota: remaining (cur) and maximum (max) allowed objects (names, replies) across all connections
     pub objects: Option<CurMaxPair>,
     // UserUsage provides detailed breakdown of the aggregated numbers.
     // However, dbus-broker exposes usage as real values (not inverted, see CurMaxPair).
@@ -158,24 +195,37 @@ impl DBusBrokerUserAccounting {
     }
 }
 
+/// D-Bus daemon/broker statistics from org.freedesktop.DBus.Debug.Stats.
+/// Works with both dbus-daemon and dbus-broker; broker-specific fields are in separate maps.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct DBusStats {
+    /// Current D-Bus message serial number (monotonically increasing message counter)
     pub serial: Option<u32>,
+    /// Number of fully authenticated active D-Bus connections
     pub active_connections: Option<u32>,
+    /// Number of D-Bus connections still in the authentication handshake phase
     pub incomplete_connections: Option<u32>,
+    /// Current number of registered bus names (well-known + unique)
     pub bus_names: Option<u32>,
+    /// Peak (high-water mark) number of bus names ever registered simultaneously
     pub peak_bus_names: Option<u32>,
+    /// Peak number of bus names registered by a single connection
     pub peak_bus_names_per_connection: Option<u32>,
+    /// Current number of active signal match rules across all connections
     pub match_rules: Option<u32>,
+    /// Peak number of match rules ever registered simultaneously
     pub peak_match_rules: Option<u32>,
+    /// Peak number of match rules registered by a single connection
     pub peak_match_rules_per_connection: Option<u32>,
 
-    // dbus-broker specific stats
+    /// Per-peer resource accounting (dbus-broker only), keyed by unique connection name
     pub dbus_broker_peer_accounting: Option<HashMap<String, DBusBrokerPeerAccounting>>,
+    /// Per-user resource quota accounting (dbus-broker only), keyed by Unix UID
     pub dbus_broker_user_accounting: Option<HashMap<u32, DBusBrokerUserAccounting>>,
 
-    // config options
+    /// Whether per-peer stats collection is enabled in config
     pub peer_stats: bool,
+    /// Whether per-cgroup aggregated stats are enabled in config (derived from peer stats)
     pub cgroup_stats: bool,
 }
 

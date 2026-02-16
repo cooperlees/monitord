@@ -13,18 +13,30 @@ use crate::units::SystemdUnitStats;
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
 
-/// Struct with all the timer specific statistics
+/// Per-timer unit metrics from the org.freedesktop.systemd1.Timer D-Bus interface.
+/// Ref: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
 pub struct TimerStats {
+    /// AccuracySec timer property in microseconds; systemd may coalesce timer firings within this window to save wakeups
     pub accuracy_usec: u64,
+    /// Whether FixedRandomDelay= is set; when true, the random delay is stable across reboots for this timer
     pub fixed_random_delay: bool,
+    /// Realtime timestamp (usec since epoch) when this timer last triggered its service unit
     pub last_trigger_usec: u64,
+    /// Monotonic timestamp (usec since boot) when this timer last triggered its service unit
     pub last_trigger_usec_monotonic: u64,
+    /// Monotonic timestamp (usec since boot) when this timer will next elapse
     pub next_elapse_usec_monotonic: u64,
+    /// Realtime timestamp (usec since epoch) when this timer will next elapse
     pub next_elapse_usec_realtime: u64,
+    /// Whether Persistent= is set; when true, missed timer runs (e.g. during downtime) are triggered on next boot
     pub persistent: bool,
+    /// RandomizedDelaySec property in microseconds; a random delay up to this value is added before each trigger
     pub randomized_delay_usec: u64,
+    /// Whether RemainAfterElapse= is set; when true, the timer stays loaded after all triggers have elapsed
     pub remain_after_elapse: bool,
+    /// Realtime timestamp (usec since epoch) of the most recent state change of the triggered service unit
     pub service_unit_last_state_change_usec: u64,
+    /// Monotonic timestamp (usec since boot) of the most recent state change of the triggered service unit
     pub service_unit_last_state_change_usec_monotonic: u64,
 }
 

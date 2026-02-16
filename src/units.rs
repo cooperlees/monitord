@@ -28,68 +28,112 @@ use crate::MachineStats;
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
 
-/// Struct with all the unit count statistics
+/// Aggregated systemd unit statistics: counts by type, load state, active state,
+/// plus optional per-service and per-timer detailed metrics
 pub struct SystemdUnitStats {
+    /// Number of units in the "active" state (currently started and running)
     pub active_units: u64,
+    /// Number of automount units (on-demand filesystem mount points)
     pub automount_units: u64,
+    /// Number of device units (kernel devices exposed to systemd by udev)
     pub device_units: u64,
+    /// Number of units in the "failed" state (exited with error, crashed, or timed out)
     pub failed_units: u64,
+    /// Number of units in the "inactive" state (not currently running)
     pub inactive_units: u64,
+    /// Number of pending jobs queued in the systemd job scheduler
     pub jobs_queued: u64,
+    /// Number of units whose unit file has been successfully loaded into memory
     pub loaded_units: u64,
+    /// Number of units whose unit file is masked (symlinked to /dev/null, cannot be started)
     pub masked_units: u64,
+    /// Number of mount units (filesystem mount points managed by systemd)
     pub mount_units: u64,
+    /// Number of units whose unit file could not be found on disk
     pub not_found_units: u64,
+    /// Number of path units (file/directory watch triggers)
     pub path_units: u64,
+    /// Number of scope units (externally created process groups, e.g. user sessions)
     pub scope_units: u64,
+    /// Number of service units (daemon/process lifecycle management)
     pub service_units: u64,
+    /// Number of slice units (resource management groups in the cgroup hierarchy)
     pub slice_units: u64,
+    /// Number of socket units (IPC/network socket activation endpoints)
     pub socket_units: u64,
+    /// Number of target units (synchronization points for grouping units)
     pub target_units: u64,
+    /// Number of timer units (calendar/monotonic scheduled triggers)
     pub timer_units: u64,
+    /// Number of timer units with Persistent=yes (triggers missed runs after downtime)
     pub timer_persistent_units: u64,
+    /// Number of timer units with RemainAfterElapse=yes (stays loaded after firing)
     pub timer_remain_after_elapse: u64,
+    /// Total number of units known to systemd (all types, all states)
     pub total_units: u64,
+    /// Per-service detailed metrics keyed by unit name (e.g. "sshd.service")
     pub service_stats: HashMap<String, ServiceStats>,
+    /// Per-timer detailed metrics keyed by unit name (e.g. "logrotate.timer")
     pub timer_stats: HashMap<String, TimerStats>,
+    /// Per-unit active/load state tracking keyed by unit name
     pub unit_states: HashMap<String, UnitStates>,
 }
 
-/// Selected subset of metrics collected from systemd OrgFreedesktopSystemd1Service
+/// Per-service metrics from the org.freedesktop.systemd1.Service and Unit D-Bus interfaces.
+/// Ref: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
 pub struct ServiceStats {
+    /// Realtime timestamp (usec since epoch) when the unit most recently entered the active state
     pub active_enter_timestamp: u64,
+    /// Realtime timestamp (usec since epoch) when the unit most recently left the active state
     pub active_exit_timestamp: u64,
+    /// Total CPU time consumed by this service's cgroup in nanoseconds
     pub cpuusage_nsec: u64,
+    /// Realtime timestamp (usec since epoch) when the unit most recently left the inactive state
     pub inactive_exit_timestamp: u64,
+    /// Total bytes read from block I/O by this service's cgroup
     pub ioread_bytes: u64,
+    /// Total number of block I/O read operations by this service's cgroup
     pub ioread_operations: u64,
+    /// Memory available to the service (MemoryAvailable from cgroup), in bytes
     pub memory_available: u64,
+    /// Current memory usage of the service's cgroup in bytes
     pub memory_current: u64,
+    /// Number of times systemd has restarted this service (automatic restarts)
     pub nrestarts: u32,
+    /// Current number of processes in this service's cgroup
     pub processes: u32,
+    /// Configured restart delay for this service in microseconds (RestartUSec)
     pub restart_usec: u64,
+    /// Realtime timestamp (usec since epoch) of the most recent state change of any kind
     pub state_change_timestamp: u64,
+    /// errno-style exit status code from the main process (0 = success)
     pub status_errno: i32,
+    /// Current number of tasks (threads) in this service's cgroup
     pub tasks_current: u64,
+    /// Timeout in microseconds for the cleanup of resources after the service exits
     pub timeout_clean_usec: u64,
+    /// Watchdog timeout in microseconds; the service must ping within this interval or be killed
     pub watchdog_usec: u64,
 }
 
-/// Collection of a Unit active and load state: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
+/// Per-unit state tracking combining active state, load state, and computed health.
+/// Ref: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
 pub struct UnitStates {
+    /// Current active state of the unit (active, inactive, failed, activating, deactivating, reloading)
     pub active_state: SystemdUnitActiveState,
+    /// Current load state of the unit (loaded, error, masked, not_found)
     pub load_state: SystemdUnitLoadState,
-    // Unhealthy is only calculated for SystemdUnitLoadState::loaded units based on !SystemdActiveState::active
-    // and !SystemdUnitLoadState::masked
+    /// Computed health flag: true when a loaded unit is not active, or when load state is error/not_found.
+    /// Masked units are never marked unhealthy since masking is an intentional admin action.
     pub unhealthy: bool,
-    // Time in microseconds since the unit state has changed ...
-    // Expensive to lookup, so config disable available - Use optional to show that
+    /// Microseconds elapsed since the unit's most recent state change.
+    /// None when time-in-state tracking is disabled in config (expensive D-Bus lookup per unit).
     pub time_in_state_usecs: Option<u64>,
 }
 
@@ -97,7 +141,8 @@ pub struct UnitStates {
 // Reference: https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html
 // SubState can be unit-type-specific so can't enum
 
-/// Possible systemd unit active states enumerated
+/// Systemd unit active states representing the unit's runtime lifecycle.
+/// Ref: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -115,17 +160,25 @@ pub struct UnitStates {
 )]
 #[repr(u8)]
 pub enum SystemdUnitActiveState {
+    /// State could not be determined
     #[default]
     unknown = 0,
+    /// Unit is currently running / started
     active = 1,
+    /// Unit is reloading its configuration
     reloading = 2,
+    /// Unit is not running
     inactive = 3,
+    /// Unit has failed (process exited with error, crashed, or an operation timed out)
     failed = 4,
+    /// Unit is in the process of being started
     activating = 5,
+    /// Unit is in the process of being stopped
     deactivating = 6,
 }
 
-/// Possible systemd unit load states enumerated
+/// Systemd unit load states indicating whether the unit file was successfully read.
+/// Ref: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -143,11 +196,16 @@ pub enum SystemdUnitActiveState {
 )]
 #[repr(u8)]
 pub enum SystemdUnitLoadState {
+    /// Load state could not be determined
     #[default]
     unknown = 0,
+    /// Unit file was successfully parsed and loaded into memory
     loaded = 1,
+    /// Unit file could not be parsed or an error occurred during loading
     error = 2,
+    /// Unit is masked (symlinked to /dev/null), preventing it from being started
     masked = 3,
+    /// Unit file does not exist on disk
     not_found = 4,
 }
 
