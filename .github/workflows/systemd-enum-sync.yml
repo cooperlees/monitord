@@ -1,0 +1,40 @@
+name: Systemd Enum Sync Check
+
+on:
+  schedule:
+    # Run every Monday at 9:00 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch: # Allow manual trigger
+  pull_request:
+    paths:
+      - 'src/networkd.rs'
+      - 'tests/systemd_enum_sync.rs'
+      - '.github/workflows/systemd-enum-sync.yml'
+
+jobs:
+  check-enum-sync:
+    name: Check systemd enum synchronization
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Fetch systemd headers
+        run: |
+          mkdir -p /tmp/systemd-headers
+          curl -s -o /tmp/systemd-headers/network-util.h \
+            "https://raw.githubusercontent.com/systemd/systemd/main/src/libsystemd/sd-network/network-util.h"
+          curl -s -o /tmp/systemd-headers/networkd-link.h \
+            "https://raw.githubusercontent.com/systemd/systemd/main/src/network/networkd-link.h"
+
+      - name: Run enum sync test
+        run: cargo test --test systemd_enum_sync -- --nocapture
+        env:
+          SYSTEMD_HEADERS_PATH: /tmp/systemd-headers
