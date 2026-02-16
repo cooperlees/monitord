@@ -37,6 +37,8 @@ pub struct DBusBrokerPeerAccounting {
     pub process_id: Option<u32>,
     /// Unix supplementary group IDs of the process owning this connection
     pub unix_group_ids: Option<Vec<u32>>,
+    // ignoring LinuxSecurityLabel
+    // pub linux_security_label: Option<String>,
 
     // stats
     /// Number of bus name objects held by this peer
@@ -173,6 +175,8 @@ pub struct DBusBrokerUserAccounting {
     pub matches: Option<CurMaxPair>,
     /// Object quota: remaining (cur) and maximum (max) allowed objects (names, replies) across all connections
     pub objects: Option<CurMaxPair>,
+    // UserUsage provides detailed breakdown of the aggregated numbers.
+    // However, dbus-broker exposes usage as real values (not inverted, see CurMaxPair).
 }
 
 impl DBusBrokerUserAccounting {
