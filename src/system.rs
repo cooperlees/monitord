@@ -28,6 +28,9 @@ pub enum MonitordSystemError {
     ZbusError(#[from] zbus::Error),
 }
 
+/// Overall system state reported by the systemd manager (PID 1).
+/// Reflects whether the system has fully booted, is shutting down, or has failures.
+/// Queried via the SystemState property on org.freedesktop.systemd1.Manager.
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -45,22 +48,36 @@ pub enum MonitordSystemError {
 )]
 #[repr(u8)]
 pub enum SystemdSystemState {
+    /// System state could not be determined
     #[default]
     unknown = 0,
+    /// systemd is loading and setting up its internal state early in the boot process
     initializing = 1,
+    /// systemd is starting units as part of the boot sequence
     starting = 2,
+    /// All units have been started successfully and the system is fully operational
     running = 3,
+    /// System is operational but one or more units have failed
     degraded = 4,
+    /// System is in rescue or emergency mode (single-user maintenance)
     maintenance = 5,
+    /// System is shutting down
     stopping = 6,
+    /// systemd is not running (seen on non-booted containers or during very early boot)
     offline = 7,
 }
 
+/// Parsed systemd version from the Version property on org.freedesktop.systemd1.Manager.
+/// Format: "major.minor[.revision].os" (e.g. "256.1.fc40", "255.6-9.9.hs+fb.el9")
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct SystemdVersion {
+    /// Major version number (e.g. 256)
     major: u32,
+    /// Minor version string; may contain hyphens for distro-patched versions (e.g. "6-9")
     minor: String,
+    /// Optional patch/revision number, present when the version string has 4+ dot-separated parts
     revision: Option<u32>,
+    /// OS/distribution suffix (e.g. "fc40", "hs+fb.el9")
     os: String,
 }
 impl SystemdVersion {

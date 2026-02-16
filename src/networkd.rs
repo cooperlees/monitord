@@ -18,7 +18,8 @@ use tracing::error;
 
 use crate::MachineStats;
 
-/// Enumeration of networkd address states
+/// Address configuration state of a networkd-managed interface.
+/// Ref: <https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h>
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -36,14 +37,19 @@ use crate::MachineStats;
 )]
 #[repr(u8)]
 pub enum AddressState {
+    /// Address state could not be determined
     #[default]
     unknown = 0,
+    /// No addresses are configured on this interface
     off = 1,
+    /// Addresses are configured but none provide full connectivity (e.g. link-local only)
     degraded = 2,
+    /// At least one globally routable address is configured
     routable = 3,
 }
 
-/// Enumeration of interface administratve states
+/// Administrative state of a networkd-managed interface (networkd's own management lifecycle).
+/// Ref: <https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h>
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -61,13 +67,20 @@ pub enum AddressState {
 )]
 #[repr(u8)]
 pub enum AdminState {
+    /// Administrative state could not be determined
     #[default]
     unknown = 0,
+    /// Interface is pending configuration by networkd
     pending = 1,
+    /// networkd failed to configure this interface
     failed = 2,
+    /// Interface is currently being configured by networkd
     configuring = 3,
+    /// Interface has been successfully configured by networkd
     configured = 4,
+    /// Interface is not managed by networkd
     unmanaged = 5,
+    /// Interface is lingering (was managed but its .network file was removed)
     linger = 6,
 }
 
@@ -107,7 +120,8 @@ pub enum BoolState {
     True = 1,
 }
 
-/// Enumeration of networkd physical signal / state of interfaces
+/// Physical carrier (link layer) state of a networkd-managed interface.
+/// Ref: <https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h>
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -125,19 +139,27 @@ pub enum BoolState {
 )]
 #[repr(u8)]
 pub enum CarrierState {
+    /// Carrier state could not be determined
     #[default]
     unknown = 0,
+    /// Interface is administratively down (IFF_UP not set)
     off = 1,
+    /// Interface is up but no carrier signal detected (cable unplugged or no link partner)
     #[strum(serialize = "no-carrier", serialize = "no_carrier")]
     no_carrier = 2,
+    /// Carrier detected but interface is in a dormant/standby state
     dormant = 3,
+    /// Carrier detected but in a degraded condition
     #[strum(serialize = "degraded-carrier", serialize = "degraded_carrier")]
     degraded_carrier = 4,
+    /// Full carrier signal present and link is operational
     carrier = 5,
+    /// Interface is enslaved to a bond/bridge master
     enslaved = 6,
 }
 
-/// Enumeration of the networkd online state
+/// Overall online state of the system as determined by systemd-networkd-wait-online logic.
+/// Ref: <https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h>
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -155,14 +177,19 @@ pub enum CarrierState {
 )]
 #[repr(u8)]
 pub enum OnlineState {
+    /// Online state could not be determined
     #[default]
     unknown = 0,
+    /// No required interfaces are online
     offline = 1,
+    /// Some required interfaces are online but not all
     partial = 2,
+    /// All required interfaces are online
     online = 3,
 }
 
-/// Enumeration of networkd's operational state
+/// Operational state of a networkd-managed interface combining carrier and address information.
+/// Ref: <https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h>
 #[allow(non_camel_case_types)]
 #[derive(
     Serialize_repr,
@@ -180,32 +207,51 @@ pub enum OnlineState {
 )]
 #[repr(u8)]
 pub enum OperState {
+    /// Operational state could not be determined
     #[default]
     unknown = 0,
+    /// Interface is missing from the system
     missing = 1,
+    /// Interface is administratively down
     off = 2,
+    /// Interface is up but has no carrier signal
     #[strum(serialize = "no-carrier", serialize = "no_carrier")]
     no_carrier = 3,
+    /// Interface has carrier but is in a dormant/standby state
     dormant = 4,
+    /// Interface carrier is in a degraded condition
     #[strum(serialize = "degraded-carrier", serialize = "degraded_carrier")]
     degraded_carrier = 5,
+    /// Interface has carrier but no addresses configured
     carrier = 6,
+    /// Interface is operational but only has link-local or non-routable addresses
     degraded = 7,
+    /// Interface is enslaved to a bond/bridge master
     enslaved = 8,
+    /// Interface is fully operational with at least one routable address
     routable = 9,
 }
 
-/// Main per interface networkd state structure
+/// Per-interface state collected from systemd-networkd state files in /run/systemd/netif/links/
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct InterfaceState {
+    /// Combined address state across all address families (IPv4 + IPv6)
     pub address_state: AddressState,
+    /// networkd administrative state (whether networkd has finished configuring this interface)
     pub admin_state: AdminState,
+    /// Physical carrier (link layer) state of the interface
     pub carrier_state: CarrierState,
+    /// IPv4-specific address state (off, degraded, or routable)
     pub ipv4_address_state: AddressState,
+    /// IPv6-specific address state (off, degraded, or routable)
     pub ipv6_address_state: AddressState,
+    /// Interface name as reported by the kernel (e.g. "eth0", "enp3s0")
     pub name: String,
+    /// Path to the .network configuration file applied to this interface
     pub network_file: String,
+    /// Operational state combining carrier detection and address configuration
     pub oper_state: OperState,
+    /// Whether this interface is required for the system to be considered online
     pub required_for_online: BoolState,
 }
 
@@ -222,10 +268,12 @@ async fn get_interface_links(
     Ok(link_int_to_name)
 }
 
-/// Main networkd structure with per interface state and a count of managed interfaces
+/// Aggregated systemd-networkd state: per-interface details and total managed interface count
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct NetworkdState {
+    /// State details for each networkd-managed interface
     pub interfaces_state: Vec<InterfaceState>,
+    /// Total number of interfaces managed by networkd (those with a NETWORK_FILE entry)
     pub managed_interfaces: u64,
 }
 

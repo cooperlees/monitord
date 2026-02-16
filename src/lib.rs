@@ -27,25 +27,39 @@ pub mod units;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
+/// Stats collected for a single systemd-nspawn container or VM managed by systemd-machined
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct MachineStats {
+    /// systemd-networkd interface states inside the container
     pub networkd: networkd::NetworkdState,
+    /// PID 1 process stats from procfs (using the container's leader PID)
     pub pid1: Option<pid1::Pid1Stats>,
+    /// Overall systemd system state (e.g. running, degraded) inside the container
     pub system_state: system::SystemdSystemState,
+    /// Aggregated systemd unit counts and per-service/timer stats inside the container
     pub units: units::SystemdUnitStats,
+    /// systemd version running inside the container
     pub version: system::SystemdVersion,
+    /// D-Bus daemon/broker statistics inside the container
     pub dbus_stats: Option<dbus_stats::DBusStats>,
 }
 
-/// Main monitord stats struct collection all enabled stats
+/// Root struct containing all enabled monitord metrics for the host system and containers
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
 pub struct MonitordStats {
+    /// systemd-networkd interface states and managed interface count
     pub networkd: networkd::NetworkdState,
+    /// PID 1 (systemd) process stats from procfs: CPU, memory, FDs, tasks
     pub pid1: Option<pid1::Pid1Stats>,
+    /// Overall systemd manager state (e.g. running, degraded, initializing)
     pub system_state: system::SystemdSystemState,
+    /// Aggregated systemd unit counts by type/state and per-service/timer detailed metrics
     pub units: units::SystemdUnitStats,
+    /// Installed systemd version (major.minor.revision.os)
     pub version: system::SystemdVersion,
+    /// D-Bus daemon/broker statistics (connections, bus names, match rules, per-peer accounting)
     pub dbus_stats: Option<dbus_stats::DBusStats>,
+    /// Per-container stats keyed by machine name, collected via systemd-machined
     pub machines: HashMap<String, MachineStats>,
 }
 
