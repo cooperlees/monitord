@@ -31,6 +31,7 @@ pub mod pid1;
 pub mod system;
 pub mod timer;
 pub mod units;
+pub mod verify;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
@@ -49,6 +50,8 @@ pub struct MachineStats {
     pub version: system::SystemdVersion,
     /// D-Bus daemon/broker statistics inside the container
     pub dbus_stats: Option<dbus_stats::DBusStats>,
+    /// Unit verification error statistics
+    pub verify_stats: Option<verify::VerifyStats>,
 }
 
 /// Root struct containing all enabled monitord metrics for the host system and containers
@@ -68,6 +71,8 @@ pub struct MonitordStats {
     pub dbus_stats: Option<dbus_stats::DBusStats>,
     /// Per-container stats keyed by machine name, collected via systemd-machined
     pub machines: HashMap<String, MachineStats>,
+    /// Unit verification error statistics
+    pub verify_stats: Option<verify::VerifyStats>,
 }
 
 /// Print statistics in the format set in configuration
@@ -178,6 +183,15 @@ pub async fn stat_collector(
             ));
         }
 
+        if config.verify.enabled {
+            join_set.spawn(crate::verify::update_verify_stats(
+                sdc.clone(),
+                locked_machine_stats.clone(),
+                config.verify.allowlist.clone(),
+                config.verify.blocklist.clone(),
+            ));
+        }
+
         if join_set.len() == 1 {
             warn!("No collectors except systemd version scheduled to run. Exiting");
         }
@@ -207,6 +221,7 @@ pub async fn stat_collector(
             monitord_stats.version = machine_stats.version.clone();
             monitord_stats.units = machine_stats.units.clone();
             monitord_stats.dbus_stats = machine_stats.dbus_stats.clone();
+            monitord_stats.verify_stats = machine_stats.verify_stats.clone();
         }
 
         let elapsed_runtime_ms = collect_start_time.elapsed().as_millis();
