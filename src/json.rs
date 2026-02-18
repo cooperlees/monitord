@@ -396,7 +396,10 @@ fn flatten_machines(
             &stats.units.timer_stats,
             &machine_key_prefix,
         ));
-        flat_stats.extend(flatten_verify_stats(&stats.verify_stats, &machine_key_prefix));
+        flat_stats.extend(flatten_verify_stats(
+            &stats.verify_stats,
+            &machine_key_prefix,
+        ));
     }
 
     flat_stats
@@ -537,7 +540,7 @@ fn flatten_verify_stats(
     };
 
     let base_metric_name = gen_base_metric_key(key_prefix, "verify.failing");
-    
+
     // Add total count
     flat_stats.insert(
         format!("{base_metric_name}.total"),
@@ -546,10 +549,7 @@ fn flatten_verify_stats(
 
     // Add counts by type (only if they exist)
     for (unit_type, count) in &verify_stats.by_type {
-        flat_stats.insert(
-            format!("{base_metric_name}.{unit_type}"),
-            (*count).into(),
-        );
+        flat_stats.insert(format!("{base_metric_name}.{unit_type}"), (*count).into());
     }
 
     flat_stats

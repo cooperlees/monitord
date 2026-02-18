@@ -37,13 +37,13 @@ fn get_unit_type(unit_name: &str) -> Option<String> {
     if unit_name.len() < 3 {
         return None;
     }
-    
+
     // Check if it starts with a valid character (alphanumeric, dash, underscore, backslash for escapes)
     let first_char = unit_name.chars().next()?;
     if !first_char.is_alphanumeric() && first_char != '-' && first_char != '\\' {
         return None;
     }
-    
+
     unit_name.rsplit('.').next().map(|s| s.to_string())
 }
 
@@ -54,20 +54,20 @@ fn get_unit_type(unit_name: &str) -> Option<String> {
 /// - "foo.service: Command ... failed..."
 fn parse_verify_output(stderr: &str) -> HashSet<String> {
     let mut failing_units = HashSet::new();
-    
+
     for line in stderr.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        
+
         // Skip "Failed to prepare filename" lines - these are input errors, not unit errors
         if trimmed.contains("Failed to prepare filename") {
             continue;
         }
-        
+
         let mut found_in_line = false;
-        
+
         // Format 1: "/path/file.service:line: message" - extract just the filename
         if line.starts_with('/') {
             if let Some(pos) = line.find(':') {
@@ -80,16 +80,16 @@ fn parse_verify_output(stderr: &str) -> HashSet<String> {
                 }
             }
         }
-        
+
         // Format 2: "Unit foo.service ..." or "foo.service: ..." - only if not already found from path
         if !found_in_line {
             for word in line.split_whitespace() {
                 let cleaned = word.trim_end_matches(':').trim_end_matches('.');
                 // Only consider it a unit name if it has a valid extension and looks reasonable
-                if cleaned.contains('.') 
-                    && cleaned.len() > 2  // Minimum reasonable length
-                    && !cleaned.contains('(')  // Skip things like "foo(8)"
-                    && get_unit_type(cleaned).is_some() 
+                if cleaned.contains('.')
+                    && cleaned.len() > 2 // Minimum reasonable length
+                    && !cleaned.contains('(') // Skip things like "foo(8)"
+                    && get_unit_type(cleaned).is_some()
                 {
                     failing_units.insert(cleaned.to_string());
                     break; // Only take first unit name per line
@@ -97,7 +97,7 @@ fn parse_verify_output(stderr: &str) -> HashSet<String> {
             }
         }
     }
-    
+
     failing_units
 }
 
@@ -154,7 +154,7 @@ pub async fn get_verify_stats(
     // Count failures by type
     for unit_name in failing_units {
         stats.total += 1;
-        
+
         if let Some(unit_type) = get_unit_type(&unit_name) {
             *stats.by_type.entry(unit_type).or_insert(0) += 1;
         }
@@ -213,7 +213,7 @@ test-with-error.target: Some error message here
         for unit in &sorted {
             eprintln!("Found unit: {}", unit);
         }
-        
+
         assert!(failing.contains("foo.service"));
         assert!(failing.contains("bar.slice"));
         assert!(failing.contains("baz.timer"));

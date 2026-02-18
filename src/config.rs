@@ -167,20 +167,11 @@ impl Default for DBusStatsConfig {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct VerifyConfig {
     pub enabled: bool,
     pub allowlist: HashSet<String>,
     pub blocklist: HashSet<String>,
-}
-impl Default for VerifyConfig {
-    fn default() -> Self {
-        VerifyConfig {
-            enabled: false,
-            allowlist: HashSet::new(),
-            blocklist: HashSet::new(),
-        }
-    }
 }
 
 /// Config struct
