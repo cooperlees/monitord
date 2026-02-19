@@ -172,6 +172,11 @@ Is semi pretty too + custom. All unittested ...
 
 ```json
 {
+  "boot.blame.dnf5-automatic.service": 204.159,
+  "boot.blame.cpe_chef.service": 103.05,
+  "boot.blame.sys-module-fuse.device": 16.21,
+  "boot.blame.dev-ttyS0.device": 15.809,
+  "boot.blame.systemd-networkd-wait-online.service": 1.674,
   "dbus.active_connections": 10,
   "dbus.bus_names": 16,
   "dbus.incomplete_connections": 0,
