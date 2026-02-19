@@ -86,10 +86,7 @@ pub async fn update_boot_blame_stats(
     // Convert to HashMap
     let boot_blame_stats: BootBlameStats = unit_times.into_iter().collect();
 
-    debug!(
-        "Collected {} boot blame stats",
-        boot_blame_stats.len()
-    );
+    debug!("Collected {} boot blame stats", boot_blame_stats.len());
 
     // Update machine stats
     let mut stats = machine_stats.write().await;

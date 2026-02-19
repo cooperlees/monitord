@@ -20,9 +20,9 @@ pub enum MonitordError {
     ZbusError(#[from] zbus::Error),
 }
 
+pub mod boot;
 pub mod config;
 pub(crate) mod dbus;
-pub mod boot;
 pub mod dbus_stats;
 pub mod json;
 pub mod logging;
