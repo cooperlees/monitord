@@ -396,6 +396,7 @@ fn flatten_machines(
             &stats.units.timer_stats,
             &machine_key_prefix,
         ));
+        flat_stats.extend(flatten_boot_blame(&stats.boot_blame, &machine_key_prefix));
     }
 
     flat_stats
@@ -522,6 +523,29 @@ fn flatten_dbus_stats(
     flat_stats
 }
 
+fn flatten_boot_blame(
+    optional_boot_blame: &Option<crate::boot::BootBlameStats>,
+    key_prefix: &str,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let boot_blame_stats = match optional_boot_blame {
+        Some(bb) => bb,
+        None => {
+            debug!("Skipping flattening boot blame stats as we got None ...");
+            return flat_stats;
+        }
+    };
+
+    let base_metric_name = gen_base_metric_key(key_prefix, "boot.blame");
+
+    for (unit_name, activation_time) in boot_blame_stats.iter() {
+        let key = format!("{}.{}", base_metric_name, unit_name);
+        flat_stats.insert(key, (*activation_time).into());
+    }
+
+    flat_stats
+}
+
 /// Take the standard returned structs and move all to a flat BTreeMap<str, float|int> like JSON
 fn flatten_stats(
     stats_struct: &MonitordStats,
@@ -550,6 +574,7 @@ fn flatten_stats(
     );
     flat_stats.extend(flatten_machines(&stats_struct.machines, key_prefix));
     flat_stats.extend(flatten_dbus_stats(&stats_struct.dbus_stats, key_prefix));
+    flat_stats.extend(flatten_boot_blame(&stats_struct.boot_blame, key_prefix));
     flat_stats
 }
 
@@ -569,6 +594,9 @@ mod tests {
 
     // This will always be sorted / deterministic ...
     const EXPECTED_FLAT_JSON: &str = r###"{
+  "boot.blame.cpe_chef.service": 103.05,
+  "boot.blame.dnf5-automatic.service": 204.159,
+  "boot.blame.sys-module-fuse.device": 16.21,
   "machines.foo.networkd.managed_interfaces": 0,
   "machines.foo.system-state": 0,
   "machines.foo.timers.unittest.timer.accuracy_usec": 69,
@@ -703,6 +731,7 @@ mod tests {
                 .expect("Unable to make SystemdVersion struct"),
             machines: HashMap::from([(String::from("foo"), MachineStats::default())]),
             dbus_stats: None,
+            boot_blame: None,
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
@@ -759,13 +788,19 @@ mod tests {
                 time_in_state_usecs: None,
             },
         );
+        // Add boot blame stats
+        let mut boot_blame = crate::boot::BootBlameStats::new();
+        boot_blame.insert(String::from("dnf5-automatic.service"), 204.159);
+        boot_blame.insert(String::from("cpe_chef.service"), 103.050);
+        boot_blame.insert(String::from("sys-module-fuse.device"), 16.210);
+        stats.boot_blame = Some(boot_blame);
         stats
     }
 
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(102, json_flat_map.len());
+        assert_eq!(105, json_flat_map.len());
     }
 
     #[test]

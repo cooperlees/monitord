@@ -22,6 +22,7 @@ pub enum MonitordError {
 
 pub mod config;
 pub(crate) mod dbus;
+pub mod boot;
 pub mod dbus_stats;
 pub mod json;
 pub mod logging;
@@ -35,7 +36,7 @@ pub mod units;
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
 /// Stats collected for a single systemd-nspawn container or VM managed by systemd-machined
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct MachineStats {
     /// systemd-networkd interface states inside the container
     pub networkd: networkd::NetworkdState,
@@ -49,10 +50,13 @@ pub struct MachineStats {
     pub version: system::SystemdVersion,
     /// D-Bus daemon/broker statistics inside the container
     pub dbus_stats: Option<dbus_stats::DBusStats>,
+    /// Boot blame statistics: slowest units at boot with activation times in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boot_blame: Option<boot::BootBlameStats>,
 }
 
 /// Root struct containing all enabled monitord metrics for the host system and containers
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Default, PartialEq)]
 pub struct MonitordStats {
     /// systemd-networkd interface states and managed interface count
     pub networkd: networkd::NetworkdState,
@@ -68,6 +72,9 @@ pub struct MonitordStats {
     pub dbus_stats: Option<dbus_stats::DBusStats>,
     /// Per-container stats keyed by machine name, collected via systemd-machined
     pub machines: HashMap<String, MachineStats>,
+    /// Boot blame statistics: slowest units at boot with activation times in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boot_blame: Option<boot::BootBlameStats>,
 }
 
 /// Print statistics in the format set in configuration
@@ -178,6 +185,14 @@ pub async fn stat_collector(
             ));
         }
 
+        if config.boot_blame.enabled {
+            join_set.spawn(crate::boot::update_boot_blame_stats(
+                Arc::clone(&config),
+                sdc.clone(),
+                locked_machine_stats.clone(),
+            ));
+        }
+
         if join_set.len() == 1 {
             warn!("No collectors except systemd version scheduled to run. Exiting");
         }
@@ -207,6 +222,7 @@ pub async fn stat_collector(
             monitord_stats.version = machine_stats.version.clone();
             monitord_stats.units = machine_stats.units.clone();
             monitord_stats.dbus_stats = machine_stats.dbus_stats.clone();
+            monitord_stats.boot_blame = machine_stats.boot_blame.clone();
         }
 
         let elapsed_runtime_ms = collect_start_time.elapsed().as_millis();

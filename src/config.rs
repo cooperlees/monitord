@@ -167,6 +167,20 @@ impl Default for DBusStatsConfig {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BootBlameConfig {
+    pub enabled: bool,
+    pub num_slowest_units: u64,
+}
+impl Default for BootBlameConfig {
+    fn default() -> Self {
+        BootBlameConfig {
+            enabled: false,
+            num_slowest_units: 5,
+        }
+    }
+}
+
 /// Config struct
 /// Each section represents an ini file section
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -180,6 +194,7 @@ pub struct Config {
     pub timers: TimersConfig,
     pub units: UnitsConfig,
     pub dbus_stats: DBusStatsConfig,
+    pub boot_blame: BootBlameConfig,
 }
 
 impl TryFrom<Ini> for Config {
@@ -277,6 +292,12 @@ impl TryFrom<Ini> for Config {
         config.dbus_stats.peer_stats = read_config_bool(&ini_config, "dbus", "peer_stats")?;
         config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats")?;
 
+        // [boot] section
+        config.boot_blame.enabled = read_config_bool(&ini_config, "boot", "enabled")?;
+        if let Ok(Some(num_slowest_units)) = ini_config.getuint("boot", "num_slowest_units") {
+            config.boot_blame.num_slowest_units = num_slowest_units;
+        }
+
         Ok(config)
     }
 }
@@ -369,6 +390,10 @@ enabled = true
 user_stats = true
 peer_stats = true
 cgroup_stats = true
+
+[boot]
+enabled = true
+num_slowest_units = 10
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -443,6 +468,10 @@ output_format = json-flat
                 user_stats: true,
                 peer_stats: true,
                 cgroup_stats: true,
+            },
+            boot_blame: BootBlameConfig {
+                enabled: true,
+                num_slowest_units: 10,
             },
         };
 
