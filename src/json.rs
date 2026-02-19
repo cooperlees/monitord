@@ -704,6 +704,9 @@ mod tests {
   "units.timer_remain_after_elapse": 0,
   "units.timer_units": 0,
   "units.total_units": 0,
+  "verify.failing.service": 2,
+  "verify.failing.slice": 1,
+  "verify.failing.total": 3,
   "version": "255.7-1.fc40"
 }"###;
 
@@ -737,7 +740,13 @@ mod tests {
                 .expect("Unable to make SystemdVersion struct"),
             machines: HashMap::from([(String::from("foo"), MachineStats::default())]),
             dbus_stats: None,
-            verify_stats: None,
+            verify_stats: Some(crate::verify::VerifyStats {
+                total: 3,
+                by_type: HashMap::from([
+                    ("service".to_string(), 2),
+                    ("slice".to_string(), 1),
+                ]),
+            }),
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
@@ -800,7 +809,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(102, json_flat_map.len());
+        assert_eq!(105, json_flat_map.len());
     }
 
     #[test]
