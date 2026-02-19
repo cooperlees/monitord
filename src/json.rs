@@ -742,10 +742,7 @@ mod tests {
             dbus_stats: None,
             verify_stats: Some(crate::verify::VerifyStats {
                 total: 3,
-                by_type: HashMap::from([
-                    ("service".to_string(), 2),
-                    ("slice".to_string(), 1),
-                ]),
+                by_type: HashMap::from([("service".to_string(), 2), ("slice".to_string(), 1)]),
             }),
         };
         let service_unit_name = String::from("unittest.service");
