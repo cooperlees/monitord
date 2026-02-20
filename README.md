@@ -140,6 +140,14 @@ foo
 
 [machines.blocklist]
 bar
+
+# Boot blame metrics - shows the N slowest units at boot
+# Similar to `systemd-analyze blame`
+# Disabled by default
+[boot]
+enabled = false
+# Number of slowest units to report
+num_slowest_units = 5
 ```
 
 ## Machines support
