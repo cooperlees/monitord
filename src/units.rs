@@ -41,6 +41,8 @@ use crate::MachineStats;
 /// Aggregated systemd unit statistics: counts by type, load state, active state,
 /// plus optional per-service and per-timer detailed metrics
 pub struct SystemdUnitStats {
+    /// Number of units in the "activating" state (in the process of being started)
+    pub activating_units: u64,
     /// Number of units in the "active" state (currently started and running)
     pub active_units: u64,
     /// Number of automount units (on-demand filesystem mount points)
@@ -467,6 +469,7 @@ fn parse_unit(stats: &mut SystemdUnitStats, unit: &ListedUnit) {
     };
     // Count unit status
     match unit.active_state.as_str() {
+        "activating" => stats.activating_units += 1,
         "active" => stats.active_units += 1,
         "failed" => stats.failed_units += 1,
         "inactive" => stats.inactive_units += 1,
@@ -628,6 +631,7 @@ mod tests {
     async fn test_state_parse() -> Result<(), MonitordUnitsError> {
         let test_unit_name = String::from("apport-autoreport.timer");
         let expected_stats = SystemdUnitStats {
+            activating_units: 0,
             active_units: 0,
             automount_units: 0,
             device_units: 0,
@@ -690,6 +694,7 @@ mod tests {
     #[test]
     fn test_unit_parse() {
         let expected_stats = SystemdUnitStats {
+            activating_units: 0,
             active_units: 0,
             automount_units: 0,
             device_units: 0,
@@ -718,6 +723,17 @@ mod tests {
         let systemd_unit = get_unit_file();
         parse_unit(&mut stats, &systemd_unit);
         assert_eq!(expected_stats, stats);
+    }
+
+    #[test]
+    fn test_unit_parse_activating() {
+        let mut activating_unit = get_unit_file();
+        activating_unit.active_state = String::from("activating");
+        let mut stats = SystemdUnitStats::default();
+        parse_unit(&mut stats, &activating_unit);
+        assert_eq!(stats.activating_units, 1);
+        assert_eq!(stats.active_units, 0);
+        assert_eq!(stats.inactive_units, 0);
     }
 
     #[test]
