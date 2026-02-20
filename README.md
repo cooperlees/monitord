@@ -140,6 +140,21 @@ foo
 
 [machines.blocklist]
 bar
+
+# Unit verification using systemd-analyze verify
+# Disabled by default as it can be slow on large systems
+[verify]
+enabled = false
+
+# Optional: only verify specific units (if empty, all units are checked)
+[verify.allowlist]
+# example.service
+# example.timer
+
+# Optional: skip verification for specific units
+[verify.blocklist]
+# noisy.service
+# broken.timer
 ```
 
 ## Machines support
@@ -272,6 +287,11 @@ Is semi pretty too + custom. All unittested ...
   "units.target_units": 54,
   "units.timer_units": 20,
   "units.total_units": 562,
+  "verify.failing.device": 43,
+  "verify.failing.mount": 15,
+  "verify.failing.service": 31,
+  "verify.failing.slice": 1,
+  "verify.failing.total": 97,
   "version": "255.7-1.fc40"
 }
 ```

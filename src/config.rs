@@ -167,6 +167,13 @@ impl Default for DBusStatsConfig {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct VerifyConfig {
+    pub enabled: bool,
+    pub allowlist: HashSet<String>,
+    pub blocklist: HashSet<String>,
+}
+
 /// Config struct
 /// Each section represents an ini file section
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -180,6 +187,7 @@ pub struct Config {
     pub timers: TimersConfig,
     pub units: UnitsConfig,
     pub dbus_stats: DBusStatsConfig,
+    pub verify: VerifyConfig,
 }
 
 impl TryFrom<Ini> for Config {
@@ -276,6 +284,15 @@ impl TryFrom<Ini> for Config {
         config.dbus_stats.user_stats = read_config_bool(&ini_config, "dbus", "user_stats")?;
         config.dbus_stats.peer_stats = read_config_bool(&ini_config, "dbus", "peer_stats")?;
         config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats")?;
+
+        // [verify] section
+        config.verify.enabled = read_config_bool(&ini_config, "verify", "enabled")?;
+        if let Some(verify_allowlist) = config_map.get("verify.allowlist") {
+            config.verify.allowlist = verify_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(verify_blocklist) = config_map.get("verify.blocklist") {
+            config.verify.blocklist = verify_blocklist.keys().map(|s| s.to_string()).collect();
+        }
 
         Ok(config)
     }
@@ -443,6 +460,11 @@ output_format = json-flat
                 user_stats: true,
                 peer_stats: true,
                 cgroup_stats: true,
+            },
+            verify: VerifyConfig {
+                enabled: false,
+                allowlist: HashSet::new(),
+                blocklist: HashSet::new(),
             },
         };
 
