@@ -32,6 +32,7 @@ pub mod pid1;
 pub mod system;
 pub mod timer;
 pub mod units;
+pub mod verify;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
@@ -53,6 +54,8 @@ pub struct MachineStats {
     /// Boot blame statistics: slowest units at boot with activation times in seconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub boot_blame: Option<boot::BootBlameStats>,
+    /// Unit verification error statistics
+    pub verify_stats: Option<verify::VerifyStats>,
 }
 
 /// Root struct containing all enabled monitord metrics for the host system and containers
@@ -75,6 +78,8 @@ pub struct MonitordStats {
     /// Boot blame statistics: slowest units at boot with activation times in seconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub boot_blame: Option<boot::BootBlameStats>,
+    /// Unit verification error statistics
+    pub verify_stats: Option<verify::VerifyStats>,
 }
 
 /// Print statistics in the format set in configuration
@@ -193,6 +198,15 @@ pub async fn stat_collector(
             ));
         }
 
+        if config.verify.enabled {
+            join_set.spawn(crate::verify::update_verify_stats(
+                sdc.clone(),
+                locked_machine_stats.clone(),
+                config.verify.allowlist.clone(),
+                config.verify.blocklist.clone(),
+            ));
+        }
+
         if join_set.len() == 1 {
             warn!("No collectors except systemd version scheduled to run. Exiting");
         }
@@ -223,6 +237,7 @@ pub async fn stat_collector(
             monitord_stats.units = machine_stats.units.clone();
             monitord_stats.dbus_stats = machine_stats.dbus_stats.clone();
             monitord_stats.boot_blame = machine_stats.boot_blame.clone();
+            monitord_stats.verify_stats = machine_stats.verify_stats.clone();
         }
 
         let elapsed_runtime_ms = collect_start_time.elapsed().as_millis();

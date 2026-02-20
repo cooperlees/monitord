@@ -181,6 +181,13 @@ impl Default for BootBlameConfig {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct VerifyConfig {
+    pub enabled: bool,
+    pub allowlist: HashSet<String>,
+    pub blocklist: HashSet<String>,
+}
+
 /// Config struct
 /// Each section represents an ini file section
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -195,6 +202,7 @@ pub struct Config {
     pub units: UnitsConfig,
     pub dbus_stats: DBusStatsConfig,
     pub boot_blame: BootBlameConfig,
+    pub verify: VerifyConfig,
 }
 
 impl TryFrom<Ini> for Config {
@@ -296,6 +304,15 @@ impl TryFrom<Ini> for Config {
         config.boot_blame.enabled = read_config_bool(&ini_config, "boot", "enabled")?;
         if let Ok(Some(num_slowest_units)) = ini_config.getuint("boot", "num_slowest_units") {
             config.boot_blame.num_slowest_units = num_slowest_units;
+        }
+
+        // [verify] section
+        config.verify.enabled = read_config_bool(&ini_config, "verify", "enabled")?;
+        if let Some(verify_allowlist) = config_map.get("verify.allowlist") {
+            config.verify.allowlist = verify_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(verify_blocklist) = config_map.get("verify.blocklist") {
+            config.verify.blocklist = verify_blocklist.keys().map(|s| s.to_string()).collect();
         }
 
         Ok(config)
@@ -472,6 +489,11 @@ output_format = json-flat
             boot_blame: BootBlameConfig {
                 enabled: true,
                 num_slowest_units: 10,
+            },
+            verify: VerifyConfig {
+                enabled: false,
+                allowlist: HashSet::new(),
+                blocklist: HashSet::new(),
             },
         };
 

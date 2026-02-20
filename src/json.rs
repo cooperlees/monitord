@@ -397,6 +397,10 @@ fn flatten_machines(
             &machine_key_prefix,
         ));
         flat_stats.extend(flatten_boot_blame(&stats.boot_blame, &machine_key_prefix));
+        flat_stats.extend(flatten_verify_stats(
+            &stats.verify_stats,
+            &machine_key_prefix,
+        ));
     }
 
     flat_stats
@@ -546,6 +550,35 @@ fn flatten_boot_blame(
     flat_stats
 }
 
+fn flatten_verify_stats(
+    optional_verify_stats: &Option<crate::verify::VerifyStats>,
+    key_prefix: &str,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let verify_stats = match optional_verify_stats {
+        Some(vs) => vs,
+        None => {
+            debug!("Skipping flattening verify stats as we got None ...");
+            return flat_stats;
+        }
+    };
+
+    let base_metric_name = gen_base_metric_key(key_prefix, "verify.failing");
+
+    // Add total count
+    flat_stats.insert(
+        format!("{base_metric_name}.total"),
+        verify_stats.total.into(),
+    );
+
+    // Add counts by type (only if they exist)
+    for (unit_type, count) in &verify_stats.by_type {
+        flat_stats.insert(format!("{base_metric_name}.{unit_type}"), (*count).into());
+    }
+
+    flat_stats
+}
+
 /// Take the standard returned structs and move all to a flat BTreeMap<str, float|int> like JSON
 fn flatten_stats(
     stats_struct: &MonitordStats,
@@ -575,6 +608,7 @@ fn flatten_stats(
     flat_stats.extend(flatten_machines(&stats_struct.machines, key_prefix));
     flat_stats.extend(flatten_dbus_stats(&stats_struct.dbus_stats, key_prefix));
     flat_stats.extend(flatten_boot_blame(&stats_struct.boot_blame, key_prefix));
+    flat_stats.extend(flatten_verify_stats(&stats_struct.verify_stats, key_prefix));
     flat_stats
 }
 
@@ -698,6 +732,9 @@ mod tests {
   "units.timer_remain_after_elapse": 0,
   "units.timer_units": 0,
   "units.total_units": 0,
+  "verify.failing.service": 2,
+  "verify.failing.slice": 1,
+  "verify.failing.total": 3,
   "version": "255.7-1.fc40"
 }"###;
 
@@ -732,6 +769,10 @@ mod tests {
             machines: HashMap::from([(String::from("foo"), MachineStats::default())]),
             dbus_stats: None,
             boot_blame: None,
+            verify_stats: Some(crate::verify::VerifyStats {
+                total: 3,
+                by_type: HashMap::from([("service".to_string(), 2), ("slice".to_string(), 1)]),
+            }),
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
@@ -800,7 +841,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(105, json_flat_map.len());
+        assert_eq!(108, json_flat_map.len());
     }
 
     #[test]
