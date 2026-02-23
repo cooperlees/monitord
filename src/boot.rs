@@ -63,6 +63,18 @@ pub async fn update_boot_blame_stats(
         let unit_name = unit_info.0;
         let unit_path = unit_info.6;
 
+        // Apply blocklist: skip units explicitly excluded
+        if config.boot_blame.blocklist.contains(&unit_name) {
+            debug!("Skipping boot blame for {} due to blocklist", &unit_name);
+            continue;
+        }
+        // Apply allowlist: if non-empty, only include listed units
+        if !config.boot_blame.allowlist.is_empty()
+            && !config.boot_blame.allowlist.contains(&unit_name)
+        {
+            continue;
+        }
+
         match get_unit_activation_time(&connection, &unit_path).await {
             Ok(time) if time > 0.0 => {
                 unit_times.push((unit_name, time));

@@ -149,6 +149,15 @@ enabled = false
 # Number of slowest units to report
 num_slowest_units = 5
 
+# Optional: only include specific units in boot blame (if empty, all units are checked)
+# Same rules apply as state_stats lists above
+[boot.allowlist]
+# slow-startup.service
+
+# Optional: exclude specific units from boot blame
+[boot.blocklist]
+# noisy-but-expected.service
+
 # Unit verification using systemd-analyze verify
 # Disabled by default as it can be slow on large systems
 [verify]

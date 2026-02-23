@@ -171,12 +171,16 @@ impl Default for DBusStatsConfig {
 pub struct BootBlameConfig {
     pub enabled: bool,
     pub num_slowest_units: u64,
+    pub allowlist: HashSet<String>,
+    pub blocklist: HashSet<String>,
 }
 impl Default for BootBlameConfig {
     fn default() -> Self {
         BootBlameConfig {
             enabled: false,
             num_slowest_units: 5,
+            allowlist: HashSet::new(),
+            blocklist: HashSet::new(),
         }
     }
 }
@@ -305,6 +309,12 @@ impl TryFrom<Ini> for Config {
         if let Ok(Some(num_slowest_units)) = ini_config.getuint("boot", "num_slowest_units") {
             config.boot_blame.num_slowest_units = num_slowest_units;
         }
+        if let Some(boot_allowlist) = config_map.get("boot.allowlist") {
+            config.boot_blame.allowlist = boot_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(boot_blocklist) = config_map.get("boot.blocklist") {
+            config.boot_blame.blocklist = boot_blocklist.keys().map(|s| s.to_string()).collect();
+        }
 
         // [verify] section
         config.verify.enabled = read_config_bool(&ini_config, "verify", "enabled")?;
@@ -411,6 +421,12 @@ cgroup_stats = true
 [boot]
 enabled = true
 num_slowest_units = 10
+
+[boot.allowlist]
+foo.service
+
+[boot.blocklist]
+bar.service
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -489,6 +505,8 @@ output_format = json-flat
             boot_blame: BootBlameConfig {
                 enabled: true,
                 num_slowest_units: 10,
+                allowlist: HashSet::from([String::from("foo.service")]),
+                blocklist: HashSet::from([String::from("bar.service")]),
             },
             verify: VerifyConfig {
                 enabled: false,
