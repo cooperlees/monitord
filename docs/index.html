@@ -366,6 +366,38 @@ foo
 
 [machines.blocklist]
 bar
+
+# Boot blame metrics - shows the N slowest units at boot
+# Similar to `systemd-analyze blame`
+# Disabled by default
+[boot]
+enabled = false
+# Number of slowest units to report
+num_slowest_units = 5
+
+# Optional: only include specific units in boot blame (if empty, all units are checked)
+# Same rules apply as state_stats lists above
+[boot.allowlist]
+# slow-startup.service
+
+# Optional: exclude specific units from boot blame
+[boot.blocklist]
+# noisy-but-expected.service
+
+# Unit verification using systemd-analyze verify
+# Disabled by default as it can be slow on large systems
+[verify]
+enabled = false
+
+# Optional: only verify specific units (if empty, all units are checked)
+[verify.allowlist]
+# example.service
+# example.timer
+
+# Optional: skip verification for specific units
+[verify.blocklist]
+# noisy.service
+# broken.timer
 </code></pre>
 <h2>Machines support</h2>
 <p>From version <code>&gt;=0.11</code> monitord supports obtaining the same set of key from
@@ -386,6 +418,11 @@ the <code>machine</code> keyword and machine name. For example:</p>
 <p>Move all key value pairs to the top level and . notate compononets + sub values.
 Is semi pretty too + custom. All unittested ...</p>
 <pre><code class="language-json">{
+  &quot;boot.blame.dnf5-automatic.service&quot;: 204.159,
+  &quot;boot.blame.cpe_chef.service&quot;: 103.05,
+  &quot;boot.blame.sys-module-fuse.device&quot;: 16.21,
+  &quot;boot.blame.dev-ttyS0.device&quot;: 15.809,
+  &quot;boot.blame.systemd-networkd-wait-online.service&quot;: 1.674,
   &quot;dbus.active_connections&quot;: 10,
   &quot;dbus.bus_names&quot;: 16,
   &quot;dbus.incomplete_connections&quot;: 0,
@@ -468,6 +505,7 @@ Is semi pretty too + custom. All unittested ...</p>
   &quot;unit_states.chronyd.service.active_state&quot;: 1,
   &quot;unit_states.chronyd.service.loaded_state&quot;: 1,
   &quot;unit_states.chronyd.service.unhealthy&quot;: 0,
+  &quot;units.activating_units&quot;: 0,
   &quot;units.active_units&quot;: 403,
   &quot;units.automount_units&quot;: 1,
   &quot;units.device_units&quot;: 150,
@@ -486,6 +524,11 @@ Is semi pretty too + custom. All unittested ...</p>
   &quot;units.target_units&quot;: 54,
   &quot;units.timer_units&quot;: 20,
   &quot;units.total_units&quot;: 562,
+  &quot;verify.failing.device&quot;: 43,
+  &quot;verify.failing.mount&quot;: 15,
+  &quot;verify.failing.service&quot;: 31,
+  &quot;verify.failing.slice&quot;: 1,
+  &quot;verify.failing.total&quot;: 97,
   &quot;version&quot;: &quot;255.7-1.fc40&quot;
 }
 </code></pre>

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["get_pid_stats","update_pid1_stats"],"struct":["Pid1Stats"]};
+window.SIDEBAR_ITEMS = {"enum":["MonitordPid1Error"],"fn":["get_pid_stats","update_pid1_stats"],"struct":["Pid1Stats"]};

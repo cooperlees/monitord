@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["DEFAULT_DBUS_ADDRESS"],"fn":["print_stats","stat_collector"],"mod":["config","dbus_stats","json","logging","machines","networkd","pid1","system","timer","units"],"struct":["MachineStats","MonitordStats"]};
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_DBUS_ADDRESS"],"enum":["MonitordError"],"fn":["print_stats","stat_collector"],"mod":["boot","config","dbus_stats","json","logging","machines","networkd","pid1","system","timer","units","verify"],"struct":["MachineStats","MonitordStats"]};
