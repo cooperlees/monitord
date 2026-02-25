@@ -20,10 +20,28 @@ use zlink::unix;
 
 pub const METRICS_SOCKET_PATH: &str = "/run/systemd/report/io.systemd.Manager";
 
-/// Parse a string value from a metric into an enum type with a default fallback
-fn parse_metric_enum<T: FromStr>(metric: &ListOutput, default: T) -> T {
-    let value_str = metric.value_as_string("" /* default_value */);
-    T::from_str(value_str).unwrap_or(default)
+/// Parse a string value from a metric into an enum type, warning on failure
+fn parse_metric_enum<T: FromStr>(metric: &ListOutput) -> Option<T> {
+    if !metric.value().is_string() {
+        warn!(
+            "Metric {} has non-string value: {:?}",
+            metric.name(),
+            metric.value()
+        );
+        return None;
+    }
+    let value_str = metric.value_as_string();
+    match T::from_str(value_str) {
+        Ok(v) => Some(v),
+        Err(_) => {
+            warn!(
+                "Metric {} has unrecognized value: {:?}",
+                metric.name(),
+                value_str
+            );
+            None
+        }
+    }
 }
 
 /// Check if a unit name should be skipped based on allowlist/blocklist
@@ -50,45 +68,102 @@ pub fn parse_one_metric(
     let object_name = metric.object_name();
 
     match metric_name_suffix {
-        "unit_active_state" => {
+        "UnitActiveState" => {
             if should_skip_unit(&object_name, config) {
                 return Ok(());
             }
+            let active_state: SystemdUnitActiveState = match parse_metric_enum(metric) {
+                Some(v) => v,
+                None => return Ok(()),
+            };
             let unit_state = stats
                 .unit_states
                 .entry(object_name.to_string())
                 .or_default();
-            unit_state.active_state = parse_metric_enum(metric, SystemdUnitActiveState::unknown);
+            unit_state.active_state = active_state;
             unit_state.unhealthy =
                 is_unit_unhealthy(unit_state.active_state, unit_state.load_state);
         }
-        "unit_load_state" => {
+        "UnitLoadState" => {
             if should_skip_unit(&object_name, config) {
                 return Ok(());
             }
-            let value = metric.value_as_string("" /* default_value */);
+            if !metric.value().is_string() {
+                warn!(
+                    "Metric {} has non-string value: {:?}",
+                    metric.name(),
+                    metric.value()
+                );
+                return Ok(());
+            }
+            let value = metric.value_as_string();
+            let load_state = match SystemdUnitLoadState::from_str(value) {
+                Ok(v) => v,
+                Err(_) => {
+                    warn!(
+                        "Metric {} has unrecognized value: {:?}",
+                        metric.name(),
+                        value
+                    );
+                    return Ok(());
+                }
+            };
             let unit_state = stats
                 .unit_states
                 .entry(object_name.to_string())
                 .or_default();
-            unit_state.load_state =
-                SystemdUnitLoadState::from_str(value).unwrap_or(SystemdUnitLoadState::unknown);
+            unit_state.load_state = load_state;
             unit_state.unhealthy =
                 is_unit_unhealthy(unit_state.active_state, unit_state.load_state);
         }
-        "nrestarts" => {
+        "NRestarts" => {
             if should_skip_unit(&object_name, config) {
                 return Ok(());
             }
+            if !metric.value().is_i64() {
+                warn!(
+                    "Metric {} has non-integer value: {:?}",
+                    metric.name(),
+                    metric.value()
+                );
+                return Ok(());
+            }
+            let value = metric.value_as_int();
+            let nrestarts: u32 = match value.try_into() {
+                Ok(v) => v,
+                Err(_) => {
+                    warn!(
+                        "Metric {} has out-of-range value for u32: {}",
+                        metric.name(),
+                        value
+                    );
+                    return Ok(());
+                }
+            };
             stats
                 .service_stats
                 .entry(object_name.to_string())
                 .or_default()
-                .nrestarts = metric.value_as_int(0 /* default_value */) as u32;
+                .nrestarts = nrestarts;
         }
-        "units_by_type_total" => {
+        "UnitsByTypeTotal" => {
             if let Some(type_str) = metric.get_field_as_str("type") {
-                let value = metric.value_as_int(0 /* default_value */);
+                if !metric.value().is_i64() {
+                    warn!(
+                        "Metric {} has non-integer value: {:?}",
+                        metric.name(),
+                        metric.value()
+                    );
+                    return Ok(());
+                }
+                let value = metric.value_as_int();
+                let value: u64 = match value.try_into() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        warn!("Metric {} has negative value: {}", metric.name(), value);
+                        return Ok(());
+                    }
+                };
                 match type_str {
                     "automount" => stats.automount_units = value,
                     "device" => stats.device_units = value,
@@ -104,9 +179,24 @@ pub fn parse_one_metric(
                 }
             }
         }
-        "units_by_state_total" => {
+        "UnitsByStateTotal" => {
             if let Some(state_str) = metric.get_field_as_str("state") {
-                let value = metric.value_as_int(0 /* default_value */);
+                if !metric.value().is_i64() {
+                    warn!(
+                        "Metric {} has non-integer value: {:?}",
+                        metric.name(),
+                        metric.value()
+                    );
+                    return Ok(());
+                }
+                let value = metric.value_as_int();
+                let value: u64 = match value.try_into() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        warn!("Metric {} has negative value: {}", metric.name(), value);
+                        return Ok(());
+                    }
+                };
                 match state_str {
                     "active" => stats.active_units = value,
                     "failed" => stats.failed_units = value,
@@ -173,7 +263,7 @@ pub async fn parse_metrics(
 pub async fn get_unit_stats(
     config: &crate::config::Config,
     socket_path: &str,
-) -> std::result::Result<SystemdUnitStats, Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<SystemdUnitStats> {
     if !config.units.state_stats_allowlist.is_empty() {
         debug!(
             "Using unit state allowlist: {:?}",
@@ -200,27 +290,14 @@ pub async fn get_unit_stats(
 }
 
 /// Async wrapper that can update unit stats when passed a locked struct.
-/// Falls back to D-Bus collection if varlink fails.
 pub async fn update_unit_stats(
     config: Arc<crate::config::Config>,
-    connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
     socket_path: String,
 ) -> anyhow::Result<()> {
-    match get_unit_stats(&config, &socket_path).await {
-        Ok(units_stats) => {
-            let mut machine_stats = locked_machine_stats.write().await;
-            machine_stats.units = units_stats;
-        }
-        Err(err) => {
-            warn!(
-                "Varlink units stats failed, falling back to D-Bus: {:?}",
-                err
-            );
-            crate::units::update_unit_stats(Arc::clone(&config), connection, locked_machine_stats)
-                .await?;
-        }
-    }
+    let units_stats = get_unit_stats(&config, &socket_path).await?;
+    let mut machine_stats = locked_machine_stats.write().await;
+    machine_stats.units = units_stats;
     Ok(())
 }
 
@@ -257,7 +334,7 @@ mod tests {
         let config = default_units_config();
 
         let metric = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("active"),
             object: Some("my-service.service".to_string()),
             fields: None,
@@ -281,7 +358,7 @@ mod tests {
         let config = default_units_config();
 
         let metric = ListOutput {
-            name: "io.systemd.unit_load_state".to_string(),
+            name: "io.systemd.Manager.UnitLoadState".to_string(),
             value: string_value("not_found"), // Enum variant name uses underscore
             object: Some("missing.service".to_string()),
             fields: None,
@@ -301,7 +378,7 @@ mod tests {
         let config = default_units_config();
 
         let metric = ListOutput {
-            name: "io.systemd.nrestarts".to_string(),
+            name: "io.systemd.Manager.NRestarts".to_string(),
             value: int_value(5),
             object: Some("my-service.service".to_string()),
             fields: None,
@@ -324,9 +401,9 @@ mod tests {
         let mut stats = SystemdUnitStats::default();
         let config = default_units_config();
 
-        // Test units_by_type_total
+        // Test UnitsByTypeTotal
         let type_metric = ListOutput {
-            name: "io.systemd.units_by_type_total".to_string(),
+            name: "io.systemd.Manager.UnitsByTypeTotal".to_string(),
             value: int_value(42),
             object: None,
             fields: Some(std::collections::HashMap::from([(
@@ -337,9 +414,9 @@ mod tests {
         parse_one_metric(&mut stats, &type_metric, &config).unwrap();
         assert_eq!(stats.service_units, 42);
 
-        // Test units_by_state_total
+        // Test UnitsByStateTotal
         let state_metric = ListOutput {
-            name: "io.systemd.units_by_state_total".to_string(),
+            name: "io.systemd.Manager.UnitsByStateTotal".to_string(),
             value: int_value(10),
             object: None,
             fields: Some(std::collections::HashMap::from([(
@@ -358,19 +435,19 @@ mod tests {
 
         let metrics = vec![
             ListOutput {
-                name: "io.systemd.unit_active_state".to_string(),
+                name: "io.systemd.Manager.UnitActiveState".to_string(),
                 value: string_value("active"),
                 object: Some("service1.service".to_string()),
                 fields: None,
             },
             ListOutput {
-                name: "io.systemd.unit_load_state".to_string(),
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
                 value: string_value("loaded"),
                 object: Some("service1.service".to_string()),
                 fields: None,
             },
             ListOutput {
-                name: "io.systemd.unit_active_state".to_string(),
+                name: "io.systemd.Manager.UnitActiveState".to_string(),
                 value: string_value("failed"),
                 object: Some("service-2.service".to_string()),
                 fields: None,
@@ -413,30 +490,30 @@ mod tests {
         let mut stats = SystemdUnitStats::default();
         let config = default_units_config();
 
-        // Unknown active state defaults to unknown
+        // Unknown active state is skipped (not silently defaulted)
         let metric1 = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("invalid_state"),
             object: Some("test.service".to_string()),
             fields: None,
         };
         parse_one_metric(&mut stats, &metric1, &config).unwrap();
-        assert_eq!(
-            stats.unit_states.get("test.service").unwrap().active_state,
-            SystemdUnitActiveState::unknown
+        assert!(
+            !stats.unit_states.contains_key("test.service"),
+            "invalid state should be skipped"
         );
 
-        // Missing nrestarts value defaults to 0
+        // Missing nrestarts value (null) is skipped
         let metric2 = ListOutput {
-            name: "io.systemd.nrestarts".to_string(),
+            name: "io.systemd.Manager.NRestarts".to_string(),
             value: empty_value(),
             object: Some("test2.service".to_string()),
             fields: None,
         };
         parse_one_metric(&mut stats, &metric2, &config).unwrap();
-        assert_eq!(
-            stats.service_stats.get("test2.service").unwrap().nrestarts,
-            0
+        assert!(
+            !stats.service_stats.contains_key("test2.service"),
+            "null value should be skipped"
         );
     }
 
@@ -447,7 +524,7 @@ mod tests {
 
         // Unknown unit type is ignored gracefully
         let metric1 = ListOutput {
-            name: "io.systemd.units_by_type_total".to_string(),
+            name: "io.systemd.Manager.UnitsByTypeTotal".to_string(),
             value: int_value(999),
             object: None,
             fields: Some(std::collections::HashMap::from([(
@@ -460,7 +537,7 @@ mod tests {
 
         // Metric with no fields is handled gracefully
         let metric2 = ListOutput {
-            name: "io.systemd.units_by_type_total".to_string(),
+            name: "io.systemd.Manager.UnitsByTypeTotal".to_string(),
             value: int_value(42),
             object: None,
             fields: None,
@@ -469,7 +546,7 @@ mod tests {
 
         // Non-string field value is ignored
         let metric3 = ListOutput {
-            name: "io.systemd.units_by_type_total".to_string(),
+            name: "io.systemd.Manager.UnitsByTypeTotal".to_string(),
             value: int_value(42),
             object: None,
             fields: Some(std::collections::HashMap::from([(
@@ -481,7 +558,7 @@ mod tests {
 
         // Unhandled metric name is ignored
         let metric4 = ListOutput {
-            name: "io.systemd.unknown_metric".to_string(),
+            name: "io.systemd.Manager.UnknownMetric".to_string(),
             value: int_value(999),
             object: Some("test.service".to_string()),
             fields: None,
@@ -513,49 +590,49 @@ mod tests {
     #[test]
     fn test_parse_metric_enum() {
         let metric_active = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("active"),
             object: Some("test.service".to_string()),
             fields: None,
         };
         assert_eq!(
-            parse_metric_enum(&metric_active, SystemdUnitActiveState::unknown),
-            SystemdUnitActiveState::active
+            parse_metric_enum::<SystemdUnitActiveState>(&metric_active),
+            Some(SystemdUnitActiveState::active)
         );
 
         let metric_loaded = ListOutput {
-            name: "io.systemd.unit_load_state".to_string(),
+            name: "io.systemd.Manager.UnitLoadState".to_string(),
             value: string_value("loaded"),
             object: Some("test.service".to_string()),
             fields: None,
         };
         assert_eq!(
-            parse_metric_enum(&metric_loaded, SystemdUnitLoadState::unknown),
-            SystemdUnitLoadState::loaded
+            parse_metric_enum::<SystemdUnitLoadState>(&metric_loaded),
+            Some(SystemdUnitLoadState::loaded)
         );
 
-        // Invalid value uses default
+        // Invalid value returns None
         let metric_invalid = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("invalid"),
             object: Some("test.service".to_string()),
             fields: None,
         };
         assert_eq!(
-            parse_metric_enum(&metric_invalid, SystemdUnitActiveState::unknown),
-            SystemdUnitActiveState::unknown
+            parse_metric_enum::<SystemdUnitActiveState>(&metric_invalid),
+            None
         );
 
-        // Empty value uses default
+        // Null value returns None
         let metric_empty = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: empty_value(),
             object: Some("test.service".to_string()),
             fields: None,
         };
         assert_eq!(
-            parse_metric_enum(&metric_empty, SystemdUnitActiveState::unknown),
-            SystemdUnitActiveState::unknown
+            parse_metric_enum::<SystemdUnitActiveState>(&metric_empty),
+            None
         );
     }
 
@@ -573,14 +650,14 @@ mod tests {
 
         for (state_str, expected) in active_states {
             let metric = ListOutput {
-                name: "io.systemd.unit_active_state".to_string(),
+                name: "io.systemd.Manager.UnitActiveState".to_string(),
                 value: string_value(state_str),
                 object: Some("test.service".to_string()),
                 fields: None,
             };
             assert_eq!(
-                parse_metric_enum(&metric, SystemdUnitActiveState::unknown),
-                expected
+                parse_metric_enum::<SystemdUnitActiveState>(&metric),
+                Some(expected)
             );
         }
 
@@ -594,14 +671,14 @@ mod tests {
 
         for (state_str, expected) in load_states {
             let metric = ListOutput {
-                name: "io.systemd.unit_load_state".to_string(),
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
                 value: string_value(state_str),
                 object: Some("test.service".to_string()),
                 fields: None,
             };
             assert_eq!(
-                parse_metric_enum(&metric, SystemdUnitLoadState::unknown),
-                expected
+                parse_metric_enum::<SystemdUnitLoadState>(&metric),
+                Some(expected)
             );
         }
     }
@@ -613,7 +690,7 @@ mod tests {
 
         // Parse initial state
         let metric1 = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("inactive"),
             object: Some("test.service".to_string()),
             fields: None,
@@ -626,7 +703,7 @@ mod tests {
 
         // Update to active state
         let metric2 = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("active"),
             object: Some("test.service".to_string()),
             fields: None,
@@ -645,7 +722,7 @@ mod tests {
 
         // Set active state to failed
         let metric1 = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("failed"),
             object: Some("broken.service".to_string()),
             fields: None,
@@ -654,7 +731,7 @@ mod tests {
 
         // Set load state to loaded
         let metric2 = ListOutput {
-            name: "io.systemd.unit_load_state".to_string(),
+            name: "io.systemd.Manager.UnitLoadState".to_string(),
             value: string_value("loaded"),
             object: Some("broken.service".to_string()),
             fields: None,
@@ -666,7 +743,7 @@ mod tests {
 
         // Set active state to active
         let metric3 = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("active"),
             object: Some("healthy.service".to_string()),
             fields: None,
@@ -675,7 +752,7 @@ mod tests {
 
         // Set load state to loaded
         let metric4 = ListOutput {
-            name: "io.systemd.unit_load_state".to_string(),
+            name: "io.systemd.Manager.UnitLoadState".to_string(),
             value: string_value("loaded"),
             object: Some("healthy.service".to_string()),
             fields: None,
@@ -699,7 +776,7 @@ mod tests {
 
         // Allowed unit should be tracked
         let metric1 = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("active"),
             object: Some("allowed.service".to_string()),
             fields: None,
@@ -709,7 +786,7 @@ mod tests {
 
         // Non-allowed unit should be skipped
         let metric2 = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("active"),
             object: Some("not-allowed.service".to_string()),
             fields: None,
@@ -731,7 +808,7 @@ mod tests {
 
         // Blocked unit should be skipped
         let metric1 = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("active"),
             object: Some("blocked.service".to_string()),
             fields: None,
@@ -741,7 +818,7 @@ mod tests {
 
         // Non-blocked unit should be tracked
         let metric2 = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("active"),
             object: Some("ok.service".to_string()),
             fields: None,
@@ -763,7 +840,7 @@ mod tests {
 
         // Unit in both lists should be blocked (blocklist takes priority)
         let metric = ListOutput {
-            name: "io.systemd.unit_active_state".to_string(),
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
             value: string_value("active"),
             object: Some("both.service".to_string()),
             fields: None,
