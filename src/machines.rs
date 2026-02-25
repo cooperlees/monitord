@@ -102,11 +102,25 @@ pub async fn update_machines_stats(
         ));
 
         if config.units.enabled {
-            join_set.spawn(crate::units::update_unit_stats(
-                Arc::clone(&config),
-                sdc.clone(),
-                locked_machine_stats.clone(),
-            ));
+            if config.varlink.enabled {
+                let container_socket_path = format!(
+                    "/proc/{}/root{}",
+                    leader_pid,
+                    crate::varlink_units::METRICS_SOCKET_PATH
+                );
+                join_set.spawn(crate::varlink_units::update_unit_stats(
+                    Arc::clone(&config),
+                    sdc.clone(),
+                    locked_machine_stats.clone(),
+                    container_socket_path,
+                ));
+            } else {
+                join_set.spawn(crate::units::update_unit_stats(
+                    Arc::clone(&config),
+                    sdc.clone(),
+                    locked_machine_stats.clone(),
+                ));
+            }
         }
 
         if config.dbus_stats.enabled {

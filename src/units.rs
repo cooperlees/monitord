@@ -9,11 +9,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use int_enum::IntEnum;
-use serde_repr::*;
 use struct_field_names_as_array::FieldNamesAsArray;
-use strum_macros::EnumIter;
-use strum_macros::EnumString;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::debug;
@@ -33,6 +29,11 @@ pub enum MonitordUnitsError {
 
 use crate::timer::TimerStats;
 use crate::MachineStats;
+
+// Re-export the enums and function from unit_constants for backwards compatibility
+pub use crate::unit_constants::is_unit_unhealthy;
+pub use crate::unit_constants::SystemdUnitActiveState;
+pub use crate::unit_constants::SystemdUnitLoadState;
 
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
@@ -153,75 +154,6 @@ pub struct UnitStates {
 // Reference: https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html
 // SubState can be unit-type-specific so can't enum
 
-/// Systemd unit active states representing the unit's runtime lifecycle.
-/// Ref: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
-#[allow(non_camel_case_types)]
-#[derive(
-    Serialize_repr,
-    Deserialize_repr,
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Eq,
-    PartialEq,
-    EnumIter,
-    EnumString,
-    IntEnum,
-    strum_macros::Display,
-)]
-#[repr(u8)]
-pub enum SystemdUnitActiveState {
-    /// State could not be determined
-    #[default]
-    unknown = 0,
-    /// Unit is currently running / started
-    active = 1,
-    /// Unit is reloading its configuration
-    reloading = 2,
-    /// Unit is not running
-    inactive = 3,
-    /// Unit has failed (process exited with error, crashed, or an operation timed out)
-    failed = 4,
-    /// Unit is in the process of being started
-    activating = 5,
-    /// Unit is in the process of being stopped
-    deactivating = 6,
-}
-
-/// Systemd unit load states indicating whether the unit file was successfully read.
-/// Ref: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
-#[allow(non_camel_case_types)]
-#[derive(
-    Serialize_repr,
-    Deserialize_repr,
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Eq,
-    PartialEq,
-    EnumIter,
-    EnumString,
-    IntEnum,
-    strum_macros::Display,
-)]
-#[repr(u8)]
-pub enum SystemdUnitLoadState {
-    /// Load state could not be determined
-    #[default]
-    unknown = 0,
-    /// Unit file was successfully parsed and loaded into memory
-    loaded = 1,
-    /// Unit file could not be parsed or an error occurred during loading
-    error = 2,
-    /// Unit is masked (symlinked to /dev/null), preventing it from being started
-    masked = 3,
-    /// Unit file does not exist on disk
-    not_found = 4,
-}
-
-/// Representation of the returned Tuple from list_units - Better typing etc.
 #[derive(Debug)]
 pub struct ListedUnit {
     pub name: String,                      // The primary unit name
@@ -355,24 +287,6 @@ async fn parse_service(
         timeout_clean_usec: timeout_clean_usec?,
         watchdog_usec: watchdog_usec?,
     })
-}
-
-/// Check if we're a loaded unit and if so evaluate if we're acitive or not
-/// If we're not
-/// Only potentially mark unhealthy for LOADED units that are not active
-pub fn is_unit_unhealthy(
-    active_state: SystemdUnitActiveState,
-    load_state: SystemdUnitLoadState,
-) -> bool {
-    match load_state {
-        // We're loaded so let's see if we're active or not
-        SystemdUnitLoadState::loaded => !matches!(active_state, SystemdUnitActiveState::active),
-        // An admin can change a unit to be masked on purpose
-        // so we are going to ignore all masked units due to that
-        SystemdUnitLoadState::masked => false,
-        // Otherwise, we're unhealthy
-        _ => true,
-    }
 }
 
 async fn get_time_in_state(
@@ -596,35 +510,6 @@ mod tests {
             job_type: String::from(""),
             job_object_path: ObjectPath::try_from("/").unwrap().into(),
         }
-    }
-
-    #[test]
-    fn test_is_unit_healthy() {
-        // Obvious active/loaded is healthy
-        assert!(!is_unit_unhealthy(
-            SystemdUnitActiveState::active,
-            SystemdUnitLoadState::loaded
-        ));
-        // Not active + loaded is not healthy
-        assert!(is_unit_unhealthy(
-            SystemdUnitActiveState::activating,
-            SystemdUnitLoadState::loaded
-        ));
-        // Not loaded + anything is just marked healthy as we're not expecting it to ever be healthy
-        assert!(!is_unit_unhealthy(
-            SystemdUnitActiveState::activating,
-            SystemdUnitLoadState::masked
-        ));
-        // Make error + not_found unhealthy too
-        assert!(is_unit_unhealthy(
-            SystemdUnitActiveState::deactivating,
-            SystemdUnitLoadState::not_found
-        ));
-        assert!(is_unit_unhealthy(
-            // Can never really be active here with error, but check we ignore it
-            SystemdUnitActiveState::active,
-            SystemdUnitLoadState::error,
-        ));
     }
 
     #[tokio::test]
