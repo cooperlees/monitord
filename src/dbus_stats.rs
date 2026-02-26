@@ -364,7 +364,7 @@ async fn parse_peer_accounting(
         _ => return Ok(None),
     };
 
-    let well_known_to_peer_names = get_well_known_to_peer_names(&dbus_proxy).await?;
+    let well_known_to_peer_names = get_well_known_to_peer_names(dbus_proxy).await?;
 
     let result = peers_value
         .iter()
@@ -392,20 +392,17 @@ fn filter_and_collect_peer_accounting(
 
             let id = peer.id.to_string();
             let name = peer.get_name();
-            if !config.dbus_stats.peer_blocklist.is_empty() {
-                if config.dbus_stats.peer_blocklist.contains(&id)
-                    || config.dbus_stats.peer_blocklist.contains(&name)
-                {
-                    return false;
-                }
+            if config.dbus_stats.peer_blocklist.contains(&id)
+                || config.dbus_stats.peer_blocklist.contains(&name)
+            {
+                return false;
             }
 
-            if !config.dbus_stats.peer_allowlist.is_empty() {
-                if !config.dbus_stats.peer_allowlist.contains(&id)
-                    && !config.dbus_stats.peer_allowlist.contains(&name)
-                {
-                    return false;
-                }
+            if !config.dbus_stats.peer_allowlist.is_empty()
+                && !config.dbus_stats.peer_allowlist.contains(&id)
+                && !config.dbus_stats.peer_allowlist.contains(&name)
+            {
+                return false;
             }
 
             true
@@ -436,16 +433,14 @@ fn filter_and_collect_cgroup_accounting(
             }
         };
 
-        if !config.dbus_stats.cgroup_blocklist.is_empty() {
-            if config.dbus_stats.cgroup_blocklist.contains(&cgroup_name) {
-                continue;
-            }
+        if config.dbus_stats.cgroup_blocklist.contains(&cgroup_name) {
+            continue;
         }
 
-        if !config.dbus_stats.cgroup_allowlist.is_empty() {
-            if !config.dbus_stats.cgroup_allowlist.contains(&cgroup_name) {
-                continue;
-            }
+        if !config.dbus_stats.cgroup_allowlist.is_empty()
+            && !config.dbus_stats.cgroup_allowlist.contains(&cgroup_name)
+        {
+            continue;
         }
 
         let entry =
@@ -547,20 +542,17 @@ fn parse_user_accounting(
         .filter_map(parse_user_struct)
         .filter(|user| {
             let uid = user.uid.to_string();
-            if !config.dbus_stats.user_blocklist.is_empty() {
-                if config.dbus_stats.user_blocklist.contains(&uid)
-                    || config.dbus_stats.user_blocklist.contains(&user.username)
-                {
-                    return false;
-                }
+            if config.dbus_stats.user_blocklist.contains(&uid)
+                || config.dbus_stats.user_blocklist.contains(&user.username)
+            {
+                return false;
             }
 
-            if !config.dbus_stats.user_allowlist.is_empty() {
-                if !config.dbus_stats.user_allowlist.contains(&uid)
-                    && !config.dbus_stats.user_allowlist.contains(&user.username)
-                {
-                    return false;
-                }
+            if !config.dbus_stats.user_allowlist.is_empty()
+                && !config.dbus_stats.user_allowlist.contains(&uid)
+                && !config.dbus_stats.user_allowlist.contains(&user.username)
+            {
+                return false;
             }
 
             true
