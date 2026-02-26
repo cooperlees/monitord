@@ -174,6 +174,7 @@ impl CurMaxPair {
 pub struct DBusBrokerUserAccounting {
     /// Unix user ID this accounting entry belongs to
     pub uid: u32,
+    pub username: String,
 
     /// Message byte quota: remaining (cur) and maximum (max) allowed bytes across all connections
     pub bytes: Option<CurMaxPair>,
@@ -189,16 +190,15 @@ pub struct DBusBrokerUserAccounting {
 
 impl DBusBrokerUserAccounting {
     fn new(uid: u32) -> Self {
+        let username = match get_user_by_uid(uid) {
+            Some(user) => user.name().to_string_lossy().into_owned(),
+            None => uid.to_string(),
+        };
+
         Self {
             uid,
+            username,
             ..Default::default()
-        }
-    }
-
-    pub fn get_name_for_metric(&self) -> String {
-        match get_user_by_uid(self.uid) {
-            Some(user) => user.name().to_string_lossy().into_owned(),
-            None => self.uid.to_string(),
         }
     }
 }
@@ -685,7 +685,6 @@ mod tests {
             ..Default::default()
         };
         // If users crate can’t resolve uid, it should fallback to uid string
-        let name = user.get_name_for_metric();
-        assert_eq!(name, "999999");
+        assert_eq!(&user.username, "999999");
     }
 }

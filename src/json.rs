@@ -505,7 +505,7 @@ fn flatten_dbus_stats(
     if let Some(user_accounting) = dbus_stats.user_accounting() {
         // process user accounting if present
         for user in user_accounting.values() {
-            let user_name = user.get_name_for_metric();
+            let user_name = &user.username;
             let user_fields = [
                 ("bytes", user.bytes.clone()),
                 ("fds", user.fds.clone()),
