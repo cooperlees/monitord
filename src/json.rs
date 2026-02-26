@@ -447,10 +447,7 @@ fn flatten_dbus_stats(
     if let Some(peer_accounting) = dbus_stats.peer_accounting() {
         // process peer accounting with well-known names
         for peer in peer_accounting.values() {
-            let Some(peer_name) = &peer.well_known_name else {
-                continue;
-            };
-
+            let peer_name = peer.get_name();
             let peer_fields = [
                 ("name_objects", peer.name_objects),
                 ("match_bytes", peer.match_bytes),

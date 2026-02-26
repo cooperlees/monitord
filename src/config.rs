@@ -158,6 +158,10 @@ pub struct DBusStatsConfig {
     pub user_blocklist: HashSet<String>,
 
     pub peer_stats: bool,
+    pub peer_well_known_names_only: bool,
+    pub peer_allowlist: HashSet<String>,
+    pub peer_blocklist: HashSet<String>,
+
     pub cgroup_stats: bool,
 }
 impl Default for DBusStatsConfig {
@@ -170,6 +174,10 @@ impl Default for DBusStatsConfig {
             user_blocklist: HashSet::new(),
 
             peer_stats: false,
+            peer_well_known_names_only: false,
+            peer_allowlist: HashSet::new(),
+            peer_blocklist: HashSet::new(),
+
             cgroup_stats: false,
         }
     }
@@ -329,6 +337,14 @@ impl TryFrom<Ini> for Config {
         }
 
         config.dbus_stats.peer_stats = read_config_bool(&ini_config, "dbus", "peer_stats")?;
+        config.dbus_stats.peer_well_known_names_only = read_config_bool(&ini_config, "dbus", "peer_well_known_names_only")?;
+        if let Some(peer_allowlist) = config_map.get("dbus.peer.allowlist") {
+            config.dbus_stats.peer_allowlist = peer_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(peer_blocklist) = config_map.get("dbus.peer.blocklist") {
+            config.dbus_stats.peer_blocklist = peer_blocklist.keys().map(|s| s.to_string()).collect();
+        }
+
         config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats")?;
 
         // [boot] section

@@ -249,10 +249,7 @@ pub struct DBusStats {
 
 impl DBusStats {
     pub fn peer_accounting(&self) -> Option<&HashMap<String, DBusBrokerPeerAccounting>> {
-        match self.peer_stats {
-            true => self.dbus_broker_peer_accounting.as_ref(),
-            false => None,
-        }
+        self.dbus_broker_peer_accounting.as_ref()
     }
 
     pub fn cgroup_accounting(&self) -> Option<HashMap<String, DBusBrokerCGroupAccounting>> {
@@ -378,9 +375,8 @@ fn parse_peer_accounting(
     owned_value: &OwnedValue,
     well_known_to_peer_names: &HashMap<String, String>,
 ) -> Option<HashMap<String, DBusBrokerPeerAccounting>> {
-    // need to keep collecting peer stats when cgroup_stats=true
-    // since cgroup_stats is a derivative of peer stats
-    if !config.dbus_stats.peer_stats && !config.dbus_stats.cgroup_stats {
+    // reject collecting peer stats when told so
+    if !config.dbus_stats.peer_stats {
         return None;
     }
 
@@ -393,6 +389,29 @@ fn parse_peer_accounting(
     let result = peers_value
         .iter()
         .filter_map(|peer| parse_peer_struct(peer, well_known_to_peer_names))
+        .filter(|peer| {
+            if config.dbus_stats.peer_well_known_names_only && !peer.has_well_known_name() {
+                return false;
+            }
+
+            let id = peer.id.to_string();
+            let name = peer.get_name();
+            if !config.dbus_stats.peer_blocklist.is_empty() {
+                if config.dbus_stats.peer_blocklist.contains(&id) ||
+                    config.dbus_stats.peer_blocklist.contains(&name) {
+                        return false;
+                }
+            }
+
+            if !config.dbus_stats.peer_allowlist.is_empty() {
+                if !config.dbus_stats.peer_allowlist.contains(&id) &&
+                    !config.dbus_stats.peer_allowlist.contains(&name) {
+                        return false;
+                }
+            }
+
+            true
+        })
         .map(|peer| (peer.id.clone(), peer))
         .collect();
 
