@@ -242,11 +242,6 @@ pub struct DBusStats {
     pub dbus_broker_cgroup_accounting: Option<HashMap<String, DBusBrokerCGroupAccounting>>,
     /// Per-user resource quota accounting (dbus-broker only), keyed by Unix UID
     pub dbus_broker_user_accounting: Option<HashMap<u32, DBusBrokerUserAccounting>>,
-
-    /// Whether per-peer stats collection is enabled in config
-    pub peer_stats: bool,
-    /// Whether per-cgroup aggregated stats are enabled in config (derived from peer stats)
-    pub cgroup_stats: bool,
 }
 
 impl DBusStats {
@@ -621,10 +616,6 @@ pub async fn parse_dbus_stats(
             .get("org.bus1.DBus.Debug.Stats.UserAccounting")
             .map(|user| parse_user_accounting(config, user))
             .unwrap_or_default(),
-
-        // have to keep settings since cgroup stats depends on peer stats
-        peer_stats: config.dbus_stats.peer_stats,
-        cgroup_stats: config.dbus_stats.cgroup_stats,
     };
 
     Ok(dbus_stats)
@@ -660,8 +651,6 @@ mod tests {
     #[test]
     fn test_cgroup_accounting_gating_and_skip_errors() {
         let disabled = DBusStats {
-            cgroup_stats: false,
-            peer_stats: true,
             dbus_broker_peer_accounting: Some(HashMap::new()),
             ..Default::default()
         };
@@ -678,8 +667,6 @@ mod tests {
         );
 
         let enabled = DBusStats {
-            cgroup_stats: true,
-            peer_stats: true,
             dbus_broker_peer_accounting: Some(peers),
             ..Default::default()
         };
