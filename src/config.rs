@@ -152,7 +152,11 @@ impl Default for MachinesConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DBusStatsConfig {
     pub enabled: bool,
+
     pub user_stats: bool,
+    pub user_allowlist: HashSet<String>,
+    pub user_blocklist: HashSet<String>,
+
     pub peer_stats: bool,
     pub cgroup_stats: bool,
 }
@@ -160,7 +164,11 @@ impl Default for DBusStatsConfig {
     fn default() -> Self {
         DBusStatsConfig {
             enabled: true,
+
             user_stats: false,
+            user_allowlist: HashSet::new(),
+            user_blocklist: HashSet::new(),
+
             peer_stats: false,
             cgroup_stats: false,
         }
@@ -311,7 +319,15 @@ impl TryFrom<Ini> for Config {
 
         // [dbus] section
         config.dbus_stats.enabled = read_config_bool(&ini_config, "dbus", "enabled")?;
+
         config.dbus_stats.user_stats = read_config_bool(&ini_config, "dbus", "user_stats")?;
+        if let Some(user_allowlist) = config_map.get("dbus.user.allowlist") {
+            config.dbus_stats.user_allowlist = user_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(user_blocklist) = config_map.get("dbus.user.blocklist") {
+            config.dbus_stats.user_blocklist = user_blocklist.keys().map(|s| s.to_string()).collect();
+        }
+
         config.dbus_stats.peer_stats = read_config_bool(&ini_config, "dbus", "peer_stats")?;
         config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats")?;
 

@@ -472,6 +472,24 @@ fn parse_user_accounting(
     let result = users_value
         .iter()
         .filter_map(parse_user_struct)
+        .filter(|user| {
+            let uid = user.uid.to_string();
+            if !config.dbus_stats.user_blocklist.is_empty() {
+                if config.dbus_stats.user_blocklist.contains(&uid) ||
+                    config.dbus_stats.user_blocklist.contains(&user.username) {
+                    return false;
+                }
+            }
+
+            if !config.dbus_stats.user_allowlist.is_empty() {
+                if !config.dbus_stats.user_allowlist.contains(&uid) &&
+                    !config.dbus_stats.user_allowlist.contains(&user.username) {
+                    return false;
+                }
+            }
+
+            true
+        })
         .map(|user| (user.uid, user))
         .collect();
 
