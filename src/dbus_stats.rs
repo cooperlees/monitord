@@ -78,10 +78,8 @@ impl DBusBrokerPeerAccounting {
     }
 
     /// Returns the well-known name if present, otherwise falls back to the unique D-Bus connection ID
-    pub fn get_name(&self) -> String {
-        self.well_known_name
-            .clone()
-            .unwrap_or_else(|| self.id.clone())
+    pub fn get_name(&self) -> &str {
+        self.well_known_name.as_deref().unwrap_or(&self.id)
     }
 
     pub fn get_cgroup_name(&self) -> Result<String, io::Error> {
@@ -186,6 +184,7 @@ impl CurMaxPair {
 pub struct DBusBrokerUserAccounting {
     /// Unix user ID this accounting entry belongs to
     pub uid: u32,
+    /// Username resolved from `uid` at parse time; falls back to the numeric UID string if unknown.
     pub username: String,
 
     /// Message byte quota: remaining (cur) and maximum (max) allowed bytes across all connections
@@ -390,17 +389,17 @@ fn filter_and_collect_peer_accounting(
                 return false;
             }
 
-            let id = peer.id.to_string();
+            let id = peer.id.as_str();
             let name = peer.get_name();
-            if config.dbus_stats.peer_blocklist.contains(&id)
-                || config.dbus_stats.peer_blocklist.contains(&name)
+            if config.dbus_stats.peer_blocklist.contains(id)
+                || config.dbus_stats.peer_blocklist.contains(name)
             {
                 return false;
             }
 
             if !config.dbus_stats.peer_allowlist.is_empty()
-                && !config.dbus_stats.peer_allowlist.contains(&id)
-                && !config.dbus_stats.peer_allowlist.contains(&name)
+                && !config.dbus_stats.peer_allowlist.contains(id)
+                && !config.dbus_stats.peer_allowlist.contains(name)
             {
                 return false;
             }
