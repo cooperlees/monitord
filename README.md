@@ -550,7 +550,9 @@ You can now log into the container to build + run tests and run the binary now a
   - `systemctl start systemd-networkd`
     - No interfaces will be managed tho by default in the container ...
 
-## API Usage
+## Library API
+
+monitord can be used as a Rust library. See the full API documentation at [monitord.xyz](https://monitord.xyz/monitord/index.html).
 
 ## DBus
 
