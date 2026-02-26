@@ -34,6 +34,32 @@ Open to more formats / run methods ... Open an issue to discuss. Depends on the 
 
 **INFO** level logging is enabled to stderr by default. Use `-l LEVEL` to increase or decrease logging.
 
+## Quick Start
+
+1. Install monitord:
+   ```bash
+   cargo install monitord
+   ```
+
+2. Create a minimal config at `/etc/monitord.conf`:
+   ```ini
+   [monitord]
+   output_format = json-pretty
+
+   [units]
+   enabled = true
+
+   [pid1]
+   enabled = true
+   ```
+
+3. Run it:
+   ```bash
+   monitord
+   ```
+
+This will collect unit counts and PID 1 stats, then print JSON to stdout and exit. Enable additional collectors in the config as needed (see [Configuration](#config) below).
+
 ## Install
 
 Install via cargo or use as a dependency in your `Cargo.toml`.
