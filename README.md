@@ -2,6 +2,14 @@
 
 monitord ... know how happy your systemd is! 😊
 
+## Requirements
+
+- **Linux** with **systemd** (monitord uses D-Bus and procfs APIs that are Linux-specific)
+- systemd-networkd installed (for networkd metrics; the collector can be disabled in config)
+- PID 1 stats require procfs (`/proc`) — available on all standard Linux systems
+- D-Bus system bus accessible (default: `unix:path=/run/dbus/system_bus_socket`)
+- Varlink metrics require systemd v260+ (optional; falls back to D-Bus automatically)
+
 ## What does monitord monitor?
 
 monitord collects systemd health metrics via D-Bus (and optionally Varlink) and outputs them as JSON. It provides visibility into:
