@@ -74,6 +74,22 @@ This will collect unit counts and PID 1 stats, then print JSON to stdout and exi
 
 ## Install
 
+### Pre-built binaries
+
+Download pre-built binaries from [GitHub Releases](https://github.com/cooperlees/monitord/releases):
+
+- `monitord-linux-amd64` — x86_64
+- `monitord-linux-aarch64` — ARM64
+
+```bash
+# Example: download and install the latest release (x86_64)
+curl -L -o /usr/local/bin/monitord \
+  https://github.com/cooperlees/monitord/releases/latest/download/monitord-linux-amd64
+chmod +x /usr/local/bin/monitord
+```
+
+### From crates.io
+
 Install via cargo or use as a dependency in your `Cargo.toml`.
 
 - `cargo install monitord`
