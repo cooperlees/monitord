@@ -346,25 +346,48 @@ fn parse_peer_struct(
     }
 }
 
-fn parse_peer_accounting(
+async fn parse_peer_accounting(
+    dbus_proxy: &DBusProxy<'_>,
     config: &crate::config::Config,
-    owned_value: &OwnedValue,
-    well_known_to_peer_names: &HashMap<String, String>,
-) -> Option<HashMap<String, DBusBrokerPeerAccounting>> {
-    // reject collecting cgroup stats when told so
-    if !config.dbus_stats.cgroup_stats {
-        return None;
+    owned_value: Option<&OwnedValue>,
+) -> Result<Option<Vec<DBusBrokerPeerAccounting>>, MonitordDbusStatsError> {
+    // need to keep collecting peer stats when cgroup_stats=true
+    // since cgroup_stats is a derivative of peer stats
+    if !config.dbus_stats.peer_stats && !config.dbus_stats.cgroup_stats {
+        return Ok(None)
     }
 
-    let value: &Value = owned_value;
+    let value: &Value = match owned_value {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+
     let peers_value = match value {
         Value::Array(peers_value) => peers_value,
-        _ => return None,
+        _ => return Ok(None),
     };
+
+    let well_known_to_peer_names = get_well_known_to_peer_names(&dbus_proxy).await?;
 
     let result = peers_value
         .iter()
-        .filter_map(|peer| parse_peer_struct(peer, well_known_to_peer_names))
+        .filter_map(|peer| parse_peer_struct(peer, &well_known_to_peer_names))
+        .collect();
+
+    Ok(Some(result))
+}
+
+fn filter_and_collect_peer_accounting(
+    config: &crate::config::Config,
+    peers: Option<&Vec<DBusBrokerPeerAccounting>>,
+) -> Option<HashMap<String, DBusBrokerPeerAccounting>> {
+    // reject collecting peer stats when told so
+    if !config.dbus_stats.peer_stats {
+        return None;
+    }
+
+    let result = peers?
+        .iter()
         .filter(|peer| {
             if config.dbus_stats.peer_well_known_names_only && !peer.has_well_known_name() {
                 return false;
@@ -388,36 +411,24 @@ fn parse_peer_accounting(
 
             true
         })
-        .map(|peer| (peer.id.clone(), peer))
+        .map(|peer| (peer.id.clone(), peer.clone()))
         .collect();
 
     Some(result)
 }
 
-fn parse_cgroup_accounting(
+fn filter_and_collect_cgroup_accounting(
     config: &crate::config::Config,
-    owned_value: &OwnedValue,
+    peers: Option<&Vec<DBusBrokerPeerAccounting>>,
 ) -> Option<HashMap<String, DBusBrokerCGroupAccounting>> {
     // reject collecting cgroup stats when told so
     if !config.dbus_stats.cgroup_stats {
         return None;
     }
 
-    let value: &Value = owned_value;
-    let peers_value = match value {
-        Value::Array(peers_value) => peers_value,
-        _ => return None,
-    };
-
-    let empty_well_known_names = HashMap::new();
     let mut result: HashMap<String, DBusBrokerCGroupAccounting> = HashMap::new();
 
-    for peer_val in peers_value.iter() {
-        let peer = match parse_peer_struct(peer_val, &empty_well_known_names) {
-            Some(p) => p,
-            None => continue,
-        };
-
+    for peer in peers?.iter() {
         let cgroup_name = match peer.get_cgroup_name() {
             Ok(name) => name,
             Err(err) => {
@@ -425,7 +436,6 @@ fn parse_cgroup_accounting(
                 continue;
             }
         };
-
 
         if !config.dbus_stats.cgroup_blocklist.is_empty() {
             if config.dbus_stats.cgroup_blocklist.contains(&cgroup_name) {
@@ -446,7 +456,7 @@ fn parse_cgroup_accounting(
             }
         });
 
-        entry.combine_with_peer(&peer);
+        entry.combine_with_peer(peer);
     }
 
     Some(result)
@@ -583,10 +593,14 @@ pub async fn parse_dbus_stats(
     connection: &zbus::Connection,
 ) -> Result<DBusStats, MonitordDbusStatsError> {
     let dbus_proxy = DBusProxy::new(connection).await?;
-    let well_known_to_peer_names = get_well_known_to_peer_names(&dbus_proxy).await?;
 
     let stats_proxy = StatsProxy::new(connection).await?;
     let stats = stats_proxy.get_stats().await?;
+    let peers = parse_peer_accounting(
+        &dbus_proxy,
+        config,
+        stats.rest().get("org.bus1.DBus.Debug.Stats.PeerAccounting"),
+    ).await?;
 
     let dbus_stats = DBusStats {
         serial: stats.serial(),
@@ -600,16 +614,8 @@ pub async fn parse_dbus_stats(
         peak_match_rules_per_connection: stats.peak_match_rules_per_connection(),
 
         // attempt to parse dbus-broker specific stats
-        dbus_broker_peer_accounting: stats
-            .rest()
-            .get("org.bus1.DBus.Debug.Stats.PeerAccounting")
-            .map(|peer| parse_peer_accounting(config, peer, &well_known_to_peer_names))
-            .unwrap_or_default(),
-        dbus_broker_cgroup_accounting: stats
-            .rest()
-            .get("org.bus1.DBus.Debug.Stats.PeerAccounting")
-            .map(|peer| parse_cgroup_accounting(config, peer))
-            .unwrap_or_default(),
+        dbus_broker_peer_accounting: filter_and_collect_peer_accounting(config, peers.as_ref()),
+        dbus_broker_cgroup_accounting: filter_and_collect_cgroup_accounting(config, peers.as_ref()),
         dbus_broker_user_accounting: stats
             .rest()
             .get("org.bus1.DBus.Debug.Stats.UserAccounting")
