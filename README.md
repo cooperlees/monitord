@@ -378,6 +378,93 @@ Is semi pretty too + custom. All unittested ...
 
 Normal `serde_json` pretty representations of each components structs.
 
+### Metric Value Reference
+
+Many metrics are serialized as integers. Here are the enum mappings:
+
+**system-state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | initializing |
+| 2 | starting |
+| 3 | running |
+| 4 | degraded |
+| 5 | maintenance |
+| 6 | stopping |
+| 7 | offline |
+
+**active_state** (unit_states.\*.active_state)
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | active |
+| 2 | reloading |
+| 3 | inactive |
+| 4 | failed |
+| 5 | activating |
+| 6 | deactivating |
+
+**loaded_state** (unit_states.\*.loaded_state)
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | loaded |
+| 2 | error |
+| 3 | masked |
+| 4 | not-found |
+
+**networkd address_state / ipv4_address_state / ipv6_address_state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | off |
+| 2 | degraded |
+| 3 | routable |
+
+**networkd admin_state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | pending |
+| 2 | failed |
+| 3 | configuring |
+| 4 | configured |
+| 5 | unmanaged |
+| 6 | linger |
+
+**networkd carrier_state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | off |
+| 2 | no-carrier |
+| 3 | dormant |
+| 4 | degraded-carrier |
+| 5 | carrier |
+| 6 | enslaved |
+
+**networkd oper_state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | missing |
+| 2 | off |
+| 3 | no-carrier |
+| 4 | dormant |
+| 5 | degraded-carrier |
+| 6 | carrier |
+| 7 | degraded |
+| 8 | enslaved |
+| 9 | routable |
+
 ## dbus stats
 
 You're going to need to be root or allow permissiong to pull dbus stats.
