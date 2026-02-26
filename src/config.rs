@@ -152,17 +152,37 @@ impl Default for MachinesConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DBusStatsConfig {
     pub enabled: bool,
+
     pub user_stats: bool,
+    pub user_allowlist: HashSet<String>,
+    pub user_blocklist: HashSet<String>,
+
     pub peer_stats: bool,
+    pub peer_well_known_names_only: bool,
+    pub peer_allowlist: HashSet<String>,
+    pub peer_blocklist: HashSet<String>,
+
     pub cgroup_stats: bool,
+    pub cgroup_allowlist: HashSet<String>,
+    pub cgroup_blocklist: HashSet<String>,
 }
 impl Default for DBusStatsConfig {
     fn default() -> Self {
         DBusStatsConfig {
             enabled: true,
+
             user_stats: false,
+            user_allowlist: HashSet::new(),
+            user_blocklist: HashSet::new(),
+
             peer_stats: false,
+            peer_well_known_names_only: false,
+            peer_allowlist: HashSet::new(),
+            peer_blocklist: HashSet::new(),
+
             cgroup_stats: false,
+            cgroup_allowlist: HashSet::new(),
+            cgroup_blocklist: HashSet::new(),
         }
     }
 }
@@ -311,9 +331,38 @@ impl TryFrom<Ini> for Config {
 
         // [dbus] section
         config.dbus_stats.enabled = read_config_bool(&ini_config, "dbus", "enabled")?;
+
         config.dbus_stats.user_stats = read_config_bool(&ini_config, "dbus", "user_stats")?;
+        if let Some(user_allowlist) = config_map.get("dbus.user.allowlist") {
+            config.dbus_stats.user_allowlist =
+                user_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(user_blocklist) = config_map.get("dbus.user.blocklist") {
+            config.dbus_stats.user_blocklist =
+                user_blocklist.keys().map(|s| s.to_string()).collect();
+        }
+
         config.dbus_stats.peer_stats = read_config_bool(&ini_config, "dbus", "peer_stats")?;
+        config.dbus_stats.peer_well_known_names_only =
+            read_config_bool(&ini_config, "dbus", "peer_well_known_names_only")?;
+        if let Some(peer_allowlist) = config_map.get("dbus.peer.allowlist") {
+            config.dbus_stats.peer_allowlist =
+                peer_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(peer_blocklist) = config_map.get("dbus.peer.blocklist") {
+            config.dbus_stats.peer_blocklist =
+                peer_blocklist.keys().map(|s| s.to_string()).collect();
+        }
+
         config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats")?;
+        if let Some(cgroup_allowlist) = config_map.get("dbus.cgroup.allowlist") {
+            config.dbus_stats.cgroup_allowlist =
+                cgroup_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(cgroup_blocklist) = config_map.get("dbus.cgroup.blocklist") {
+            config.dbus_stats.cgroup_blocklist =
+                cgroup_blocklist.keys().map(|s| s.to_string()).collect();
+        }
 
         // [boot] section
         config.boot_blame.enabled = read_config_bool(&ini_config, "boot", "enabled")?;
@@ -430,7 +479,29 @@ foo2
 enabled = true
 user_stats = true
 peer_stats = true
+peer_well_known_names_only = true
 cgroup_stats = true
+
+[dbus.user.allowlist]
+foo
+bar
+
+[dbus.user.blocklist]
+foo2
+
+[dbus.peer.allowlist]
+foo
+bar
+
+[dbus.peer.blocklist]
+foo2
+
+[dbus.cgroup.allowlist]
+foo
+bar
+
+[dbus.cgroup.blocklist]
+foo2
 
 [boot]
 enabled = true
@@ -516,8 +587,15 @@ output_format = json-flat
             dbus_stats: DBusStatsConfig {
                 enabled: true,
                 user_stats: true,
+                user_allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
+                user_blocklist: HashSet::from([String::from("foo2")]),
                 peer_stats: true,
+                peer_well_known_names_only: true,
+                peer_allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
+                peer_blocklist: HashSet::from([String::from("foo2")]),
                 cgroup_stats: true,
+                cgroup_allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
+                cgroup_blocklist: HashSet::from([String::from("foo2")]),
             },
             boot_blame: BootBlameConfig {
                 enabled: true,
