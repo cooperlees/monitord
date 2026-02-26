@@ -1,11 +1,40 @@
 # monitord
 
+[![Crates.io](https://img.shields.io/crates/v/monitord)](https://crates.io/crates/monitord)
+[![Documentation](https://img.shields.io/badge/docs-monitord.xyz-blue)](https://monitord.xyz/monitord/index.html)
+[![License: GPL-2.0-or-later](https://img.shields.io/crates/l/monitord)](https://github.com/cooperlees/monitord/blob/main/LICENSE)
+
 monitord ... know how happy your systemd is! 😊
+
+## Requirements
+
+- **Linux** with **systemd** (monitord uses D-Bus and procfs APIs that are Linux-specific)
+- systemd-networkd installed (for networkd metrics; the collector can be disabled in config)
+- PID 1 stats require procfs (`/proc`) — available on all standard Linux systems
+- D-Bus system bus accessible (default: `unix:path=/run/dbus/system_bus_socket`)
+- Varlink metrics require systemd v260+ (optional; falls back to D-Bus automatically)
+
+## What does monitord monitor?
+
+monitord collects systemd health metrics via D-Bus (and optionally Varlink) and outputs them as JSON. It provides visibility into:
+
+- **Unit counts** — totals by type (service, mount, socket, timer, etc.) and state (active, failed, inactive, loaded, masked)
+- **Per-service stats** — CPU usage, memory, I/O, restart count, task count, watchdog status, and state timestamps for specific services
+- **Unit state tracking** — active state, load state, and health for individual units (with allowlist/blocklist filtering)
+- **systemd-networkd** — per-interface operational, carrier, admin, and address states
+- **PID 1 health** — CPU time, memory usage, file descriptor count, and task count for systemd (PID 1) via procfs
+- **Timers** — trigger times, accuracy, delays, and associated service state for systemd timers
+- **Boot blame** — the N slowest units at boot, similar to `systemd-analyze blame`
+- **D-Bus daemon stats** — connection counts, match rules, and per-peer/per-cgroup/per-user breakdowns (dbus-broker and dbus-daemon)
+- **Containers / machines** — recursively collects the same metrics from systemd-nspawn containers and VMs via `systemd-machined`
+- **Unit verification** — runs `systemd-analyze verify` and reports failing unit counts by type
+
+## Run Modes
 
 We offer the following run modes:
 
 - systemd-timer (legacy cron would work too)
-  - Refer to monitord.timer and monitord.service unit files
+  - Refer to [monitord.timer](monitord.timer) and [monitord.service](monitord.service) unit files
   - Ensure no `daemon:` mode options are set in `monitord.conf`
 - daemon mode
   - Enable daemon mode in configuration file
@@ -17,7 +46,49 @@ Open to more formats / run methods ... Open an issue to discuss. Depends on the 
 
 **INFO** level logging is enabled to stderr by default. Use `-l LEVEL` to increase or decrease logging.
 
+## Quick Start
+
+1. Install monitord:
+   ```bash
+   cargo install monitord
+   ```
+
+2. Create a minimal config at `/etc/monitord.conf`:
+   ```ini
+   [monitord]
+   output_format = json-pretty
+
+   [units]
+   enabled = true
+
+   [pid1]
+   enabled = true
+   ```
+
+3. Run it:
+   ```bash
+   monitord
+   ```
+
+This will collect unit counts and PID 1 stats, then print JSON to stdout and exit. Enable additional collectors in the config as needed (see [Configuration](#config) below).
+
 ## Install
+
+### Pre-built binaries
+
+Download pre-built binaries from [GitHub Releases](https://github.com/cooperlees/monitord/releases):
+
+- `monitord-linux-amd64` — x86_64
+- `monitord-linux-aarch64` — ARM64
+
+```bash
+# Example: download and install the latest release (x86_64)
+curl -L -o /usr/local/bin/monitord \
+  https://github.com/cooperlees/monitord/releases/latest/download/monitord-linux-amd64
+chmod +x /usr/local/bin/monitord
+```
+
+### From crates.io
 
 Install via cargo or use as a dependency in your `Cargo.toml`.
 
@@ -323,6 +394,93 @@ Is semi pretty too + custom. All unittested ...
 
 Normal `serde_json` pretty representations of each components structs.
 
+### Metric Value Reference
+
+Many metrics are serialized as integers. Here are the enum mappings:
+
+**system-state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | initializing |
+| 2 | starting |
+| 3 | running |
+| 4 | degraded |
+| 5 | maintenance |
+| 6 | stopping |
+| 7 | offline |
+
+**active_state** (unit_states.\*.active_state)
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | active |
+| 2 | reloading |
+| 3 | inactive |
+| 4 | failed |
+| 5 | activating |
+| 6 | deactivating |
+
+**loaded_state** (unit_states.\*.loaded_state)
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | loaded |
+| 2 | error |
+| 3 | masked |
+| 4 | not-found |
+
+**networkd address_state / ipv4_address_state / ipv6_address_state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | off |
+| 2 | degraded |
+| 3 | routable |
+
+**networkd admin_state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | pending |
+| 2 | failed |
+| 3 | configuring |
+| 4 | configured |
+| 5 | unmanaged |
+| 6 | linger |
+
+**networkd carrier_state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | off |
+| 2 | no-carrier |
+| 3 | dormant |
+| 4 | degraded-carrier |
+| 5 | carrier |
+| 6 | enslaved |
+
+**networkd oper_state**
+
+| Value | State |
+|-------|-------|
+| 0 | unknown |
+| 1 | missing |
+| 2 | off |
+| 3 | no-carrier |
+| 4 | dormant |
+| 5 | degraded-carrier |
+| 6 | carrier |
+| 7 | degraded |
+| 8 | enslaved |
+| 9 | routable |
+
 ## dbus stats
 
 You're going to need to be root or allow permissiong to pull dbus stats.
@@ -392,7 +550,35 @@ You can now log into the container to build + run tests and run the binary now a
   - `systemctl start systemd-networkd`
     - No interfaces will be managed tho by default in the container ...
 
-## API Usage
+## Troubleshooting
+
+**"Connection refused" or D-Bus connection errors**
+
+Ensure the system D-Bus daemon is running and the socket exists at `/run/dbus/system_bus_socket`. If using a custom address, set `dbus_address` in `[monitord]` config. Increase `dbus_timeout` if running on slow systems.
+
+**Empty or missing networkd metrics**
+
+systemd-networkd must be installed and running (`systemctl start systemd-networkd`). If networkd is not in use on your system, disable the collector with `enabled = false` in `[networkd]`.
+
+**Permission denied for D-Bus stats**
+
+The `[dbus]` collector requires permission to call `org.freedesktop.DBus.Debug.Stats.GetStats`. Either run monitord as root or add a D-Bus policy file — see the [dbus stats](#dbus-stats) section.
+
+**PID 1 stats unavailable**
+
+PID 1 stats require Linux with procfs mounted at `/proc`. This collector is compiled out on non-Linux targets. If `/proc` is not available (some container runtimes), disable with `enabled = false` in `[pid1]`.
+
+**Collector errors don't crash monitord**
+
+When an individual collector fails (e.g., networkd not running, D-Bus timeout), monitord logs a warning and continues with the remaining collectors. Check stderr output or increase the log level (`-l debug`) to see which collectors had issues.
+
+**Large u64 values (18446744073709551615) in output**
+
+These represent `u64::MAX` and mean "not available" or "not tracked" for that metric. This is how systemd reports fields that are unsupported or not configured for the unit (e.g., `memory_available` when `MemoryMax=` is not set).
+
+## Library API
+
+monitord can be used as a Rust library. See the full API documentation at [monitord.xyz](https://monitord.xyz/monitord/index.html).
 
 ## DBus
 

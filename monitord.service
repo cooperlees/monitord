@@ -1,0 +1,22 @@
+[Unit]
+Description=monitord - systemd health metrics collector
+Documentation=https://github.com/cooperlees/monitord
+After=dbus.socket
+Requires=dbus.socket
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/monitord -c /etc/monitord.conf
+# Run as a dedicated user for least privilege
+# Create with: useradd --system --no-create-home monitord
+User=monitord
+Group=monitord
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
