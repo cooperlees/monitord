@@ -1,5 +1,9 @@
 # monitord
 
+[![Crates.io](https://img.shields.io/crates/v/monitord)](https://crates.io/crates/monitord)
+[![Documentation](https://img.shields.io/badge/docs-monitord.xyz-blue)](https://monitord.xyz/monitord/index.html)
+[![License: GPL-2.0-or-later](https://img.shields.io/crates/l/monitord)](https://github.com/cooperlees/monitord/blob/main/LICENSE)
+
 monitord ... know how happy your systemd is! 😊
 
 ## Requirements
