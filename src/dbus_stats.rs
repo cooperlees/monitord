@@ -72,6 +72,16 @@ pub struct DBusBrokerPeerAccounting {
 }
 
 impl DBusBrokerPeerAccounting {
+    /// Returns true if the peer has a well-known name
+    pub fn has_well_known_name(&self) -> bool {
+        self.well_known_name.is_some()
+    }
+
+    /// Returns the well-known name if present, otherwise falls back to the unique D-Bus connection ID
+    pub fn get_name(&self) -> String {
+        self.well_known_name.clone().unwrap_or_else(|| self.id.clone())
+    }
+
     pub fn get_cgroup_name(&self) -> Result<String, io::Error> {
         let pid = self
             .process_id
