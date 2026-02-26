@@ -79,7 +79,9 @@ impl DBusBrokerPeerAccounting {
 
     /// Returns the well-known name if present, otherwise falls back to the unique D-Bus connection ID
     pub fn get_name(&self) -> String {
-        self.well_known_name.clone().unwrap_or_else(|| self.id.clone())
+        self.well_known_name
+            .clone()
+            .unwrap_or_else(|| self.id.clone())
     }
 
     pub fn get_cgroup_name(&self) -> Result<String, io::Error> {
@@ -349,7 +351,7 @@ async fn parse_peer_accounting(
     // need to keep collecting peer stats when cgroup_stats=true
     // since cgroup_stats is a derivative of peer stats
     if !config.dbus_stats.peer_stats && !config.dbus_stats.cgroup_stats {
-        return Ok(None)
+        return Ok(None);
     }
 
     let value: &Value = match owned_value {
@@ -391,16 +393,18 @@ fn filter_and_collect_peer_accounting(
             let id = peer.id.to_string();
             let name = peer.get_name();
             if !config.dbus_stats.peer_blocklist.is_empty() {
-                if config.dbus_stats.peer_blocklist.contains(&id) ||
-                    config.dbus_stats.peer_blocklist.contains(&name) {
-                        return false;
+                if config.dbus_stats.peer_blocklist.contains(&id)
+                    || config.dbus_stats.peer_blocklist.contains(&name)
+                {
+                    return false;
                 }
             }
 
             if !config.dbus_stats.peer_allowlist.is_empty() {
-                if !config.dbus_stats.peer_allowlist.contains(&id) &&
-                    !config.dbus_stats.peer_allowlist.contains(&name) {
-                        return false;
+                if !config.dbus_stats.peer_allowlist.contains(&id)
+                    && !config.dbus_stats.peer_allowlist.contains(&name)
+                {
+                    return false;
                 }
             }
 
@@ -444,12 +448,13 @@ fn filter_and_collect_cgroup_accounting(
             }
         }
 
-        let entry = result.entry(cgroup_name.clone()).or_insert_with(|| {
-            DBusBrokerCGroupAccounting {
-                name: cgroup_name,
-                ..Default::default()
-            }
-        });
+        let entry =
+            result
+                .entry(cgroup_name.clone())
+                .or_insert_with(|| DBusBrokerCGroupAccounting {
+                    name: cgroup_name,
+                    ..Default::default()
+                });
 
         entry.combine_with_peer(peer);
     }
@@ -543,15 +548,17 @@ fn parse_user_accounting(
         .filter(|user| {
             let uid = user.uid.to_string();
             if !config.dbus_stats.user_blocklist.is_empty() {
-                if config.dbus_stats.user_blocklist.contains(&uid) ||
-                    config.dbus_stats.user_blocklist.contains(&user.username) {
+                if config.dbus_stats.user_blocklist.contains(&uid)
+                    || config.dbus_stats.user_blocklist.contains(&user.username)
+                {
                     return false;
                 }
             }
 
             if !config.dbus_stats.user_allowlist.is_empty() {
-                if !config.dbus_stats.user_allowlist.contains(&uid) &&
-                    !config.dbus_stats.user_allowlist.contains(&user.username) {
+                if !config.dbus_stats.user_allowlist.contains(&uid)
+                    && !config.dbus_stats.user_allowlist.contains(&user.username)
+                {
                     return false;
                 }
             }
@@ -595,7 +602,8 @@ pub async fn parse_dbus_stats(
         &dbus_proxy,
         config,
         stats.rest().get("org.bus1.DBus.Debug.Stats.PeerAccounting"),
-    ).await?;
+    )
+    .await?;
 
     let dbus_stats = DBusStats {
         serial: stats.serial(),
