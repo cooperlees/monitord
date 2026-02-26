@@ -238,6 +238,8 @@ pub struct DBusStats {
 
     /// Per-peer resource accounting (dbus-broker only), keyed by unique connection name
     pub dbus_broker_peer_accounting: Option<HashMap<String, DBusBrokerPeerAccounting>>,
+    /// Per-cgroup resource accounting (dbus-broker only), keyed by cgroup name
+    pub dbus_broker_cgroup_accounting: Option<HashMap<String, DBusBrokerCGroupAccounting>>,
     /// Per-user resource quota accounting (dbus-broker only), keyed by Unix UID
     pub dbus_broker_user_accounting: Option<HashMap<u32, DBusBrokerUserAccounting>>,
 
@@ -252,34 +254,8 @@ impl DBusStats {
         self.dbus_broker_peer_accounting.as_ref()
     }
 
-    pub fn cgroup_accounting(&self) -> Option<HashMap<String, DBusBrokerCGroupAccounting>> {
-        if !self.cgroup_stats {
-            return None;
-        }
-
-        let peer_accounting = self.dbus_broker_peer_accounting.as_ref()?;
-        let mut result: HashMap<String, DBusBrokerCGroupAccounting> = HashMap::new();
-
-        for peer in peer_accounting.values() {
-            let cgroup_name = match peer.get_cgroup_name() {
-                Ok(name) => name,
-                Err(err) => {
-                    error!("Failed to get cgroup name for peer {}: {}", peer.id, err);
-                    continue;
-                }
-            };
-
-            let entry = result.entry(cgroup_name).or_insert_with_key(|cgroup_name| {
-                DBusBrokerCGroupAccounting {
-                    name: cgroup_name.clone(),
-                    ..Default::default()
-                }
-            });
-
-            entry.combine_with_peer(peer);
-        }
-
-        Some(result)
+    pub fn cgroup_accounting(&self) -> Option<&HashMap<String, DBusBrokerCGroupAccounting>> {
+        self.dbus_broker_cgroup_accounting.as_ref()
     }
 
     pub fn user_accounting(&self) -> Option<&HashMap<u32, DBusBrokerUserAccounting>> {
@@ -375,8 +351,8 @@ fn parse_peer_accounting(
     owned_value: &OwnedValue,
     well_known_to_peer_names: &HashMap<String, String>,
 ) -> Option<HashMap<String, DBusBrokerPeerAccounting>> {
-    // reject collecting peer stats when told so
-    if !config.dbus_stats.peer_stats {
+    // reject collecting cgroup stats when told so
+    if !config.dbus_stats.cgroup_stats {
         return None;
     }
 
@@ -414,6 +390,64 @@ fn parse_peer_accounting(
         })
         .map(|peer| (peer.id.clone(), peer))
         .collect();
+
+    Some(result)
+}
+
+fn parse_cgroup_accounting(
+    config: &crate::config::Config,
+    owned_value: &OwnedValue,
+) -> Option<HashMap<String, DBusBrokerCGroupAccounting>> {
+    // reject collecting cgroup stats when told so
+    if !config.dbus_stats.cgroup_stats {
+        return None;
+    }
+
+    let value: &Value = owned_value;
+    let peers_value = match value {
+        Value::Array(peers_value) => peers_value,
+        _ => return None,
+    };
+
+    let empty_well_known_names = HashMap::new();
+    let mut result: HashMap<String, DBusBrokerCGroupAccounting> = HashMap::new();
+
+    for peer_val in peers_value.iter() {
+        let peer = match parse_peer_struct(peer_val, &empty_well_known_names) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        let cgroup_name = match peer.get_cgroup_name() {
+            Ok(name) => name,
+            Err(err) => {
+                error!("Failed to get cgroup name for peer {}: {}", peer.id, err);
+                continue;
+            }
+        };
+
+
+        if !config.dbus_stats.cgroup_blocklist.is_empty() {
+            if config.dbus_stats.cgroup_blocklist.contains(&cgroup_name) {
+                continue;
+            }
+        }
+
+        if !config.dbus_stats.cgroup_allowlist.is_empty() {
+            if !config.dbus_stats.cgroup_allowlist.contains(&cgroup_name) {
+                continue;
+            }
+        }
+
+        let entry = result.entry(cgroup_name.clone()).or_insert_with(|| {
+            DBusBrokerCGroupAccounting {
+                name: cgroup_name,
+                ..Default::default()
+            }
+        });
+
+        entry.combine_with_peer(&peer);
+    }
 
     Some(result)
 }
@@ -570,6 +604,11 @@ pub async fn parse_dbus_stats(
             .rest()
             .get("org.bus1.DBus.Debug.Stats.PeerAccounting")
             .map(|peer| parse_peer_accounting(config, peer, &well_known_to_peer_names))
+            .unwrap_or_default(),
+        dbus_broker_cgroup_accounting: stats
+            .rest()
+            .get("org.bus1.DBus.Debug.Stats.PeerAccounting")
+            .map(|peer| parse_cgroup_accounting(config, peer))
             .unwrap_or_default(),
         dbus_broker_user_accounting: stats
             .rest()

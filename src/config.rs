@@ -163,6 +163,8 @@ pub struct DBusStatsConfig {
     pub peer_blocklist: HashSet<String>,
 
     pub cgroup_stats: bool,
+    pub cgroup_allowlist: HashSet<String>,
+    pub cgroup_blocklist: HashSet<String>,
 }
 impl Default for DBusStatsConfig {
     fn default() -> Self {
@@ -179,6 +181,8 @@ impl Default for DBusStatsConfig {
             peer_blocklist: HashSet::new(),
 
             cgroup_stats: false,
+            cgroup_allowlist: HashSet::new(),
+            cgroup_blocklist: HashSet::new(),
         }
     }
 }
@@ -346,6 +350,12 @@ impl TryFrom<Ini> for Config {
         }
 
         config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats")?;
+        if let Some(cgroup_allowlist) = config_map.get("dbus.cgroup.allowlist") {
+            config.dbus_stats.cgroup_allowlist = cgroup_allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(cgroup_blocklist) = config_map.get("dbus.cgroup.blocklist") {
+            config.dbus_stats.cgroup_blocklist = cgroup_blocklist.keys().map(|s| s.to_string()).collect();
+        }
 
         // [boot] section
         config.boot_blame.enabled = read_config_bool(&ini_config, "boot", "enabled")?;
