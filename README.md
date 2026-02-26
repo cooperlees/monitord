@@ -2,6 +2,23 @@
 
 monitord ... know how happy your systemd is! 😊
 
+## What does monitord monitor?
+
+monitord collects systemd health metrics via D-Bus (and optionally Varlink) and outputs them as JSON. It provides visibility into:
+
+- **Unit counts** — totals by type (service, mount, socket, timer, etc.) and state (active, failed, inactive, loaded, masked)
+- **Per-service stats** — CPU usage, memory, I/O, restart count, task count, watchdog status, and state timestamps for specific services
+- **Unit state tracking** — active state, load state, and health for individual units (with allowlist/blocklist filtering)
+- **systemd-networkd** — per-interface operational, carrier, admin, and address states
+- **PID 1 health** — CPU time, memory usage, file descriptor count, and task count for systemd (PID 1) via procfs
+- **Timers** — trigger times, accuracy, delays, and associated service state for systemd timers
+- **Boot blame** — the N slowest units at boot, similar to `systemd-analyze blame`
+- **D-Bus daemon stats** — connection counts, match rules, and per-peer/per-cgroup/per-user breakdowns (dbus-broker and dbus-daemon)
+- **Containers / machines** — recursively collects the same metrics from systemd-nspawn containers and VMs via `systemd-machined`
+- **Unit verification** — runs `systemd-analyze verify` and reports failing unit counts by type
+
+## Run Modes
+
 We offer the following run modes:
 
 - systemd-timer (legacy cron would work too)
