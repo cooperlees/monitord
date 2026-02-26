@@ -550,6 +550,32 @@ You can now log into the container to build + run tests and run the binary now a
   - `systemctl start systemd-networkd`
     - No interfaces will be managed tho by default in the container ...
 
+## Troubleshooting
+
+**"Connection refused" or D-Bus connection errors**
+
+Ensure the system D-Bus daemon is running and the socket exists at `/run/dbus/system_bus_socket`. If using a custom address, set `dbus_address` in `[monitord]` config. Increase `dbus_timeout` if running on slow systems.
+
+**Empty or missing networkd metrics**
+
+systemd-networkd must be installed and running (`systemctl start systemd-networkd`). If networkd is not in use on your system, disable the collector with `enabled = false` in `[networkd]`.
+
+**Permission denied for D-Bus stats**
+
+The `[dbus]` collector requires permission to call `org.freedesktop.DBus.Debug.Stats.GetStats`. Either run monitord as root or add a D-Bus policy file — see the [dbus stats](#dbus-stats) section.
+
+**PID 1 stats unavailable**
+
+PID 1 stats require Linux with procfs mounted at `/proc`. This collector is compiled out on non-Linux targets. If `/proc` is not available (some container runtimes), disable with `enabled = false` in `[pid1]`.
+
+**Collector errors don't crash monitord**
+
+When an individual collector fails (e.g., networkd not running, D-Bus timeout), monitord logs a warning and continues with the remaining collectors. Check stderr output or increase the log level (`-l debug`) to see which collectors had issues.
+
+**Large u64 values (18446744073709551615) in output**
+
+These represent `u64::MAX` and mean "not available" or "not tracked" for that metric. This is how systemd reports fields that are unsupported or not configured for the unit (e.g., `memory_available` when `MemoryMax=` is not set).
+
 ## Library API
 
 monitord can be used as a Rust library. See the full API documentation at [monitord.xyz](https://monitord.xyz/monitord/index.html).
