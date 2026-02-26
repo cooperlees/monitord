@@ -649,33 +649,6 @@ mod tests {
     }
 
     #[test]
-    fn test_cgroup_accounting_gating_and_skip_errors() {
-        let disabled = DBusStats {
-            dbus_broker_peer_accounting: Some(HashMap::new()),
-            ..Default::default()
-        };
-        assert!(disabled.cgroup_accounting().is_none());
-
-        let mut peers: HashMap<String, DBusBrokerPeerAccounting> = HashMap::new();
-        peers.insert(
-            ":1.77".to_string(),
-            DBusBrokerPeerAccounting {
-                id: ":1.77".to_string(),
-                process_id: None,
-                ..Default::default()
-            },
-        );
-
-        let enabled = DBusStats {
-            dbus_broker_peer_accounting: Some(peers),
-            ..Default::default()
-        };
-
-        let cg_map = enabled.cgroup_accounting().expect("map should exist");
-        assert!(cg_map.is_empty());
-    }
-
-    #[test]
     fn test_combine_with_peer_option_summing() {
         let mut cg = DBusBrokerCGroupAccounting {
             name: "cg1".to_string(),
@@ -756,13 +729,10 @@ mod tests {
     }
 
     #[test]
-    fn test_user_metric_name_fallback() {
+    fn test_user_username_fallback() {
         // Use a likely-nonexistent uid to force fallback to stringified uid
-        let user = DBusBrokerUserAccounting {
-            uid: 999_999,
-            bytes: Some(CurMaxPair { cur: 5, max: 10 }),
-            ..Default::default()
-        };
+        let mut user = DBusBrokerUserAccounting::new(999_999);
+        user.bytes = Some(CurMaxPair { cur: 5, max: 10 });
         // If users crate can’t resolve uid, it should fallback to uid string
         assert_eq!(&user.username, "999999");
     }

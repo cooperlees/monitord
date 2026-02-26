@@ -472,7 +472,29 @@ foo2
 enabled = true
 user_stats = true
 peer_stats = true
+peer_well_known_names_only = true
 cgroup_stats = true
+
+[dbus.user.allowlist]
+foo
+bar
+
+[dbus.user.blocklist]
+foo2
+
+[dbus.peer.allowlist]
+foo
+bar
+
+[dbus.peer.blocklist]
+foo2
+
+[dbus.cgroup.allowlist]
+foo
+bar
+
+[dbus.cgroup.blocklist]
+foo2
 
 [boot]
 enabled = true
@@ -558,8 +580,15 @@ output_format = json-flat
             dbus_stats: DBusStatsConfig {
                 enabled: true,
                 user_stats: true,
+                user_allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
+                user_blocklist: HashSet::from([String::from("foo2")]),
                 peer_stats: true,
+                peer_well_known_names_only: true,
+                peer_allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
+                peer_blocklist: HashSet::from([String::from("foo2")]),
                 cgroup_stats: true,
+                cgroup_allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
+                cgroup_blocklist: HashSet::from([String::from("foo2")]),
             },
             boot_blame: BootBlameConfig {
                 enabled: true,
