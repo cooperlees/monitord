@@ -22,7 +22,7 @@ monitord collects systemd health metrics via D-Bus (and optionally Varlink) and 
 We offer the following run modes:
 
 - systemd-timer (legacy cron would work too)
-  - Refer to monitord.timer and monitord.service unit files
+  - Refer to [monitord.timer](monitord.timer) and [monitord.service](monitord.service) unit files
   - Ensure no `daemon:` mode options are set in `monitord.conf`
 - daemon mode
   - Enable daemon mode in configuration file

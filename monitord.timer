@@ -1,0 +1,10 @@
+[Unit]
+Description=Run monitord systemd health check periodically
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
