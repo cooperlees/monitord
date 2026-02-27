@@ -170,20 +170,30 @@ pub async fn stat_collector(
 
         // Run service collectors if there are services listed in config
         if config.units.enabled {
-            if config.varlink.enabled {
-                join_set.spawn(crate::varlink_units::update_unit_stats(
-                    Arc::clone(&config),
-                    sdc.clone(),
-                    locked_machine_stats.clone(),
-                    crate::varlink_units::METRICS_SOCKET_PATH.to_string(),
-                ));
-            } else {
-                join_set.spawn(crate::units::update_unit_stats(
-                    Arc::clone(&config),
-                    sdc.clone(),
-                    locked_machine_stats.clone(),
-                ));
-            }
+            let config_clone = Arc::clone(&config);
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_machine_stats.clone();
+            join_set.spawn(async move {
+                if config_clone.varlink.enabled {
+                    let socket_path = crate::varlink_units::METRICS_SOCKET_PATH.to_string();
+                    match crate::varlink_units::update_unit_stats(
+                        config_clone,
+                        stats_clone,
+                        socket_path,
+                    )
+                    .await
+                    {
+                        Ok(()) => return Ok(()),
+                        Err(err) => {
+                            warn!(
+                                "Varlink units stats failed, falling back to D-Bus: {:?}",
+                                err
+                            );
+                        }
+                    }
+                }
+                crate::units::update_unit_stats(config_clone, sdc_clone, stats_clone).await
+            });
         }
 
         if config.machines.enabled {

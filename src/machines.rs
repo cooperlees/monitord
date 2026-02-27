@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::MachineStats;
 use crate::MonitordStats;
@@ -103,17 +103,33 @@ pub async fn update_machines_stats(
 
         if config.units.enabled {
             if config.varlink.enabled {
+                let config_clone = Arc::clone(&config);
+                let sdc_clone = sdc.clone();
+                let stats_clone = locked_machine_stats.clone();
                 let container_socket_path = format!(
                     "/proc/{}/root{}",
                     leader_pid,
                     crate::varlink_units::METRICS_SOCKET_PATH
                 );
-                join_set.spawn(crate::varlink_units::update_unit_stats(
-                    Arc::clone(&config),
-                    sdc.clone(),
-                    locked_machine_stats.clone(),
-                    container_socket_path,
-                ));
+                join_set.spawn(async move {
+                    match crate::varlink_units::update_unit_stats(
+                        Arc::clone(&config_clone),
+                        stats_clone.clone(),
+                        container_socket_path,
+                    )
+                    .await
+                    {
+                        Ok(()) => Ok(()),
+                        Err(err) => {
+                            warn!(
+                                "Varlink units stats failed, falling back to D-Bus: {:?}",
+                                err
+                            );
+                            crate::units::update_unit_stats(config_clone, sdc_clone, stats_clone)
+                                .await
+                        }
+                    }
+                });
             } else {
                 join_set.spawn(crate::units::update_unit_stats(
                     Arc::clone(&config),

@@ -62,23 +62,25 @@ impl ListOutput {
         self.object.as_deref().unwrap_or("").to_string()
     }
 
-    /// Returns the string value or default_value if not present
-    pub fn value_as_string<'a>(&'a self, default_value: &'a str) -> &'a str {
-        self.value.as_str().unwrap_or(default_value)
+    /// Returns the string value. Caller must validate value is a string first.
+    pub fn value_as_string(&self) -> &str {
+        self.value
+            .as_str()
+            .expect("value_as_string called on non-string value; validate metric type first")
     }
 
-    /// Returns the int value as u64 or default_value if not present
-    pub fn value_as_int(&self, default_value: u64) -> u64 {
+    /// Returns the int value. Caller must validate value is an integer first.
+    pub fn value_as_int(&self) -> i64 {
         self.value
             .as_i64()
-            .filter(|v| *v >= 0)
-            .map(|v| v as u64)
-            .unwrap_or(default_value)
+            .expect("value_as_int called on non-integer value; validate metric type first")
     }
 
-    /// Returns the bool value if present
-    pub fn value_as_bool(&self) -> Option<bool> {
-        self.value.as_bool()
+    /// Returns the bool value. Caller must validate value is a bool first.
+    pub fn value_as_bool(&self) -> bool {
+        self.value
+            .as_bool()
+            .expect("value_as_bool called on non-boolean value; validate metric type first")
     }
 
     /// Returns the fields map if present
@@ -296,19 +298,7 @@ mod tests {
             fields: None,
         };
 
-        assert_eq!(output.value_as_string("unknown"), "active");
-    }
-
-    #[test]
-    fn test_value_as_string_without_value() {
-        let output = ListOutput {
-            name: "test.metric".to_string(),
-            value: serde_json::Value::Null,
-            object: None,
-            fields: None,
-        };
-
-        assert_eq!(output.value_as_string("unknown"), "unknown");
+        assert_eq!(output.value_as_string(), "active");
     }
 
     #[test]
@@ -320,7 +310,7 @@ mod tests {
             fields: None,
         };
 
-        assert_eq!(output.value_as_string("default"), "");
+        assert_eq!(output.value_as_string(), "");
     }
 
     #[test]
@@ -332,10 +322,11 @@ mod tests {
             fields: None,
         };
 
-        assert_eq!(output.value_as_int(0), 42);
+        assert_eq!(output.value_as_int(), 42);
     }
 
     #[test]
+    #[should_panic(expected = "value_as_int called on non-integer value")]
     fn test_value_as_int_without_value() {
         let output = ListOutput {
             name: "test.metric".to_string(),
@@ -344,7 +335,7 @@ mod tests {
             fields: None,
         };
 
-        assert_eq!(output.value_as_int(0), 0);
+        output.value_as_int();
     }
 
     #[test]
@@ -356,7 +347,19 @@ mod tests {
             fields: None,
         };
 
-        assert_eq!(output.value_as_int(0), 0);
+        assert_eq!(output.value_as_int(), 0);
+    }
+
+    #[test]
+    fn test_value_as_int_negative() {
+        let output = ListOutput {
+            name: "test.metric".to_string(),
+            value: serde_json::json!(-5),
+            object: None,
+            fields: None,
+        };
+
+        assert_eq!(output.value_as_int(), -5);
     }
 
     #[test]
@@ -368,7 +371,7 @@ mod tests {
             fields: None,
         };
 
-        assert_eq!(output.value_as_int(0), 9999999999);
+        assert_eq!(output.value_as_int(), 9999999999);
     }
 
     #[test]
@@ -380,7 +383,7 @@ mod tests {
             fields: None,
         };
 
-        assert_eq!(output.value_as_bool(), Some(true));
+        assert_eq!(output.value_as_bool(), true);
     }
 
     #[test]
@@ -392,10 +395,11 @@ mod tests {
             fields: None,
         };
 
-        assert_eq!(output.value_as_bool(), Some(false));
+        assert_eq!(output.value_as_bool(), false);
     }
 
     #[test]
+    #[should_panic(expected = "value_as_bool called on non-boolean value")]
     fn test_value_as_bool_none() {
         let output = ListOutput {
             name: "test.metric".to_string(),
@@ -404,6 +408,6 @@ mod tests {
             fields: None,
         };
 
-        assert_eq!(output.value_as_bool(), None);
+        output.value_as_bool();
     }
 }
