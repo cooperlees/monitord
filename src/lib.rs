@@ -177,8 +177,8 @@ pub async fn stat_collector(
                 if config_clone.varlink.enabled {
                     let socket_path = crate::varlink_units::METRICS_SOCKET_PATH.to_string();
                     match crate::varlink_units::update_unit_stats(
-                        Arc::clone(&config_clone),
-                        stats_clone.clone(),
+                        config_clone,
+                        stats_clone,
                         socket_path,
                     )
                     .await
