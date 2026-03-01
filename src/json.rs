@@ -286,82 +286,16 @@ fn flatten_units(
     units_stats: &units::SystemdUnitStats,
     key_prefix: &str,
 ) -> Vec<(String, serde_json::Value)> {
-    // fields of the SystemdUnitStats struct we know to ignore so don't log below
-    let fields_to_ignore = Vec::from(["service_stats"]);
-
     let mut flat_stats = Vec::new();
     let base_metric_name = gen_base_metric_key(key_prefix, "units");
 
-    // TODO: Work out a smarter way to do this rather than hard code mappings
-    for field_name in units::UNIT_FIELD_NAMES {
-        let key = format!("{base_metric_name}.{field_name}");
-        match *field_name {
-            "active_units" => {
-                flat_stats.push((key, units_stats.active_units.into()));
+    if let Ok(serde_json::Value::Object(map)) = serde_json::to_value(units_stats) {
+        for (field_name, value) in map {
+            if value.is_number() {
+                let key = format!("{base_metric_name}.{field_name}");
+                flat_stats.push((key, value));
             }
-            "automount_units" => {
-                flat_stats.push((key, units_stats.automount_units.into()));
-            }
-            "device_units" => {
-                flat_stats.push((key, units_stats.device_units.into()));
-            }
-            "failed_units" => {
-                flat_stats.push((key, units_stats.failed_units.into()));
-            }
-            "inactive_units" => {
-                flat_stats.push((key, units_stats.inactive_units.into()));
-            }
-            "jobs_queued" => {
-                flat_stats.push((key, units_stats.jobs_queued.into()));
-            }
-            "loaded_units" => {
-                flat_stats.push((key, units_stats.loaded_units.into()));
-            }
-            "masked_units" => {
-                flat_stats.push((key, units_stats.masked_units.into()));
-            }
-            "mount_units" => {
-                flat_stats.push((key, units_stats.mount_units.into()));
-            }
-            "not_found_units" => {
-                flat_stats.push((key, units_stats.not_found_units.into()));
-            }
-            "path_units" => {
-                flat_stats.push((key, units_stats.path_units.into()));
-            }
-            "scope_units" => {
-                flat_stats.push((key, units_stats.scope_units.into()));
-            }
-            "service_units" => {
-                flat_stats.push((key, units_stats.service_units.into()));
-            }
-            "slice_units" => {
-                flat_stats.push((key, units_stats.slice_units.into()));
-            }
-            "socket_units" => {
-                flat_stats.push((key, units_stats.socket_units.into()));
-            }
-            "target_units" => {
-                flat_stats.push((key, units_stats.target_units.into()));
-            }
-            "timer_units" => {
-                flat_stats.push((key, units_stats.timer_units.into()));
-            }
-            "timer_persistent_units" => {
-                flat_stats.push((key, units_stats.timer_persistent_units.into()));
-            }
-            "timer_remain_after_elapse" => {
-                flat_stats.push((key, units_stats.timer_remain_after_elapse.into()));
-            }
-            "total_units" => {
-                flat_stats.push((key, units_stats.total_units.into()));
-            }
-            _ => {
-                if !fields_to_ignore.contains(field_name) {
-                    debug!("Got a unhandled stat '{}'", field_name);
-                }
-            }
-        };
+        }
     }
     flat_stats
 }
@@ -640,6 +574,7 @@ mod tests {
   "machines.foo.timers.unittest.timer.remain_after_elapse": 1,
   "machines.foo.timers.unittest.timer.service_unit_last_state_change_usec": 69,
   "machines.foo.timers.unittest.timer.service_unit_last_state_change_usec_monotonic": 69,
+  "machines.foo.units.activating_units": 0,
   "machines.foo.units.active_units": 0,
   "machines.foo.units.automount_units": 0,
   "machines.foo.units.device_units": 0,
@@ -708,6 +643,7 @@ mod tests {
   "unit_states.unittest.service.load_state": 1,
   "unit_states.unittest.service.time_in_state_usecs": 69,
   "unit_states.unittest.service.unhealthy": 0,
+  "units.activating_units": 0,
   "units.active_units": 0,
   "units.automount_units": 0,
   "units.device_units": 0,
@@ -837,7 +773,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(108, json_flat_map.len());
+        assert_eq!(110, json_flat_map.len());
     }
 
     #[test]
