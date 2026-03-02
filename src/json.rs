@@ -747,4 +747,43 @@ mod tests {
             assert!(key.starts_with("monitord."));
         }
     }
+
+    /// Ensure `UnitCounters` covers every scalar (non-hashmap) field of `SystemdUnitStats`.
+    ///
+    /// If a new counter field is added to `SystemdUnitStats` but not to `UnitCounters`
+    /// (and its `From` impl), this test will fail, preventing silent omissions from the
+    /// flat JSON output.
+    #[test]
+    fn test_unit_counters_covers_all_scalar_fields() {
+        // Fields of SystemdUnitStats that are nested maps, not scalar counters.
+        const NON_COUNTER_FIELDS: &[&str] = &["service_stats", "timer_stats", "unit_states"];
+
+        // Scalar counter field names expected from SystemdUnitStats.
+        let expected: std::collections::BTreeSet<&str> = units::UNIT_FIELD_NAMES
+            .iter()
+            .copied()
+            .filter(|f| !NON_COUNTER_FIELDS.contains(f))
+            .collect();
+
+        // Field names actually present in UnitCounters (via serde serialization).
+        let counters_json =
+            serde_json::to_value(UnitCounters::from(&units::SystemdUnitStats::default()))
+                .expect("UnitCounters serialization failed");
+        let actual: std::collections::BTreeSet<&str> = counters_json
+            .as_object()
+            .expect("UnitCounters must serialize to a JSON object")
+            .keys()
+            .map(|s| s.as_str())
+            .collect();
+
+        assert_eq!(
+            expected,
+            actual,
+            "UnitCounters is out of sync with SystemdUnitStats scalar fields.\n\
+             Missing from UnitCounters: {:?}\n\
+             Extra in UnitCounters: {:?}",
+            expected.difference(&actual).collect::<Vec<_>>(),
+            actual.difference(&expected).collect::<Vec<_>>(),
+        );
+    }
 }
