@@ -179,6 +179,62 @@ fn flatten_unit_states(
     flat_stats
 }
 
+/// Lightweight view of `SystemdUnitStats` containing only the numeric counters.
+/// Used by `flatten_units` to avoid serializing the nested `service_stats`,
+/// `timer_stats`, and `unit_states` hashmaps, keeping flattening O(number_of_counters).
+#[derive(serde::Serialize)]
+struct UnitCounters {
+    activating_units: u64,
+    active_units: u64,
+    automount_units: u64,
+    device_units: u64,
+    failed_units: u64,
+    inactive_units: u64,
+    jobs_queued: u64,
+    loaded_units: u64,
+    masked_units: u64,
+    mount_units: u64,
+    not_found_units: u64,
+    path_units: u64,
+    scope_units: u64,
+    service_units: u64,
+    slice_units: u64,
+    socket_units: u64,
+    target_units: u64,
+    timer_units: u64,
+    timer_persistent_units: u64,
+    timer_remain_after_elapse: u64,
+    total_units: u64,
+}
+
+impl From<&units::SystemdUnitStats> for UnitCounters {
+    fn from(s: &units::SystemdUnitStats) -> Self {
+        Self {
+            activating_units: s.activating_units,
+            active_units: s.active_units,
+            automount_units: s.automount_units,
+            device_units: s.device_units,
+            failed_units: s.failed_units,
+            inactive_units: s.inactive_units,
+            jobs_queued: s.jobs_queued,
+            loaded_units: s.loaded_units,
+            masked_units: s.masked_units,
+            mount_units: s.mount_units,
+            not_found_units: s.not_found_units,
+            path_units: s.path_units,
+            scope_units: s.scope_units,
+            service_units: s.service_units,
+            slice_units: s.slice_units,
+            socket_units: s.socket_units,
+            target_units: s.target_units,
+            timer_units: s.timer_units,
+            timer_persistent_units: s.timer_persistent_units,
+            timer_remain_after_elapse: s.timer_remain_after_elapse,
+            total_units: s.total_units,
+        }
+    }
+}
+
 fn flatten_units(
     units_stats: &units::SystemdUnitStats,
     key_prefix: &str,
@@ -186,7 +242,9 @@ fn flatten_units(
     let mut flat_stats = Vec::new();
     let base_metric_name = gen_base_metric_key(key_prefix, "units");
 
-    if let Ok(serde_json::Value::Object(map)) = serde_json::to_value(units_stats) {
+    if let Ok(serde_json::Value::Object(map)) =
+        serde_json::to_value(UnitCounters::from(units_stats))
+    {
         for (field_name, value) in map {
             if value.is_number() {
                 let key = format!("{base_metric_name}.{field_name}");
