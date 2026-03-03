@@ -237,10 +237,34 @@
     <hr>
 
     <div class="readme-content">
-      <p>We offer the following run modes:</p>
+      <p>monitord ... know how happy your systemd is! 😊</p>
+<h2>Requirements</h2>
+<ul>
+<li><strong>Linux</strong> with <strong>systemd</strong> (monitord uses D-Bus and procfs APIs that are Linux-specific)</li>
+<li>systemd-networkd installed (for networkd metrics; the collector can be disabled in config)</li>
+<li>PID 1 stats require procfs (<code>/proc</code>) — available on all standard Linux systems</li>
+<li>D-Bus system bus accessible (default: <code>unix:path=/run/dbus/system_bus_socket</code>)</li>
+<li>Varlink metrics require systemd v260+ (optional; falls back to D-Bus automatically)</li>
+</ul>
+<h2>What does monitord monitor?</h2>
+<p>monitord collects systemd health metrics via D-Bus (and optionally Varlink) and outputs them as JSON. It provides visibility into:</p>
+<ul>
+<li><strong>Unit counts</strong> — totals by type (service, mount, socket, timer, etc.) and state (active, failed, inactive, loaded, masked)</li>
+<li><strong>Per-service stats</strong> — CPU usage, memory, I/O, restart count, task count, watchdog status, and state timestamps for specific services</li>
+<li><strong>Unit state tracking</strong> — active state, load state, and health for individual units (with allowlist/blocklist filtering)</li>
+<li><strong>systemd-networkd</strong> — per-interface operational, carrier, admin, and address states</li>
+<li><strong>PID 1 health</strong> — CPU time, memory usage, file descriptor count, and task count for systemd (PID 1) via procfs</li>
+<li><strong>Timers</strong> — trigger times, accuracy, delays, and associated service state for systemd timers</li>
+<li><strong>Boot blame</strong> — the N slowest units at boot, similar to <code>systemd-analyze blame</code></li>
+<li><strong>D-Bus daemon stats</strong> — connection counts, match rules, and per-peer/per-cgroup/per-user breakdowns (dbus-broker and dbus-daemon)</li>
+<li><strong>Containers / machines</strong> — recursively collects the same metrics from systemd-nspawn containers and VMs via <code>systemd-machined</code></li>
+<li><strong>Unit verification</strong> — runs <code>systemd-analyze verify</code> and reports failing unit counts by type</li>
+</ul>
+<h2>Run Modes</h2>
+<p>We offer the following run modes:</p>
 <ul>
 <li>systemd-timer (legacy cron would work too)</li>
-<li>Refer to monitord.timer and monitord.service unit files</li>
+<li>Refer to <a href="monitord.timer">monitord.timer</a> and <a href="monitord.service">monitord.service</a> unit files</li>
 <li>Ensure no <code>daemon:</code> mode options are set in <code>monitord.conf</code></li>
 <li>daemon mode</li>
 <li>Enable daemon mode in configuration file</li>
@@ -249,7 +273,44 @@
 <p>Open to more formats / run methods ... Open an issue to discuss. Depends on the dependencies basically.</p>
 <p><code>monitord</code> is a config driven binary. We plan to keep CLI arguments to a minimum.</p>
 <p><strong>INFO</strong> level logging is enabled to stderr by default. Use <code>-l LEVEL</code> to increase or decrease logging.</p>
+<h2>Quick Start</h2>
+<ol>
+<li>
+<p>Install monitord:
+   <code>bash
+   cargo install monitord</code></p>
+</li>
+<li>
+<p>Create a minimal config at <code>/etc/monitord.conf</code>:
+   ```ini
+   [monitord]
+   output_format = json-pretty</p>
+</li>
+</ol>
+<p>[units]
+   enabled = true</p>
+<p>[pid1]
+   enabled = true
+   ```</p>
+<ol>
+<li>Run it:
+   <code>bash
+   monitord</code></li>
+</ol>
+<p>This will collect unit counts and PID 1 stats, then print JSON to stdout and exit. Enable additional collectors in the config as needed (see <a href="#config">Configuration</a> below).</p>
 <h2>Install</h2>
+<h3>Pre-built binaries</h3>
+<p>Download pre-built binaries from <a href="https://github.com/cooperlees/monitord/releases">GitHub Releases</a>:</p>
+<ul>
+<li><code>monitord-linux-amd64</code> — x86_64</li>
+<li><code>monitord-linux-aarch64</code> — ARM64</li>
+</ul>
+<pre><code class="language-bash"># Example: download and install the latest release (x86_64)
+curl -L -o /usr/local/bin/monitord \
+  https://github.com/cooperlees/monitord/releases/latest/download/monitord-linux-amd64
+chmod +x /usr/local/bin/monitord
+</code></pre>
+<h3>From crates.io</h3>
 <p>Install via cargo or use as a dependency in your <code>Cargo.toml</code>.</p>
 <ul>
 <li><code>cargo install monitord</code></li>
@@ -534,6 +595,277 @@ Is semi pretty too + custom. All unittested ...</p>
 </code></pre>
 <h3>json-pretty</h3>
 <p>Normal <code>serde_json</code> pretty representations of each components structs.</p>
+<h3>Metric Value Reference</h3>
+<p>Many metrics are serialized as integers. Here are the enum mappings:</p>
+<p><strong>system-state</strong></p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>unknown</td>
+</tr>
+<tr>
+<td>1</td>
+<td>initializing</td>
+</tr>
+<tr>
+<td>2</td>
+<td>starting</td>
+</tr>
+<tr>
+<td>3</td>
+<td>running</td>
+</tr>
+<tr>
+<td>4</td>
+<td>degraded</td>
+</tr>
+<tr>
+<td>5</td>
+<td>maintenance</td>
+</tr>
+<tr>
+<td>6</td>
+<td>stopping</td>
+</tr>
+<tr>
+<td>7</td>
+<td>offline</td>
+</tr>
+</tbody>
+</table>
+<p><strong>active_state</strong> (unit_states.*.active_state)</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>unknown</td>
+</tr>
+<tr>
+<td>1</td>
+<td>active</td>
+</tr>
+<tr>
+<td>2</td>
+<td>reloading</td>
+</tr>
+<tr>
+<td>3</td>
+<td>inactive</td>
+</tr>
+<tr>
+<td>4</td>
+<td>failed</td>
+</tr>
+<tr>
+<td>5</td>
+<td>activating</td>
+</tr>
+<tr>
+<td>6</td>
+<td>deactivating</td>
+</tr>
+</tbody>
+</table>
+<p><strong>loaded_state</strong> (unit_states.*.loaded_state)</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>unknown</td>
+</tr>
+<tr>
+<td>1</td>
+<td>loaded</td>
+</tr>
+<tr>
+<td>2</td>
+<td>error</td>
+</tr>
+<tr>
+<td>3</td>
+<td>masked</td>
+</tr>
+<tr>
+<td>4</td>
+<td>not-found</td>
+</tr>
+</tbody>
+</table>
+<p><strong>networkd address_state / ipv4_address_state / ipv6_address_state</strong></p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>unknown</td>
+</tr>
+<tr>
+<td>1</td>
+<td>off</td>
+</tr>
+<tr>
+<td>2</td>
+<td>degraded</td>
+</tr>
+<tr>
+<td>3</td>
+<td>routable</td>
+</tr>
+</tbody>
+</table>
+<p><strong>networkd admin_state</strong></p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>unknown</td>
+</tr>
+<tr>
+<td>1</td>
+<td>pending</td>
+</tr>
+<tr>
+<td>2</td>
+<td>failed</td>
+</tr>
+<tr>
+<td>3</td>
+<td>configuring</td>
+</tr>
+<tr>
+<td>4</td>
+<td>configured</td>
+</tr>
+<tr>
+<td>5</td>
+<td>unmanaged</td>
+</tr>
+<tr>
+<td>6</td>
+<td>linger</td>
+</tr>
+</tbody>
+</table>
+<p><strong>networkd carrier_state</strong></p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>unknown</td>
+</tr>
+<tr>
+<td>1</td>
+<td>off</td>
+</tr>
+<tr>
+<td>2</td>
+<td>no-carrier</td>
+</tr>
+<tr>
+<td>3</td>
+<td>dormant</td>
+</tr>
+<tr>
+<td>4</td>
+<td>degraded-carrier</td>
+</tr>
+<tr>
+<td>5</td>
+<td>carrier</td>
+</tr>
+<tr>
+<td>6</td>
+<td>enslaved</td>
+</tr>
+</tbody>
+</table>
+<p><strong>networkd oper_state</strong></p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>unknown</td>
+</tr>
+<tr>
+<td>1</td>
+<td>missing</td>
+</tr>
+<tr>
+<td>2</td>
+<td>off</td>
+</tr>
+<tr>
+<td>3</td>
+<td>no-carrier</td>
+</tr>
+<tr>
+<td>4</td>
+<td>dormant</td>
+</tr>
+<tr>
+<td>5</td>
+<td>degraded-carrier</td>
+</tr>
+<tr>
+<td>6</td>
+<td>carrier</td>
+</tr>
+<tr>
+<td>7</td>
+<td>degraded</td>
+</tr>
+<tr>
+<td>8</td>
+<td>enslaved</td>
+</tr>
+<tr>
+<td>9</td>
+<td>routable</td>
+</tr>
+</tbody>
+</table>
 <h2>dbus stats</h2>
 <p>You're going to need to be root or allow permissiong to pull dbus stats.
 For dbus-broker here is example config allow a user <code>monitord</code> to query
@@ -569,6 +901,14 @@ For dbus-broker here is example config allow a user <code>monitord</code> to que
 <li><code>cargo clippy</code></li>
 <li><code>cargo fmt</code></li>
 </ul>
+<h3>Releasing a new version</h3>
+<ol>
+<li>Increment the version in <code>Cargo.toml</code></li>
+<li>Run <code>./build_docs.sh</code> to regenerate docs</li>
+<li>Commit with message: <code>Move to version X.Y.Z for release + update docs</code></li>
+<li>If you have commit bit, push directly to main. Otherwise, push a branch and open a PR.</li>
+<li>Cut a GitHub release: <code>gh release create X.Y.Z --title "X.Y.Z" --generate-notes</code></li>
+</ol>
 <h3>Generate codegen APIs</h3>
 <ul>
 <li><code>cargo install zbus_xmlgen</code></li>
@@ -601,7 +941,21 @@ in the container to run monitord and test.</p>
 </ul>
 </li>
 </ul>
-<h2>API Usage</h2>
+<h2>Troubleshooting</h2>
+<p><strong>"Connection refused" or D-Bus connection errors</strong></p>
+<p>Ensure the system D-Bus daemon is running and the socket exists at <code>/run/dbus/system_bus_socket</code>. If using a custom address, set <code>dbus_address</code> in <code>[monitord]</code> config. Increase <code>dbus_timeout</code> if running on slow systems.</p>
+<p><strong>Empty or missing networkd metrics</strong></p>
+<p>systemd-networkd must be installed and running (<code>systemctl start systemd-networkd</code>). If networkd is not in use on your system, disable the collector with <code>enabled = false</code> in <code>[networkd]</code>.</p>
+<p><strong>Permission denied for D-Bus stats</strong></p>
+<p>The <code>[dbus]</code> collector requires permission to call <code>org.freedesktop.DBus.Debug.Stats.GetStats</code>. Either run monitord as root or add a D-Bus policy file — see the <a href="#dbus-stats">dbus stats</a> section.</p>
+<p><strong>PID 1 stats unavailable</strong></p>
+<p>PID 1 stats require Linux with procfs mounted at <code>/proc</code>. This collector is compiled out on non-Linux targets. If <code>/proc</code> is not available (some container runtimes), disable with <code>enabled = false</code> in <code>[pid1]</code>.</p>
+<p><strong>Collector errors don't crash monitord</strong></p>
+<p>When an individual collector fails (e.g., networkd not running, D-Bus timeout), monitord logs a warning and continues with the remaining collectors. Check stderr output or increase the log level (<code>-l debug</code>) to see which collectors had issues.</p>
+<p><strong>Large u64 values (18446744073709551615) in output</strong></p>
+<p>These represent <code>u64::MAX</code> and mean "not available" or "not tracked" for that metric. This is how systemd reports fields that are unsupported or not configured for the unit (e.g., <code>memory_available</code> when <code>MemoryMax=</code> is not set).</p>
+<h2>Library API</h2>
+<p>monitord can be used as a Rust library. See the full API documentation at <a href="https://monitord.xyz/monitord/index.html">monitord.xyz</a>.</p>
 <h2>DBus</h2>
 <p>All monitord's dbus is done via async (tokio) <a href="https://crates.io/crates/zbus">zbus</a> crate.</p>
 <p>systemd Dbus APIs are in use in the following modules:</p>
@@ -645,7 +999,28 @@ in the container to run monitord and test.</p>
 <p>Some of these modules can be disabled via configuration. Due to this, monitord might not
 always be running / calling all these DBus calls per run.</p>
 <h2>Varlink</h2>
-<p>None yet :(.</p>
+<p>monitord supports collecting unit statistics via systemd's <a href="https://github.com/systemd/systemd/pull/39202">Varlink metrics API</a>,
+available in systemd v260+. When enabled, monitord connects to the <code>io.systemd.Metrics</code> interface
+at <code>/run/systemd/report/io.systemd.Manager</code> to collect unit counts, active/load states, and restart counts.</p>
+<h3>Enabling Varlink</h3>
+<p>Set <code>enabled = true</code> in the <code>[varlink]</code> section of <code>monitord.conf</code>:</p>
+<pre><code class="language-ini">[varlink]
+enabled = true
+</code></pre>
+<p>When varlink is enabled, monitord will attempt to collect unit stats via the metrics API first.
+If the varlink socket is unavailable (e.g., systemd &lt; v260), it automatically falls back to D-Bus collection.</p>
+<h3>Metrics collected via Varlink</h3>
+<ul>
+<li>Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)</li>
+<li>Unit counts by state (active, failed, inactive)</li>
+<li>Per-unit active state and load state (with allowlist/blocklist filtering)</li>
+<li>Per-unit health status (computed from active + load state)</li>
+<li>Per-service restart counts (<code>nrestarts</code>)</li>
+</ul>
+<h3>Containers</h3>
+<p>For systemd-nspawn containers, monitord connects to the container's varlink socket via
+<code>/proc/&lt;leader_pid&gt;/root/run/systemd/report/io.systemd.Manager</code>, similar to how D-Bus uses
+the container-scoped bus socket.</p>
 <h3>varlink 101</h3>
 <p>varlink might one day replace our DBUS usage. Here are some notes on how to work with systemd varlink
 as there isn't really documentation outside <code>man</code> pages.</p>

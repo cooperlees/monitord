@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["MonitordConfigError","MonitordOutputFormat"],"struct":["BootBlameConfig","Config","DBusStatsConfig","MachinesConfig","MonitordConfig","NetworkdConfig","Pid1Config","SystemStateConfig","TimersConfig","UnitsConfig","VerifyConfig"]};
+window.SIDEBAR_ITEMS = {"enum":["MonitordConfigError","MonitordOutputFormat"],"struct":["BootBlameConfig","Config","DBusStatsConfig","MachinesConfig","MonitordConfig","NetworkdConfig","Pid1Config","SystemStateConfig","TimersConfig","UnitsConfig","VarlinkConfig","VerifyConfig"]};

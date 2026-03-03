@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["MetricFamilyType","MetricsError"],"struct":["DescribeOutput","ListOutput"],"trait":["Metrics"]};
