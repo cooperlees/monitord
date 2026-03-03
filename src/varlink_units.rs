@@ -88,25 +88,9 @@ pub fn parse_one_metric(
             if should_skip_unit(&object_name, config) {
                 return Ok(());
             }
-            if !metric.value().is_string() {
-                warn!(
-                    "Metric {} has non-string value: {:?}",
-                    metric.name(),
-                    metric.value()
-                );
-                return Ok(());
-            }
-            let value = metric.value_as_string();
-            let load_state = match SystemdUnitLoadState::from_str(value) {
-                Ok(v) => v,
-                Err(_) => {
-                    warn!(
-                        "Metric {} has unrecognized value: {:?}",
-                        metric.name(),
-                        value
-                    );
-                    return Ok(());
-                }
+            let load_state: SystemdUnitLoadState = match parse_metric_enum(metric) {
+                Some(v) => v,
+                None => return Ok(()),
             };
             let unit_state = stats
                 .unit_states
