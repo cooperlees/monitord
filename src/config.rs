@@ -212,14 +212,9 @@ pub struct VerifyConfig {
     pub blocklist: HashSet<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct VarlinkConfig {
     pub enabled: bool,
-}
-impl Default for VarlinkConfig {
-    fn default() -> Self {
-        VarlinkConfig { enabled: false }
-    }
 }
 
 /// Config struct
