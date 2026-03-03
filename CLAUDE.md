@@ -24,6 +24,14 @@ cargo run -- -c monitord.conf -l debug  # Run locally with debug logging
 
 **D-Bus proxy regeneration:** `zbus-xmlgen system org.freedesktop.systemd1 /org/freedesktop/systemd1/unit/...` — output goes in `src/dbus/`.
 
+**Releasing a new version:**
+
+1. Increment the version in `Cargo.toml`
+2. Run `./build_docs.sh` to regenerate docs
+3. Commit with message: `Move to version X.Y.Z for release + update docs`
+4. If you have commit bit, push directly to main. Otherwise, push a branch and open a PR.
+5. Cut a GitHub release: `gh release create X.Y.Z --title "X.Y.Z" --generate-notes`
+
 ## Architecture
 
 Single-crate project (both library and binary). The binary (`main.rs`) parses CLI args and loads config; the library (`lib.rs::stat_collector()`) orchestrates collection.
