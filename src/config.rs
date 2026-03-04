@@ -66,12 +66,14 @@ impl Default for MonitordConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NetworkdConfig {
     pub enabled: bool,
+    pub enable_varlink: bool,
     pub link_state_dir: PathBuf,
 }
 impl Default for NetworkdConfig {
     fn default() -> Self {
         NetworkdConfig {
             enabled: false,
+            enable_varlink: false,
             link_state_dir: crate::networkd::NETWORKD_STATE_FILES.into(),
         }
     }
@@ -272,6 +274,8 @@ impl TryFrom<Ini> for Config {
 
         // [networkd] section
         config.networkd.enabled = read_config_bool(&ini_config, "networkd", "enabled")?;
+        config.networkd.enable_varlink =
+            read_config_bool(&ini_config, "networkd", "enable_varlink")?;
         if let Some(link_state_dir) = ini_config.get("networkd", "link_state_dir") {
             config.networkd.link_state_dir = link_state_dir.into();
         }
@@ -428,6 +432,7 @@ output_format = json-pretty
 
 [networkd]
 enabled = true
+enable_varlink = true
 link_state_dir = /links
 
 [pid1]
@@ -557,6 +562,7 @@ output_format = json-flat
             },
             networkd: NetworkdConfig {
                 enabled: true,
+                enable_varlink: true,
                 link_state_dir: "/links".into(),
             },
             pid1: Pid1Config { enabled: true },

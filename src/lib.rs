@@ -34,6 +34,7 @@ pub mod timer;
 pub mod unit_constants;
 pub mod units;
 pub mod varlink;
+pub mod varlink_networkd;
 pub mod varlink_units;
 pub mod verify;
 
@@ -152,12 +153,34 @@ pub async fn stat_collector(
 
         // Run networkd collector if enabled
         if config.networkd.enabled {
-            join_set.spawn(crate::networkd::update_networkd_stats(
-                config.networkd.link_state_dir.clone(),
-                None,
-                sdc.clone(),
-                locked_machine_stats.clone(),
-            ));
+            let config_clone = Arc::clone(&config);
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_machine_stats.clone();
+            join_set.spawn(async move {
+                if config_clone.networkd.enable_varlink {
+                    let socket_path = crate::varlink_networkd::NETWORK_SOCKET_PATH.to_string();
+                    match crate::varlink_networkd::get_networkd_state(&socket_path).await {
+                        Ok(networkd_stats) => {
+                            let mut machine_stats = stats_clone.write().await;
+                            machine_stats.networkd = networkd_stats;
+                            return Ok(());
+                        }
+                        Err(err) => {
+                            warn!(
+                                "Varlink networkd stats failed, falling back to file-based: {:?}",
+                                err
+                            );
+                        }
+                    }
+                }
+                crate::networkd::update_networkd_stats(
+                    config_clone.networkd.link_state_dir.clone(),
+                    None,
+                    sdc_clone,
+                    stats_clone,
+                )
+                .await
+            });
         }
 
         // Run system running (SystemState) state collector

@@ -599,8 +599,8 @@ systemd Dbus APIs are in use in the following modules:
   - Can do most other calls then on the machine's systemd/dbus
 - networkd
   - `ManagerProxy::list_links()`
-  - Would love to stop parsing `/run/systemd/netif/links` and replace via varlink API
-    - https://github.com/systemd/systemd/issues/36877
+  - Interface state files at `/run/systemd/netif/links` are used by default; the varlink
+    `io.systemd.Network.Describe` API can be enabled instead (see below)
 - system
   - `ManagerProxy::get_version()`
   - `ManagerProxy::system_state()`
@@ -637,7 +637,7 @@ monitord supports collecting unit statistics via systemd's [Varlink metrics API]
 available in systemd v260+. When enabled, monitord connects to the `io.systemd.Metrics` interface
 at `/run/systemd/report/io.systemd.Manager` to collect unit counts, active/load states, and restart counts.
 
-### Enabling Varlink
+### Enabling Varlink for units
 
 Set `enabled = true` in the `[varlink]` section of `monitord.conf`:
 
@@ -648,6 +648,25 @@ enabled = true
 
 When varlink is enabled, monitord will attempt to collect unit stats via the metrics API first.
 If the varlink socket is unavailable (e.g., systemd < v260), it automatically falls back to D-Bus collection.
+
+### Enabling Varlink for networkd
+
+monitord supports collecting networkd interface stats via the `io.systemd.Network.Describe` varlink
+API, available from systemd v257+. Set `enable_varlink = true` in the `[networkd]` section:
+
+```ini
+[networkd]
+enabled = true
+enable_varlink = true
+```
+
+When enabled, monitord calls `io.systemd.Network.Describe` at
+`/run/systemd/netif/io.systemd.Network` to collect per-interface states instead of parsing the
+`/run/systemd/netif/links` state files. If the varlink socket is unavailable, monitord
+automatically falls back to the file-based approach.
+
+For systemd-nspawn containers, monitord uses the container-scoped socket at
+`/proc/<leader_pid>/root/run/systemd/netif/io.systemd.Network`, with the same file-based fallback.
 
 ### Metrics collected via Varlink
 
