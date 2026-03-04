@@ -86,7 +86,7 @@ pub async fn update_machines_stats(
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
             join_set.spawn(async move {
-                if config_clone.networkd.enable_varlink {
+                if config_clone.varlink.enabled {
                     let socket_path = format!(
                         "/proc/{}/root{}",
                         leader_pid,

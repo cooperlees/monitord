@@ -637,7 +637,7 @@ monitord supports collecting unit statistics via systemd's [Varlink metrics API]
 available in systemd v260+. When enabled, monitord connects to the `io.systemd.Metrics` interface
 at `/run/systemd/report/io.systemd.Manager` to collect unit counts, active/load states, and restart counts.
 
-### Enabling Varlink for units
+### Enabling Varlink
 
 Set `enabled = true` in the `[varlink]` section of `monitord.conf`:
 
@@ -646,41 +646,30 @@ Set `enabled = true` in the `[varlink]` section of `monitord.conf`:
 enabled = true
 ```
 
-When varlink is enabled, monitord will attempt to collect unit stats via the metrics API first.
-If the varlink socket is unavailable (e.g., systemd < v260), it automatically falls back to D-Bus collection.
-
-### Enabling Varlink for networkd
-
-monitord supports collecting networkd interface stats via the `io.systemd.Network.Describe` varlink
-API, available from systemd v257+. Set `enable_varlink = true` in the `[networkd]` section:
-
-```ini
-[networkd]
-enabled = true
-enable_varlink = true
-```
-
-When enabled, monitord calls `io.systemd.Network.Describe` at
-`/run/systemd/netif/io.systemd.Network` to collect per-interface states instead of parsing the
-`/run/systemd/netif/links` state files. If the varlink socket is unavailable, monitord
-automatically falls back to the file-based approach.
-
-For systemd-nspawn containers, monitord uses the container-scoped socket at
-`/proc/<leader_pid>/root/run/systemd/netif/io.systemd.Network`, with the same file-based fallback.
+When varlink is enabled, monitord will attempt to collect stats via the varlink APIs first,
+automatically falling back to D-Bus or file-based collection when a varlink socket is unavailable
+(e.g., older systemd versions).
 
 ### Metrics collected via Varlink
 
+**Units** (`io.systemd.Metrics` — systemd v260+):
 - Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)
 - Unit counts by state (active, failed, inactive)
 - Per-unit active state and load state (with allowlist/blocklist filtering)
 - Per-unit health status (computed from active + load state)
 - Per-service restart counts (`nrestarts`)
+- Falls back to D-Bus collection if the socket is unavailable
+
+**Networkd interfaces** (`io.systemd.Network.Describe` — systemd v257+):
+- Per-interface operational, carrier, admin, and address states
+- Falls back to parsing `/run/systemd/netif/links` state files if the socket is unavailable
 
 ### Containers
 
 For systemd-nspawn containers, monitord connects to the container's varlink socket via
 `/proc/<leader_pid>/root/run/systemd/report/io.systemd.Manager`, similar to how D-Bus uses
-the container-scoped bus socket.
+the container-scoped bus socket. Networkd stats use
+`/proc/<leader_pid>/root/run/systemd/netif/io.systemd.Network`, with the same file-based fallback.
 
 ### varlink 101
 

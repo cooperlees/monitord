@@ -157,7 +157,7 @@ pub async fn stat_collector(
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             join_set.spawn(async move {
-                if config_clone.networkd.enable_varlink {
+                if config_clone.varlink.enabled {
                     let socket_path = crate::varlink_networkd::NETWORK_SOCKET_PATH.to_string();
                     match crate::varlink_networkd::get_networkd_state(&socket_path).await {
                         Ok(networkd_stats) => {
