@@ -103,6 +103,23 @@ impl TryFrom<String> for SystemdVersion {
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         let no_v_version = s.strip_prefix('v').unwrap_or(&s);
+
+        // Handle RC/pre-release versions like "260~rc1-5.fc45".
+        // The '~' separates the major version number from the pre-release identifier.
+        if let Some(tilde_pos) = no_v_version.find('~') {
+            let major = no_v_version[..tilde_pos].parse::<u32>()?;
+            let after_tilde = &no_v_version[tilde_pos + 1..];
+            let mut tilde_parts = after_tilde.splitn(2, '.');
+            let minor = tilde_parts.next().unwrap_or("").to_string();
+            let os = tilde_parts.next().unwrap_or("").to_string();
+            return Ok(SystemdVersion {
+                major,
+                minor,
+                revision: None,
+                os,
+            });
+        }
+
         let mut parts = no_v_version.split('.');
         let split_count = parts.clone().count();
         let major = parts
@@ -225,6 +242,13 @@ mod tests {
         let parsed: SystemdVersion = String::from("v299.6-9.9.hs+fb.el9").try_into()?;
         assert_eq!(
             SystemdVersion::new(299, String::from("6-9"), Some(9), String::from("hs+fb.el9")),
+            parsed
+        );
+
+        // RC / pre-release versions like those seen on Fedora Rawhide: "260~rc1-5.fc45"
+        let parsed: SystemdVersion = String::from("260~rc1-5.fc45").try_into()?;
+        assert_eq!(
+            SystemdVersion::new(260, String::from("rc1-5"), None, String::from("fc45")),
             parsed
         );
 
