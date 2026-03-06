@@ -107,12 +107,16 @@ pub fn print_stats(
     }
 }
 
-/// Main statictic collection function running what's required by configuration in parallel
+/// Main statistic collection function running what's required by configuration in parallel
 /// Takes an optional locked stats struct to update and to output stats to STDOUT or not
+/// Takes an optional D-Bus connection to reuse across calls; if `None`, a new connection is created
+/// using `config.monitord.dbus_timeout`. When a connection is provided the caller is responsible
+/// for configuring the desired timeout on it; `config.monitord.dbus_timeout` is not applied.
 pub async fn stat_collector(
     config: config::Config,
     maybe_locked_stats: Option<Arc<RwLock<MonitordStats>>>,
     output_stats: bool,
+    maybe_connection: Option<zbus::Connection>,
 ) -> Result<(), MonitordError> {
     let mut collect_interval_ms: u128 = 0;
     if config.monitord.daemon {
@@ -125,10 +129,13 @@ pub async fn stat_collector(
     let locked_machine_stats: Arc<RwLock<MachineStats>> =
         Arc::new(RwLock::new(MachineStats::default()));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
-    let sdc = zbus::connection::Builder::system()?
-        .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
-        .build()
-        .await?;
+    let sdc = match maybe_connection {
+        Some(conn) => conn,
+        None => zbus::connection::Builder::system()?
+            .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
+            .build()
+            .await?,
+    };
     let mut join_set = tokio::task::JoinSet::new();
 
     loop {
