@@ -131,10 +131,12 @@ pub async fn stat_collector(
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
     let sdc = match maybe_connection {
         Some(conn) => conn,
-        None => zbus::connection::Builder::system()?
-            .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
-            .build()
-            .await?,
+        None => {
+            zbus::connection::Builder::system()?
+                .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
+                .build()
+                .await?
+        }
     };
     let mut join_set = tokio::task::JoinSet::new();
 
