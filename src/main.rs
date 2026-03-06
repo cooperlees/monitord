@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use clap::Parser;
 use configparser::ini::Ini;
+use tokio::sync::Mutex;
 use tracing::debug;
 use tracing::info;
 
@@ -33,5 +36,11 @@ async fn main() -> anyhow::Result<()> {
         .load(args.config)
         .map_err(|e| anyhow::anyhow!("Config error: {:?}", e))?;
 
-    Ok(monitord::stat_collector(config.try_into()?, None, true, None).await?)
+    Ok(monitord::stat_collector(
+        config.try_into()?,
+        None,
+        true,
+        Arc::new(Mutex::new(HashMap::new())),
+    )
+    .await?)
 }

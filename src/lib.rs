@@ -2,13 +2,13 @@
 //!
 //! `monitord` is a library to gather statistics about systemd.
 
-use std::sync::Arc;
-
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
 use thiserror::Error;
+use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tracing::error;
 use tracing::info;
@@ -38,6 +38,16 @@ pub mod varlink_units;
 pub mod verify;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
+
+/// A cache of named D-Bus connections.
+///
+/// Keys used by monitord:
+/// - `"system"` — the host system bus connection
+/// - `"machine_{name}"` — the D-Bus connection for the named systemd-machined container
+///
+/// Wrap in `Arc<tokio::sync::Mutex<ConnectionCache>>` and pass to [`stat_collector`].
+/// An empty map is populated on the first call and reused on subsequent calls.
+pub type ConnectionCache = HashMap<String, zbus::Connection>;
 
 /// Stats collected for a single systemd-nspawn container or VM managed by systemd-machined
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
@@ -107,16 +117,19 @@ pub fn print_stats(
     }
 }
 
-/// Main statistic collection function running what's required by configuration in parallel
-/// Takes an optional locked stats struct to update and to output stats to STDOUT or not
-/// Takes an optional D-Bus connection to reuse across calls; if `None`, a new connection is created
-/// using `config.monitord.dbus_timeout`. When a connection is provided the caller is responsible
-/// for configuring the desired timeout on it; `config.monitord.dbus_timeout` is not applied.
+/// Main statistic collection function running what's required by configuration in parallel.
+///
+/// Takes an optional locked stats struct to update and controls whether stats are printed to STDOUT.
+///
+/// `connection_cache` is an `Arc<Mutex<ConnectionCache>>` shared across calls.  Pass an empty map
+/// and it will be populated on the first call; subsequent calls reuse the cached connections.
+/// The "system" entry holds the host D-Bus connection (built with `config.monitord.dbus_timeout`).
+/// Per-container entries are stored as "machine_{name}".
 pub async fn stat_collector(
     config: config::Config,
     maybe_locked_stats: Option<Arc<RwLock<MonitordStats>>>,
     output_stats: bool,
-    maybe_connection: Option<zbus::Connection>,
+    connection_cache: Arc<Mutex<ConnectionCache>>,
 ) -> Result<(), MonitordError> {
     let mut collect_interval_ms: u128 = 0;
     if config.monitord.daemon {
@@ -129,13 +142,20 @@ pub async fn stat_collector(
     let locked_machine_stats: Arc<RwLock<MachineStats>> =
         Arc::new(RwLock::new(MachineStats::default()));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
-    let sdc = match maybe_connection {
-        Some(conn) => conn,
-        None => {
-            zbus::connection::Builder::system()?
+    let sdc = {
+        let cached = connection_cache.lock().await.get("system").cloned();
+        if let Some(conn) = cached {
+            conn
+        } else {
+            let conn = zbus::connection::Builder::system()?
                 .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
                 .build()
-                .await?
+                .await?;
+            connection_cache
+                .lock()
+                .await
+                .insert("system".to_string(), conn.clone());
+            conn
         }
     };
     let mut join_set = tokio::task::JoinSet::new();
@@ -210,6 +230,7 @@ pub async fn stat_collector(
                 Arc::clone(&config),
                 sdc.clone(),
                 locked_monitord_stats.clone(),
+                Arc::clone(&connection_cache),
             ));
         }
 

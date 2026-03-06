@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use thiserror::Error;
+use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tracing::{debug, error, warn};
 
@@ -54,6 +55,7 @@ pub async fn update_machines_stats(
     config: Arc<crate::config::Config>,
     connection: zbus::Connection,
     locked_monitord_stats: Arc<RwLock<MonitordStats>>,
+    connection_cache: Arc<Mutex<crate::ConnectionCache>>,
 ) -> anyhow::Result<()> {
     let locked_machine_stats: Arc<RwLock<MachineStats>> =
         Arc::new(RwLock::new(MachineStats::default()));
@@ -67,10 +69,21 @@ pub async fn update_machines_stats(
             "unix:path=/proc/{}/root/run/dbus/system_bus_socket",
             leader_pid
         );
-        let sdc = zbus::connection::Builder::address(container_address.as_str())?
-            .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
-            .build()
-            .await?;
+        let cache_key = format!("machine_{}", machine);
+        let cached = connection_cache.lock().await.get(&cache_key).cloned();
+        let sdc = if let Some(conn) = cached {
+            conn
+        } else {
+            let conn = zbus::connection::Builder::address(container_address.as_str())?
+                .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
+                .build()
+                .await?;
+            connection_cache
+                .lock()
+                .await
+                .insert(cache_key, conn.clone());
+            conn
+        };
         let mut join_set = tokio::task::JoinSet::new();
 
         if config.pid1.enabled {
