@@ -223,10 +223,12 @@ async fn parse_service(
     debug!("Parsing service {} stats", name);
 
     let sp = crate::dbus::zbus_service::ServiceProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
         .path(object_path.clone())?
         .build()
         .await?;
     let up = crate::dbus::zbus_unit::UnitProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
         .path(object_path.clone())?
         .build()
         .await?;
@@ -296,6 +298,7 @@ async fn get_time_in_state(
     match connection {
         Some(c) => {
             let up = crate::dbus::zbus_unit::UnitProxy::builder(c)
+                .cache_properties(zbus::proxy::CacheProperties::No)
                 .path(ObjectPath::from(unit.unit_object_path.clone()))?
                 .build()
                 .await?;
@@ -415,7 +418,10 @@ pub async fn parse_unit_state(
     }
 
     let mut stats = SystemdUnitStats::default();
-    let p = crate::dbus::zbus_systemd::ManagerProxy::new(connection).await?;
+    let p = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
     let units = p.list_units().await?;
 
     stats.total_units = units.len() as u64;

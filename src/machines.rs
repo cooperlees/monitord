@@ -32,7 +32,10 @@ pub async fn get_machines(
     connection: &zbus::Connection,
     config: &crate::config::Config,
 ) -> Result<HashMap<String, u32>, MonitordMachinesError> {
-    let c = crate::dbus::zbus_machines::ManagerProxy::new(connection).await?;
+    let c = crate::dbus::zbus_machines::ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
     let mut results = HashMap::<String, u32>::new();
 
     let machines = c.list_machines().await?;
