@@ -107,13 +107,31 @@ pub fn print_stats(
     }
 }
 
+/// Reuse an existing D-Bus connection or create a new system bus connection.
+async fn get_or_create_dbus_connection(
+    config: &config::Config,
+    maybe_connection: Option<zbus::Connection>,
+) -> Result<zbus::Connection, MonitordError> {
+    match maybe_connection {
+        Some(conn) => Ok(conn),
+        None => Ok(zbus::connection::Builder::system()?
+            .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
+            .build()
+            .await?),
+    }
+}
+
 /// Main statictic collection function running what's required by configuration in parallel
-/// Takes an optional locked stats struct to update and to output stats to STDOUT or not
+/// Takes an optional locked stats struct to update and to output stats to STDOUT or not.
+/// Takes an optional D-Bus connection. Returns `Some(connection)` if the
+/// collection cycle completed without errors (meaning the connection is reusable),
+/// `None` if errors occurred.
 pub async fn stat_collector(
     config: config::Config,
     maybe_locked_stats: Option<Arc<RwLock<MonitordStats>>>,
     output_stats: bool,
-) -> Result<(), MonitordError> {
+    maybe_connection: Option<zbus::Connection>,
+) -> Result<Option<zbus::Connection>, MonitordError> {
     let mut collect_interval_ms: u128 = 0;
     if config.monitord.daemon {
         collect_interval_ms = (config.monitord.daemon_stats_refresh_secs * 1000).into();
@@ -124,12 +142,12 @@ pub async fn stat_collector(
         maybe_locked_stats.unwrap_or(Arc::new(RwLock::new(MonitordStats::default())));
     let locked_machine_stats: Arc<RwLock<MachineStats>> =
         Arc::new(RwLock::new(MachineStats::default()));
+    let cached_machine_connections: Arc<tokio::sync::Mutex<machines::MachineConnections>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
-    let sdc = zbus::connection::Builder::system()?
-        .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
-        .build()
-        .await?;
+    let sdc = get_or_create_dbus_connection(&config, maybe_connection).await?;
     let mut join_set = tokio::task::JoinSet::new();
+    let mut had_error;
 
     loop {
         let collect_start_time = Instant::now();
@@ -201,6 +219,7 @@ pub async fn stat_collector(
                 Arc::clone(&config),
                 sdc.clone(),
                 locked_monitord_stats.clone(),
+                cached_machine_connections.clone(),
             ));
         }
 
@@ -234,15 +253,18 @@ pub async fn stat_collector(
         }
 
         // Check all collection for errors and log if one fails
+        had_error = false;
         while let Some(res) = join_set.join_next().await {
             match res {
                 Ok(r) => match r {
                     Ok(_) => (),
                     Err(e) => {
+                        had_error = true;
                         error!("Collection specific failure: {:?}", e);
                     }
                 },
                 Err(e) => {
+                    had_error = true;
                     error!("Join error: {:?}", e);
                 }
             }
@@ -285,5 +307,5 @@ pub async fn stat_collector(
         ))
         .await;
     }
-    Ok(())
+    Ok(if had_error { None } else { Some(sdc) })
 }

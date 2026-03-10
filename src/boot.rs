@@ -26,6 +26,7 @@ async fn get_unit_activation_time(
     unit_path: &ObjectPath<'_>,
 ) -> Result<f64> {
     let unit_proxy = UnitProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
         .path(unit_path)?
         .build()
         .await?;
@@ -53,7 +54,10 @@ pub async fn update_boot_blame_stats(
 ) -> Result<()> {
     debug!("Starting boot blame stats collection");
 
-    let systemd_proxy = ManagerProxy::new(&connection).await?;
+    let systemd_proxy = ManagerProxy::builder(&connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
     let units = systemd_proxy.list_units().await?;
 
     let mut unit_times: Vec<(String, f64)> = Vec::new();

@@ -585,9 +585,16 @@ pub async fn parse_dbus_stats(
     config: &crate::config::Config,
     connection: &zbus::Connection,
 ) -> Result<DBusStats, MonitordDbusStatsError> {
-    let dbus_proxy = DBusProxy::new(connection).await?;
+    let dbus_proxy = DBusProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
 
-    let stats_proxy = StatsProxy::new(connection).await?;
+    let stats_proxy = StatsProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
+
     let stats = stats_proxy.get_stats().await?;
     let peers = parse_peer_accounting(
         &dbus_proxy,

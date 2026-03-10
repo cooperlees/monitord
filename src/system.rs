@@ -148,7 +148,9 @@ impl TryFrom<String> for SystemdVersion {
 pub async fn get_system_state(
     connection: &zbus::Connection,
 ) -> Result<SystemdSystemState, MonitordSystemError> {
-    let p = crate::dbus::zbus_systemd::ManagerProxy::new(connection)
+    let p = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
         .await
         .map_err(MonitordSystemError::ZbusError)?;
 
@@ -186,7 +188,9 @@ pub async fn update_system_stats(
 pub async fn get_version(
     connection: &zbus::Connection,
 ) -> Result<SystemdVersion, MonitordSystemError> {
-    let p = crate::dbus::zbus_systemd::ManagerProxy::new(connection)
+    let p = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
         .await
         .map_err(MonitordSystemError::ZbusError)?;
     let version_string = p.version().await?;

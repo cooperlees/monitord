@@ -110,7 +110,10 @@ pub async fn get_verify_stats(
     let mut stats = VerifyStats::default();
 
     // Get list of all units from systemd
-    let manager_proxy = crate::dbus::zbus_systemd::ManagerProxy::new(connection).await?;
+    let manager_proxy = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
     let all_units = manager_proxy.list_units().await?;
 
     // Filter units based on allowlist/blocklist
