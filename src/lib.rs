@@ -124,6 +124,8 @@ pub async fn stat_collector(
         maybe_locked_stats.unwrap_or(Arc::new(RwLock::new(MonitordStats::default())));
     let locked_machine_stats: Arc<RwLock<MachineStats>> =
         Arc::new(RwLock::new(MachineStats::default()));
+    let cached_machine_connections: Arc<tokio::sync::Mutex<machines::MachineConnections>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
     let sdc = zbus::connection::Builder::system()?
         .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
@@ -201,6 +203,7 @@ pub async fn stat_collector(
                 Arc::clone(&config),
                 sdc.clone(),
                 locked_monitord_stats.clone(),
+                cached_machine_connections.clone(),
             ));
         }
 
