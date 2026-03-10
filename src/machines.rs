@@ -164,13 +164,15 @@ pub async fn update_machines_stats(
             machine, leader_pid
         );
 
-        let sdc = get_or_create_connection(
-            &config,
-            &cached_connections,
-            &machine,
-            leader_pid,
-        )
-        .await?;
+        let sdc = match get_or_create_connection(&config, &cached_connections, &machine, leader_pid)
+            .await
+        {
+            Ok(conn) => conn,
+            Err(e) => {
+                error!("Failed to connect to container {}: {:?}", machine, e);
+                continue;
+            }
+        };
 
         let mut join_set = tokio::task::JoinSet::new();
 
