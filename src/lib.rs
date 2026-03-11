@@ -39,6 +39,18 @@ pub mod verify;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 
+/// Check if an error indicates a broken D-Bus connection (I/O or handshake failure).
+/// Request-level errors (MethodError, FDO, etc.) do not indicate a broken connection.
+pub(crate) fn is_connection_error(err: &anyhow::Error) -> bool {
+    if let Some(zbus_err) = err.downcast_ref::<zbus::Error>() {
+        return matches!(
+            zbus_err,
+            zbus::Error::InputOutput(_) | zbus::Error::Handshake(_)
+        );
+    }
+    false
+}
+
 /// Stats collected for a single systemd-nspawn container or VM managed by systemd-machined
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct MachineStats {
@@ -259,12 +271,13 @@ pub async fn stat_collector(
                 Ok(r) => match r {
                     Ok(_) => (),
                     Err(e) => {
-                        had_error = true;
+                        if is_connection_error(&e) {
+                            had_error = true;
+                        }
                         error!("Collection specific failure: {:?}", e);
                     }
                 },
                 Err(e) => {
-                    had_error = true;
                     error!("Join error: {:?}", e);
                 }
             }
