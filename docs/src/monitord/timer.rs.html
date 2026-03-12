@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/timer.rs`."><title>timer.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.93.1 (01f6ddf75 2026-02-11)" data-channel="1.93.1" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-a410ff4d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>timer.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! # timers module
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/timer.rs`."><title>timer.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-77263533.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.94.0 (4a4ef493e 2026-03-02)" data-channel="1.94.0" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-b897f86f.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-7bab91a1.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-ffcac47a.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>timer.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! # timers module
 <a href=#2 id=2 data-nosnippet>2</a>//!
 <a href=#3 id=3 data-nosnippet>3</a>//! All timer related logic goes here. This will be hitting timer specific
 <a href=#4 id=4 data-nosnippet>4</a>//! dbus / varlink etc.
@@ -56,80 +56,85 @@
 <a href=#56 id=56 data-nosnippet>56</a>    <span class="kw">let </span><span class="kw-2">mut </span>timer_stats = TimerStats::default();
 <a href=#57 id=57 data-nosnippet>57</a>
 <a href=#58 id=58 data-nosnippet>58</a>    <span class="kw">let </span>pt = <span class="kw">crate</span>::dbus::zbus_timer::TimerProxy::builder(connection)
-<a href=#59 id=59 data-nosnippet>59</a>        .path(unit.unit_object_path.clone())<span class="question-mark">?
-<a href=#60 id=60 data-nosnippet>60</a>        </span>.build()
-<a href=#61 id=61 data-nosnippet>61</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#62 id=62 data-nosnippet>62</a>    <span class="comment">// Get service unit name to check when it last ran to ensure
-<a href=#63 id=63 data-nosnippet>63</a>    // we are triggers the configured service with times set
-<a href=#64 id=64 data-nosnippet>64</a>    </span><span class="kw">let </span>service_unit = pt.unit().<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#65 id=65 data-nosnippet>65</a>    <span class="kw">let </span><span class="kw-2">mut </span>service_unit_last_state_change_usec: <span class="prelude-ty">Result</span>&lt;u64, zbus::Error&gt; = <span class="prelude-val">Ok</span>(<span class="number">0</span>);
-<a href=#66 id=66 data-nosnippet>66</a>    <span class="kw">let </span><span class="kw-2">mut </span>service_unit_last_state_change_usec_monotonic: <span class="prelude-ty">Result</span>&lt;u64, zbus::Error&gt; = <span class="prelude-val">Ok</span>(<span class="number">0</span>);
-<a href=#67 id=67 data-nosnippet>67</a>    <span class="kw">if </span>service_unit.is_empty() {
-<a href=#68 id=68 data-nosnippet>68</a>        <span class="macro">error!</span>(<span class="string">"{}: No service unit name found for timer."</span>, unit.name);
-<a href=#69 id=69 data-nosnippet>69</a>    } <span class="kw">else </span>{
-<a href=#70 id=70 data-nosnippet>70</a>        <span class="comment">// Get the object path of the service unit
-<a href=#71 id=71 data-nosnippet>71</a>        </span><span class="kw">let </span>mp = <span class="kw">crate</span>::dbus::zbus_systemd::ManagerProxy::new(connection).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#72 id=72 data-nosnippet>72</a>        <span class="kw">let </span>service_unit_path = mp.get_unit(<span class="kw-2">&amp;</span>service_unit).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#73 id=73 data-nosnippet>73</a>        <span class="comment">// Create a UnitProxy with the unit path to async get the two counters we want
-<a href=#74 id=74 data-nosnippet>74</a>        </span><span class="kw">let </span>up = <span class="kw">crate</span>::dbus::zbus_unit::UnitProxy::builder(connection)
-<a href=#75 id=75 data-nosnippet>75</a>            .path(service_unit_path)<span class="question-mark">?
-<a href=#76 id=76 data-nosnippet>76</a>            </span>.build()
-<a href=#77 id=77 data-nosnippet>77</a>            .<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#78 id=78 data-nosnippet>78</a>
-<a href=#79 id=79 data-nosnippet>79</a>        (
-<a href=#80 id=80 data-nosnippet>80</a>            service_unit_last_state_change_usec,
-<a href=#81 id=81 data-nosnippet>81</a>            service_unit_last_state_change_usec_monotonic,
-<a href=#82 id=82 data-nosnippet>82</a>        ) = <span class="macro">tokio::join!</span>(
-<a href=#83 id=83 data-nosnippet>83</a>            up.state_change_timestamp(),
-<a href=#84 id=84 data-nosnippet>84</a>            up.state_change_timestamp_monotonic(),
-<a href=#85 id=85 data-nosnippet>85</a>        );
-<a href=#86 id=86 data-nosnippet>86</a>    }
-<a href=#87 id=87 data-nosnippet>87</a>    timer_stats.service_unit_last_state_change_usec = service_unit_last_state_change_usec<span class="question-mark">?</span>;
-<a href=#88 id=88 data-nosnippet>88</a>    timer_stats.service_unit_last_state_change_usec_monotonic =
-<a href=#89 id=89 data-nosnippet>89</a>        service_unit_last_state_change_usec_monotonic<span class="question-mark">?</span>;
-<a href=#90 id=90 data-nosnippet>90</a>
-<a href=#91 id=91 data-nosnippet>91</a>    <span class="comment">// Use tokio::join! without tokio::spawn to avoid per-task allocation overhead.
-<a href=#92 id=92 data-nosnippet>92</a>    // These all share the same D-Bus connection so spawn adds no parallelism benefit.
-<a href=#93 id=93 data-nosnippet>93</a>    </span><span class="kw">let </span>(
-<a href=#94 id=94 data-nosnippet>94</a>        accuracy_usec,
-<a href=#95 id=95 data-nosnippet>95</a>        fixed_random_delay,
-<a href=#96 id=96 data-nosnippet>96</a>        last_trigger_usec,
-<a href=#97 id=97 data-nosnippet>97</a>        last_trigger_usec_monotonic,
-<a href=#98 id=98 data-nosnippet>98</a>        persistent,
-<a href=#99 id=99 data-nosnippet>99</a>        next_elapse_usec_monotonic,
-<a href=#100 id=100 data-nosnippet>100</a>        next_elapse_usec_realtime,
-<a href=#101 id=101 data-nosnippet>101</a>        randomized_delay_usec,
-<a href=#102 id=102 data-nosnippet>102</a>        remain_after_elapse,
-<a href=#103 id=103 data-nosnippet>103</a>    ) = <span class="macro">tokio::join!</span>(
-<a href=#104 id=104 data-nosnippet>104</a>        pt.accuracy_usec(),
-<a href=#105 id=105 data-nosnippet>105</a>        pt.fixed_random_delay(),
-<a href=#106 id=106 data-nosnippet>106</a>        pt.last_trigger_usec(),
-<a href=#107 id=107 data-nosnippet>107</a>        pt.last_trigger_usec_monotonic(),
-<a href=#108 id=108 data-nosnippet>108</a>        pt.persistent(),
-<a href=#109 id=109 data-nosnippet>109</a>        pt.next_elapse_usec_monotonic(),
-<a href=#110 id=110 data-nosnippet>110</a>        pt.next_elapse_usec_realtime(),
-<a href=#111 id=111 data-nosnippet>111</a>        pt.randomized_delay_usec(),
-<a href=#112 id=112 data-nosnippet>112</a>        pt.remain_after_elapse(),
-<a href=#113 id=113 data-nosnippet>113</a>    );
-<a href=#114 id=114 data-nosnippet>114</a>
-<a href=#115 id=115 data-nosnippet>115</a>    timer_stats.accuracy_usec = accuracy_usec<span class="question-mark">?</span>;
-<a href=#116 id=116 data-nosnippet>116</a>    timer_stats.fixed_random_delay = fixed_random_delay<span class="question-mark">?</span>;
-<a href=#117 id=117 data-nosnippet>117</a>    timer_stats.last_trigger_usec = last_trigger_usec<span class="question-mark">?</span>;
-<a href=#118 id=118 data-nosnippet>118</a>    timer_stats.last_trigger_usec_monotonic = last_trigger_usec_monotonic<span class="question-mark">?</span>;
-<a href=#119 id=119 data-nosnippet>119</a>    timer_stats.persistent = persistent<span class="question-mark">?</span>;
-<a href=#120 id=120 data-nosnippet>120</a>    timer_stats.next_elapse_usec_monotonic = next_elapse_usec_monotonic<span class="question-mark">?</span>;
-<a href=#121 id=121 data-nosnippet>121</a>    timer_stats.next_elapse_usec_realtime = next_elapse_usec_realtime<span class="question-mark">?</span>;
-<a href=#122 id=122 data-nosnippet>122</a>    timer_stats.randomized_delay_usec = randomized_delay_usec<span class="question-mark">?</span>;
-<a href=#123 id=123 data-nosnippet>123</a>    timer_stats.remain_after_elapse = remain_after_elapse<span class="question-mark">?</span>;
-<a href=#124 id=124 data-nosnippet>124</a>
-<a href=#125 id=125 data-nosnippet>125</a>    <span class="kw">if </span>timer_stats.persistent {
-<a href=#126 id=126 data-nosnippet>126</a>        stats.timer_persistent_units += <span class="number">1</span>;
-<a href=#127 id=127 data-nosnippet>127</a>    }
-<a href=#128 id=128 data-nosnippet>128</a>
-<a href=#129 id=129 data-nosnippet>129</a>    <span class="kw">if </span>timer_stats.remain_after_elapse {
-<a href=#130 id=130 data-nosnippet>130</a>        stats.timer_remain_after_elapse += <span class="number">1</span>;
-<a href=#131 id=131 data-nosnippet>131</a>    }
-<a href=#132 id=132 data-nosnippet>132</a>
-<a href=#133 id=133 data-nosnippet>133</a>    <span class="prelude-val">Ok</span>(timer_stats)
-<a href=#134 id=134 data-nosnippet>134</a>}
+<a href=#59 id=59 data-nosnippet>59</a>        .cache_properties(zbus::proxy::CacheProperties::No)
+<a href=#60 id=60 data-nosnippet>60</a>        .path(unit.unit_object_path.clone())<span class="question-mark">?
+<a href=#61 id=61 data-nosnippet>61</a>        </span>.build()
+<a href=#62 id=62 data-nosnippet>62</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#63 id=63 data-nosnippet>63</a>    <span class="comment">// Get service unit name to check when it last ran to ensure
+<a href=#64 id=64 data-nosnippet>64</a>    // we are triggers the configured service with times set
+<a href=#65 id=65 data-nosnippet>65</a>    </span><span class="kw">let </span>service_unit = pt.unit().<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#66 id=66 data-nosnippet>66</a>    <span class="kw">let </span><span class="kw-2">mut </span>service_unit_last_state_change_usec: <span class="prelude-ty">Result</span>&lt;u64, zbus::Error&gt; = <span class="prelude-val">Ok</span>(<span class="number">0</span>);
+<a href=#67 id=67 data-nosnippet>67</a>    <span class="kw">let </span><span class="kw-2">mut </span>service_unit_last_state_change_usec_monotonic: <span class="prelude-ty">Result</span>&lt;u64, zbus::Error&gt; = <span class="prelude-val">Ok</span>(<span class="number">0</span>);
+<a href=#68 id=68 data-nosnippet>68</a>    <span class="kw">if </span>service_unit.is_empty() {
+<a href=#69 id=69 data-nosnippet>69</a>        <span class="macro">error!</span>(<span class="string">"{}: No service unit name found for timer."</span>, unit.name);
+<a href=#70 id=70 data-nosnippet>70</a>    } <span class="kw">else </span>{
+<a href=#71 id=71 data-nosnippet>71</a>        <span class="comment">// Get the object path of the service unit
+<a href=#72 id=72 data-nosnippet>72</a>        </span><span class="kw">let </span>mp = <span class="kw">crate</span>::dbus::zbus_systemd::ManagerProxy::builder(connection)
+<a href=#73 id=73 data-nosnippet>73</a>            .cache_properties(zbus::proxy::CacheProperties::No)
+<a href=#74 id=74 data-nosnippet>74</a>            .build()
+<a href=#75 id=75 data-nosnippet>75</a>            .<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#76 id=76 data-nosnippet>76</a>        <span class="kw">let </span>service_unit_path = mp.get_unit(<span class="kw-2">&amp;</span>service_unit).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#77 id=77 data-nosnippet>77</a>        <span class="comment">// Create a UnitProxy with the unit path to async get the two counters we want
+<a href=#78 id=78 data-nosnippet>78</a>        </span><span class="kw">let </span>up = <span class="kw">crate</span>::dbus::zbus_unit::UnitProxy::builder(connection)
+<a href=#79 id=79 data-nosnippet>79</a>            .cache_properties(zbus::proxy::CacheProperties::No)
+<a href=#80 id=80 data-nosnippet>80</a>            .path(service_unit_path)<span class="question-mark">?
+<a href=#81 id=81 data-nosnippet>81</a>            </span>.build()
+<a href=#82 id=82 data-nosnippet>82</a>            .<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#83 id=83 data-nosnippet>83</a>
+<a href=#84 id=84 data-nosnippet>84</a>        (
+<a href=#85 id=85 data-nosnippet>85</a>            service_unit_last_state_change_usec,
+<a href=#86 id=86 data-nosnippet>86</a>            service_unit_last_state_change_usec_monotonic,
+<a href=#87 id=87 data-nosnippet>87</a>        ) = <span class="macro">tokio::join!</span>(
+<a href=#88 id=88 data-nosnippet>88</a>            up.state_change_timestamp(),
+<a href=#89 id=89 data-nosnippet>89</a>            up.state_change_timestamp_monotonic(),
+<a href=#90 id=90 data-nosnippet>90</a>        );
+<a href=#91 id=91 data-nosnippet>91</a>    }
+<a href=#92 id=92 data-nosnippet>92</a>    timer_stats.service_unit_last_state_change_usec = service_unit_last_state_change_usec<span class="question-mark">?</span>;
+<a href=#93 id=93 data-nosnippet>93</a>    timer_stats.service_unit_last_state_change_usec_monotonic =
+<a href=#94 id=94 data-nosnippet>94</a>        service_unit_last_state_change_usec_monotonic<span class="question-mark">?</span>;
+<a href=#95 id=95 data-nosnippet>95</a>
+<a href=#96 id=96 data-nosnippet>96</a>    <span class="comment">// Use tokio::join! without tokio::spawn to avoid per-task allocation overhead.
+<a href=#97 id=97 data-nosnippet>97</a>    // These all share the same D-Bus connection so spawn adds no parallelism benefit.
+<a href=#98 id=98 data-nosnippet>98</a>    </span><span class="kw">let </span>(
+<a href=#99 id=99 data-nosnippet>99</a>        accuracy_usec,
+<a href=#100 id=100 data-nosnippet>100</a>        fixed_random_delay,
+<a href=#101 id=101 data-nosnippet>101</a>        last_trigger_usec,
+<a href=#102 id=102 data-nosnippet>102</a>        last_trigger_usec_monotonic,
+<a href=#103 id=103 data-nosnippet>103</a>        persistent,
+<a href=#104 id=104 data-nosnippet>104</a>        next_elapse_usec_monotonic,
+<a href=#105 id=105 data-nosnippet>105</a>        next_elapse_usec_realtime,
+<a href=#106 id=106 data-nosnippet>106</a>        randomized_delay_usec,
+<a href=#107 id=107 data-nosnippet>107</a>        remain_after_elapse,
+<a href=#108 id=108 data-nosnippet>108</a>    ) = <span class="macro">tokio::join!</span>(
+<a href=#109 id=109 data-nosnippet>109</a>        pt.accuracy_usec(),
+<a href=#110 id=110 data-nosnippet>110</a>        pt.fixed_random_delay(),
+<a href=#111 id=111 data-nosnippet>111</a>        pt.last_trigger_usec(),
+<a href=#112 id=112 data-nosnippet>112</a>        pt.last_trigger_usec_monotonic(),
+<a href=#113 id=113 data-nosnippet>113</a>        pt.persistent(),
+<a href=#114 id=114 data-nosnippet>114</a>        pt.next_elapse_usec_monotonic(),
+<a href=#115 id=115 data-nosnippet>115</a>        pt.next_elapse_usec_realtime(),
+<a href=#116 id=116 data-nosnippet>116</a>        pt.randomized_delay_usec(),
+<a href=#117 id=117 data-nosnippet>117</a>        pt.remain_after_elapse(),
+<a href=#118 id=118 data-nosnippet>118</a>    );
+<a href=#119 id=119 data-nosnippet>119</a>
+<a href=#120 id=120 data-nosnippet>120</a>    timer_stats.accuracy_usec = accuracy_usec<span class="question-mark">?</span>;
+<a href=#121 id=121 data-nosnippet>121</a>    timer_stats.fixed_random_delay = fixed_random_delay<span class="question-mark">?</span>;
+<a href=#122 id=122 data-nosnippet>122</a>    timer_stats.last_trigger_usec = last_trigger_usec<span class="question-mark">?</span>;
+<a href=#123 id=123 data-nosnippet>123</a>    timer_stats.last_trigger_usec_monotonic = last_trigger_usec_monotonic<span class="question-mark">?</span>;
+<a href=#124 id=124 data-nosnippet>124</a>    timer_stats.persistent = persistent<span class="question-mark">?</span>;
+<a href=#125 id=125 data-nosnippet>125</a>    timer_stats.next_elapse_usec_monotonic = next_elapse_usec_monotonic<span class="question-mark">?</span>;
+<a href=#126 id=126 data-nosnippet>126</a>    timer_stats.next_elapse_usec_realtime = next_elapse_usec_realtime<span class="question-mark">?</span>;
+<a href=#127 id=127 data-nosnippet>127</a>    timer_stats.randomized_delay_usec = randomized_delay_usec<span class="question-mark">?</span>;
+<a href=#128 id=128 data-nosnippet>128</a>    timer_stats.remain_after_elapse = remain_after_elapse<span class="question-mark">?</span>;
+<a href=#129 id=129 data-nosnippet>129</a>
+<a href=#130 id=130 data-nosnippet>130</a>    <span class="kw">if </span>timer_stats.persistent {
+<a href=#131 id=131 data-nosnippet>131</a>        stats.timer_persistent_units += <span class="number">1</span>;
+<a href=#132 id=132 data-nosnippet>132</a>    }
+<a href=#133 id=133 data-nosnippet>133</a>
+<a href=#134 id=134 data-nosnippet>134</a>    <span class="kw">if </span>timer_stats.remain_after_elapse {
+<a href=#135 id=135 data-nosnippet>135</a>        stats.timer_remain_after_elapse += <span class="number">1</span>;
+<a href=#136 id=136 data-nosnippet>136</a>    }
+<a href=#137 id=137 data-nosnippet>137</a>
+<a href=#138 id=138 data-nosnippet>138</a>    <span class="prelude-val">Ok</span>(timer_stats)
+<a href=#139 id=139 data-nosnippet>139</a>}
 </code></pre></div></section></main></body></html>
