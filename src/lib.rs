@@ -121,7 +121,7 @@ async fn get_or_create_dbus_connection(
     }
 }
 
-/// Main statictic collection function running what's required by configuration in parallel
+/// Main statistic collection function running what's required by configuration in parallel
 /// Takes an optional locked stats struct to update and to output stats to STDOUT or not.
 /// Takes an optional D-Bus connection. Returns `Some(connection)` if the
 /// collection cycle completed without errors (meaning the connection is reusable),
