@@ -11,6 +11,8 @@ use tracing::debug;
 
 use tracing::warn;
 
+use crate::pid1::Pid1Stats;
+use crate::system::SystemdSystemState;
 use crate::unit_constants::{is_unit_unhealthy, SystemdUnitActiveState, SystemdUnitLoadState};
 use crate::units::SystemdUnitStats;
 use crate::varlink::metrics::{ListOutput, Metrics};
@@ -19,6 +21,37 @@ use futures_util::stream::TryStreamExt;
 use zlink::unix;
 
 pub const METRICS_SOCKET_PATH: &str = "/run/systemd/report/io.systemd.Manager";
+
+/// Result of a varlink collection indicating which data was provided
+#[derive(Debug, Default)]
+pub struct VarlinkCollectionResult {
+    pub has_pid1: bool,
+    pub has_system_state: bool,
+}
+
+/// Parse an unsigned integer value from a metric, warning on failure
+fn parse_metric_u64(metric: &ListOutput) -> Option<u64> {
+    if !metric.value().is_i64() && !metric.value().is_u64() {
+        warn!(
+            "Metric {} has non-integer value: {:?}",
+            metric.name(),
+            metric.value()
+        );
+        return None;
+    }
+    // Try u64 first (for values > i64::MAX), then fall back to i64
+    if let Some(v) = metric.value().as_u64() {
+        return Some(v);
+    }
+    let value = metric.value_as_int();
+    match value.try_into() {
+        Ok(v) => Some(v),
+        Err(_) => {
+            warn!("Metric {} has negative value: {}", metric.name(), value);
+            None
+        }
+    }
+}
 
 /// Parse a string value from a metric into an enum type, warning on failure
 fn parse_metric_enum<T: FromStr>(metric: &ListOutput) -> Option<T> {
@@ -130,62 +163,58 @@ pub fn parse_one_metric(
                 .or_default()
                 .nrestarts = nrestarts;
         }
+        // Global unit count metrics
+        "JobsQueued" => {
+            if let Some(value) = parse_metric_u64(metric) {
+                stats.jobs_queued = value;
+            }
+        }
+        "UnitsTotal" => {
+            if let Some(value) = parse_metric_u64(metric) {
+                stats.total_units = value;
+            }
+        }
         "UnitsByTypeTotal" => {
             if let Some(type_str) = metric.get_field_as_str("type") {
-                if !metric.value().is_i64() {
-                    warn!(
-                        "Metric {} has non-integer value: {:?}",
-                        metric.name(),
-                        metric.value()
-                    );
-                    return Ok(());
-                }
-                let value = metric.value_as_int();
-                let value: u64 = match value.try_into() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        warn!("Metric {} has negative value: {}", metric.name(), value);
-                        return Ok(());
+                if let Some(value) = parse_metric_u64(metric) {
+                    match type_str {
+                        "automount" => stats.automount_units = value,
+                        "device" => stats.device_units = value,
+                        "mount" => stats.mount_units = value,
+                        "path" => stats.path_units = value,
+                        "scope" => stats.scope_units = value,
+                        "service" => stats.service_units = value,
+                        "slice" => stats.slice_units = value,
+                        "socket" => stats.socket_units = value,
+                        "target" => stats.target_units = value,
+                        "timer" => stats.timer_units = value,
+                        _ => debug!("Found unhandled unit type: {:?}", type_str),
                     }
-                };
-                match type_str {
-                    "automount" => stats.automount_units = value,
-                    "device" => stats.device_units = value,
-                    "mount" => stats.mount_units = value,
-                    "path" => stats.path_units = value,
-                    "scope" => stats.scope_units = value,
-                    "service" => stats.service_units = value,
-                    "slice" => stats.slice_units = value,
-                    "socket" => stats.socket_units = value,
-                    "target" => stats.target_units = value,
-                    "timer" => stats.timer_units = value,
-                    _ => debug!("Found unhandled unit type: {:?}", type_str),
                 }
             }
         }
         "UnitsByStateTotal" => {
             if let Some(state_str) = metric.get_field_as_str("state") {
-                if !metric.value().is_i64() {
-                    warn!(
-                        "Metric {} has non-integer value: {:?}",
-                        metric.name(),
-                        metric.value()
-                    );
-                    return Ok(());
-                }
-                let value = metric.value_as_int();
-                let value: u64 = match value.try_into() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        warn!("Metric {} has negative value: {}", metric.name(), value);
-                        return Ok(());
+                if let Some(value) = parse_metric_u64(metric) {
+                    match state_str {
+                        "active" => stats.active_units = value,
+                        "failed" => stats.failed_units = value,
+                        "inactive" => stats.inactive_units = value,
+                        _ => debug!("Found unhandled unit state: {:?}", state_str),
                     }
-                };
-                match state_str {
-                    "active" => stats.active_units = value,
-                    "failed" => stats.failed_units = value,
-                    "inactive" => stats.inactive_units = value,
-                    _ => debug!("Found unhandled unit state: {:?}", state_str),
+                }
+            }
+        }
+        "UnitsByLoadStateTotal" => {
+            if let Some(load_state_str) = metric.get_field_as_str("load_state") {
+                if let Some(value) = parse_metric_u64(metric) {
+                    match load_state_str {
+                        "loaded" => stats.loaded_units = value,
+                        "masked" => stats.masked_units = value,
+                        "not-found" => stats.not_found_units = value,
+                        "error" => debug!("Received error load state count: {}", value),
+                        _ => debug!("Found unhandled load state: {:?}", load_state_str),
+                    }
                 }
             }
         }
@@ -232,22 +261,78 @@ async fn collect_metrics(socket_path: String) -> anyhow::Result<Vec<ListOutput>>
 
 pub async fn parse_metrics(
     stats: &mut SystemdUnitStats,
+    pid1: &mut Option<Pid1Stats>,
+    system_state: &mut Option<SystemdSystemState>,
     socket_path: &str,
     config: &crate::config::UnitsConfig,
 ) -> anyhow::Result<()> {
     let metrics = collect_metrics(socket_path.to_string()).await?;
 
+    let mut pid1_stats = Pid1Stats::default();
+    let mut has_pid1 = false;
+
     for metric in &metrics {
-        parse_one_metric(stats, metric, config)?;
+        let suffix = metric.name_suffix();
+        match suffix {
+            // PID1 metrics (convert from microseconds to seconds to match procfs path)
+            "Pid1CpuTimeKernelUSec" => {
+                if let Some(value) = parse_metric_u64(metric) {
+                    pid1_stats.cpu_time_kernel = value / 1_000_000;
+                    has_pid1 = true;
+                }
+            }
+            "Pid1CpuTimeUserUSec" => {
+                if let Some(value) = parse_metric_u64(metric) {
+                    pid1_stats.cpu_time_user = value / 1_000_000;
+                    has_pid1 = true;
+                }
+            }
+            "Pid1FdCount" => {
+                if let Some(value) = parse_metric_u64(metric) {
+                    pid1_stats.fd_count = value;
+                    has_pid1 = true;
+                }
+            }
+            "Pid1MemoryUsageBytes" => {
+                if let Some(value) = parse_metric_u64(metric) {
+                    pid1_stats.memory_usage_bytes = value;
+                    has_pid1 = true;
+                }
+            }
+            "Pid1Tasks" => {
+                if let Some(value) = parse_metric_u64(metric) {
+                    pid1_stats.tasks = value;
+                    has_pid1 = true;
+                }
+            }
+            // SystemState metric
+            "SystemState" => {
+                if let Some(state) = parse_metric_enum::<SystemdSystemState>(metric) {
+                    *system_state = Some(state);
+                }
+            }
+            // All other metrics handled by parse_one_metric
+            _ => {
+                parse_one_metric(stats, metric, config)?;
+            }
+        }
+    }
+
+    if has_pid1 {
+        *pid1 = Some(pid1_stats);
     }
 
     Ok(())
 }
 
-pub async fn get_unit_stats(
+pub async fn get_manager_stats(
     config: &crate::config::Config,
     socket_path: &str,
-) -> anyhow::Result<SystemdUnitStats> {
+) -> anyhow::Result<(
+    SystemdUnitStats,
+    Option<Pid1Stats>,
+    Option<SystemdSystemState>,
+)> {
     if !config.units.state_stats_allowlist.is_empty() {
         debug!(
             "Using unit state allowlist: {:?}",
@@ -263,26 +348,44 @@ pub async fn get_unit_stats(
     }
 
     let mut stats = SystemdUnitStats::default();
+    let mut pid1: Option<Pid1Stats> = None;
+    let mut system_state: Option<SystemdSystemState> = None;
 
-    // Collect per unit state stats - ActiveState + LoadState via metrics API
-    if config.units.state_stats {
-        parse_metrics(&mut stats, socket_path, &config.units).await?;
-    }
+    // Collect all metrics from the varlink socket
+    parse_metrics(
+        &mut stats,
+        &mut pid1,
+        &mut system_state,
+        socket_path,
+        &config.units,
+    )
+    .await?;
 
     debug!("unit stats: {:?}", stats);
-    Ok(stats)
+    Ok((stats, pid1, system_state))
 }
 
-/// Async wrapper that can update unit stats when passed a locked struct.
+/// Async wrapper that can update stats when passed a locked struct.
+/// Returns what was collected so the caller can skip redundant D-Bus collectors.
 pub async fn update_unit_stats(
     config: Arc<crate::config::Config>,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
     socket_path: String,
-) -> anyhow::Result<()> {
-    let units_stats = get_unit_stats(&config, &socket_path).await?;
+) -> anyhow::Result<VarlinkCollectionResult> {
+    let (units_stats, pid1, system_state) = get_manager_stats(&config, &socket_path).await?;
     let mut machine_stats = locked_machine_stats.write().await;
     machine_stats.units = units_stats;
-    Ok(())
+
+    let mut result = VarlinkCollectionResult::default();
+    if let Some(pid1_stats) = pid1 {
+        machine_stats.pid1 = Some(pid1_stats);
+        result.has_pid1 = true;
+    }
+    if let Some(state) = system_state {
+        machine_stats.system_state = state;
+        result.has_system_state = true;
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -551,7 +654,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_unit_stats_with_state_stats_disabled() {
+    async fn test_get_manager_stats_unavailable_socket() {
         let config = crate::config::Config {
             units: crate::config::UnitsConfig {
                 enabled: true,
@@ -563,12 +666,9 @@ mod tests {
             ..Default::default()
         };
 
-        let result = get_unit_stats(&config, METRICS_SOCKET_PATH).await;
-        assert!(result.is_ok());
-
-        let stats = result.unwrap();
-        assert_eq!(stats.unit_states.len(), 0);
-        assert_eq!(stats.service_stats.len(), 0);
+        // When the varlink socket is not available, get_manager_stats returns an error
+        let result = get_manager_stats(&config, "/nonexistent/socket").await;
+        assert!(result.is_err());
     }
 
     #[test]
@@ -809,6 +909,78 @@ mod tests {
         };
         parse_one_metric(&mut stats, &metric2, &config).unwrap();
         assert!(stats.unit_states.contains_key("ok.service"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_global_unit_metrics() {
+        let mut stats = SystemdUnitStats::default();
+        let config = default_units_config();
+
+        let metrics = vec![
+            ListOutput {
+                name: "io.systemd.Manager.JobsQueued".to_string(),
+                value: int_value(5),
+                object: None,
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.UnitsTotal".to_string(),
+                value: int_value(250),
+                object: None,
+                fields: None,
+            },
+        ];
+
+        for metric in metrics {
+            parse_one_metric(&mut stats, &metric, &config).unwrap();
+        }
+
+        assert_eq!(stats.jobs_queued, 5);
+        assert_eq!(stats.total_units, 250);
+    }
+
+    #[tokio::test]
+    async fn test_parse_units_by_load_state_total() {
+        let mut stats = SystemdUnitStats::default();
+        let config = default_units_config();
+
+        let metrics = vec![
+            ListOutput {
+                name: "io.systemd.Manager.UnitsByLoadStateTotal".to_string(),
+                value: int_value(200),
+                object: None,
+                fields: Some(std::collections::HashMap::from([(
+                    "load_state".to_string(),
+                    serde_json::json!("loaded"),
+                )])),
+            },
+            ListOutput {
+                name: "io.systemd.Manager.UnitsByLoadStateTotal".to_string(),
+                value: int_value(3),
+                object: None,
+                fields: Some(std::collections::HashMap::from([(
+                    "load_state".to_string(),
+                    serde_json::json!("masked"),
+                )])),
+            },
+            ListOutput {
+                name: "io.systemd.Manager.UnitsByLoadStateTotal".to_string(),
+                value: int_value(7),
+                object: None,
+                fields: Some(std::collections::HashMap::from([(
+                    "load_state".to_string(),
+                    serde_json::json!("not-found"),
+                )])),
+            },
+        ];
+
+        for metric in metrics {
+            parse_one_metric(&mut stats, &metric, &config).unwrap();
+        }
+
+        assert_eq!(stats.loaded_units, 200);
+        assert_eq!(stats.masked_units, 3);
+        assert_eq!(stats.not_found_units, 7);
     }
 
     #[tokio::test]

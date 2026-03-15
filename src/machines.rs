@@ -222,7 +222,7 @@ pub async fn update_machines_stats(
                     )
                     .await
                     {
-                        Ok(()) => Ok(()),
+                        Ok(_result) => Ok(()),
                         Err(err) => {
                             warn!(
                                 "Varlink units stats failed, falling back to D-Bus: {:?}",
