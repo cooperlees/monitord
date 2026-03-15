@@ -53,6 +53,30 @@ fn parse_metric_u64(metric: &ListOutput) -> Option<u64> {
     }
 }
 
+/// Parse a signed i32 value from a metric, warning on failure
+fn parse_metric_i32(metric: &ListOutput) -> Option<i32> {
+    if !metric.value().is_i64() {
+        warn!(
+            "Metric {} has non-integer value: {:?}",
+            metric.name(),
+            metric.value()
+        );
+        return None;
+    }
+    let value = metric.value_as_int();
+    match value.try_into() {
+        Ok(v) => Some(v),
+        Err(_) => {
+            warn!(
+                "Metric {} has out-of-range value for i32: {}",
+                metric.name(),
+                value
+            );
+            None
+        }
+    }
+}
+
 /// Parse a string value from a metric into an enum type, warning on failure
 fn parse_metric_enum<T: FromStr>(metric: &ListOutput) -> Option<T> {
     if !metric.value().is_string() {
@@ -162,6 +186,175 @@ pub fn parse_one_metric(
                 .entry(object_name.to_string())
                 .or_default()
                 .nrestarts = nrestarts;
+        }
+        // Per-service unsigned metrics
+        "ActiveEnterTimestampUSec" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .active_enter_timestamp = value;
+            }
+        }
+        "ActiveExitTimestampUSec" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .active_exit_timestamp = value;
+            }
+        }
+        "CpuUsageNSec" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .cpuusage_nsec = value;
+            }
+        }
+        "InactiveExitTimestampUSec" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .inactive_exit_timestamp = value;
+            }
+        }
+        "IOReadBytes" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .ioread_bytes = value;
+            }
+        }
+        "IOReadOperations" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .ioread_operations = value;
+            }
+        }
+        "MemoryAvailable" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .memory_available = value;
+            }
+        }
+        "MemoryCurrent" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .memory_current = value;
+            }
+        }
+        "RestartUSec" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .restart_usec = value;
+            }
+        }
+        "StateChangeTimestampUSec" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .state_change_timestamp = value;
+            }
+        }
+        "StatusErrno" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_i32(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .status_errno = value;
+            }
+        }
+        "TasksCurrent" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .tasks_current = value;
+            }
+        }
+        "TimeoutCleanUSec" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .timeout_clean_usec = value;
+            }
+        }
+        "WatchdogUSec" => {
+            if should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
+            if let Some(value) = parse_metric_u64(metric) {
+                stats
+                    .service_stats
+                    .entry(object_name.to_string())
+                    .or_default()
+                    .watchdog_usec = value;
+            }
         }
         // Global unit count metrics
         "JobsQueued" => {
@@ -909,6 +1102,63 @@ mod tests {
         };
         parse_one_metric(&mut stats, &metric2, &config).unwrap();
         assert!(stats.unit_states.contains_key("ok.service"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_per_service_metrics() {
+        let mut stats = SystemdUnitStats::default();
+        let config = default_units_config();
+
+        let metrics = vec![
+            ListOutput {
+                name: "io.systemd.Manager.ActiveEnterTimestampUSec".to_string(),
+                value: int_value(1234567890),
+                object: Some("sshd.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.CpuUsageNSec".to_string(),
+                value: int_value(999000),
+                object: Some("sshd.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.MemoryCurrent".to_string(),
+                value: int_value(4096000),
+                object: Some("sshd.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.StatusErrno".to_string(),
+                value: int_value(-2),
+                object: Some("sshd.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.WatchdogUSec".to_string(),
+                value: int_value(30000000),
+                object: Some("sshd.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.RestartUSec".to_string(),
+                value: int_value(100000),
+                object: Some("sshd.service".to_string()),
+                fields: None,
+            },
+        ];
+
+        for metric in metrics {
+            parse_one_metric(&mut stats, &metric, &config).unwrap();
+        }
+
+        let svc = stats.service_stats.get("sshd.service").unwrap();
+        assert_eq!(svc.active_enter_timestamp, 1234567890);
+        assert_eq!(svc.cpuusage_nsec, 999000);
+        assert_eq!(svc.memory_current, 4096000);
+        assert_eq!(svc.status_errno, -2);
+        assert_eq!(svc.watchdog_usec, 30000000);
+        assert_eq!(svc.restart_usec, 100000);
     }
 
     #[tokio::test]
