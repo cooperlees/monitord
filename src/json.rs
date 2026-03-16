@@ -71,6 +71,14 @@ fn flatten_networkd(
             format!("{interface_base}.required_for_online"),
             (interface.required_for_online as u64).into(),
         ));
+        flat_stats.push((
+            format!("{interface_base}.required_oper_state_for_online_min"),
+            (interface.required_oper_state_for_online_min as u64).into(),
+        ));
+        flat_stats.push((
+            format!("{interface_base}.required_oper_state_for_online_max"),
+            (interface.required_oper_state_for_online_max as u64).into(),
+        ));
     }
     flat_stats
 }
@@ -557,6 +565,8 @@ mod tests {
   "networkd.eth0.ipv6_address_state": 2,
   "networkd.eth0.oper_state": 9,
   "networkd.eth0.required_for_online": 1,
+  "networkd.eth0.required_oper_state_for_online_max": 9,
+  "networkd.eth0.required_oper_state_for_online_min": 7,
   "networkd.managed_interfaces": 1,
   "pid1.cpu_time_kernel": 69,
   "pid1.cpu_user_kernel": 69,
@@ -638,6 +648,8 @@ mod tests {
                     network_file: "/etc/systemd/network/69-eno4.network".to_string(),
                     oper_state: networkd::OperState::routable,
                     required_for_online: networkd::BoolState::True,
+                    required_oper_state_for_online_min: networkd::OperState::degraded,
+                    required_oper_state_for_online_max: networkd::OperState::routable,
                 }],
                 managed_interfaces: 1,
             },
@@ -728,7 +740,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(110, json_flat_map.len());
+        assert_eq!(112, json_flat_map.len());
     }
 
     #[test]

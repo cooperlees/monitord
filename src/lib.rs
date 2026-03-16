@@ -154,14 +154,39 @@ pub async fn stat_collector(
         info!("Starting stat collection run");
 
         // Always collect systemd version
-
         join_set.spawn(crate::system::update_version(
             sdc.clone(),
             locked_machine_stats.clone(),
         ));
 
-        // Collect pid1 procfs stats
-        if config.pid1.enabled {
+        // Try varlink first if enabled - it provides units, pid1, and system state
+        // in a single efficient socket read
+        let mut varlink_provided_pid1 = false;
+        let mut varlink_provided_system_state = false;
+        let mut varlink_provided_units = false;
+
+        if config.units.enabled && config.varlink.enabled {
+            let socket_path = crate::varlink_units::METRICS_SOCKET_PATH.to_string();
+            match crate::varlink_units::update_unit_stats(
+                Arc::clone(&config),
+                locked_machine_stats.clone(),
+                socket_path,
+            )
+            .await
+            {
+                Ok(result) => {
+                    varlink_provided_units = true;
+                    varlink_provided_pid1 = result.has_pid1;
+                    varlink_provided_system_state = result.has_system_state;
+                }
+                Err(err) => {
+                    warn!("Varlink stats failed, falling back to D-Bus: {:?}", err);
+                }
+            }
+        }
+
+        // Collect pid1 procfs stats (skip if varlink already provided them)
+        if config.pid1.enabled && !varlink_provided_pid1 {
             join_set.spawn(crate::pid1::update_pid1_stats(
                 1,
                 locked_machine_stats.clone(),
@@ -178,38 +203,20 @@ pub async fn stat_collector(
             ));
         }
 
-        // Run system running (SystemState) state collector
-        if config.system_state.enabled {
+        // Run system state collector (skip if varlink already provided it)
+        if config.system_state.enabled && !varlink_provided_system_state {
             join_set.spawn(crate::system::update_system_stats(
                 sdc.clone(),
                 locked_machine_stats.clone(),
             ));
         }
 
-        // Run service collectors if there are services listed in config
-        if config.units.enabled {
+        // Run unit collectors via D-Bus if varlink didn't provide them
+        if config.units.enabled && !varlink_provided_units {
             let config_clone = Arc::clone(&config);
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             join_set.spawn(async move {
-                if config_clone.varlink.enabled {
-                    let socket_path = crate::varlink_units::METRICS_SOCKET_PATH.to_string();
-                    match crate::varlink_units::update_unit_stats(
-                        Arc::clone(&config_clone),
-                        stats_clone.clone(),
-                        socket_path,
-                    )
-                    .await
-                    {
-                        Ok(()) => return Ok(()),
-                        Err(err) => {
-                            warn!(
-                                "Varlink units stats failed, falling back to D-Bus: {:?}",
-                                err
-                            );
-                        }
-                    }
-                }
                 crate::units::update_unit_stats(config_clone, sdc_clone, stats_clone).await
             });
         }

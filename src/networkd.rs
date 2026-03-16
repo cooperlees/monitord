@@ -261,6 +261,12 @@ pub struct InterfaceState {
     pub oper_state: OperState,
     /// Whether this interface is required for the system to be considered online
     pub required_for_online: BoolState,
+    /// Minimum operational state required for this interface to be considered online
+    /// Parsed from REQUIRED_OPER_STATE_FOR_ONLINE (e.g. "degraded:routable" → min=degraded)
+    pub required_oper_state_for_online_min: OperState,
+    /// Maximum operational state required for this interface to be considered online
+    /// Parsed from REQUIRED_OPER_STATE_FOR_ONLINE (e.g. "degraded:routable" → max=routable)
+    pub required_oper_state_for_online_max: OperState,
 }
 
 /// Get interface id + name from dbus list_links API
@@ -343,6 +349,15 @@ pub fn parse_interface_stats(
             "REQUIRED_FOR_ONLINE" => {
                 interface_state.required_for_online =
                     BoolState::from_str(value).unwrap_or(BoolState::unknown)
+            }
+            "REQUIRED_OPER_STATE_FOR_ONLINE" => {
+                // Format: "min:max" e.g. "degraded:routable"
+                if let Some((min_str, max_str)) = value.split_once(':') {
+                    interface_state.required_oper_state_for_online_min =
+                        OperState::from_str(min_str).unwrap_or(OperState::unknown);
+                    interface_state.required_oper_state_for_online_max =
+                        OperState::from_str(max_str).unwrap_or(OperState::unknown);
+                }
             }
             _ => continue,
         };
@@ -474,6 +489,8 @@ MDNS=no
             network_file: "/etc/systemd/network/69-eno4.network".to_string(),
             oper_state: OperState::routable,
             required_for_online: BoolState::True,
+            required_oper_state_for_online_min: OperState::degraded,
+            required_oper_state_for_online_max: OperState::routable,
         }
     }
 
@@ -500,7 +517,7 @@ MDNS=no
     #[test]
     fn test_parse_interface_stats_json() {
         // 'name' stays as an empty string cause we don't pass in networkctl json or an interface id
-        let expected_interface_state_json = r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":2,"ipv6_address_state":3,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1}"###;
+        let expected_interface_state_json = r###"{"address_state":3,"admin_state":4,"carrier_state":5,"ipv4_address_state":2,"ipv6_address_state":3,"name":"","network_file":"/etc/systemd/network/69-eno4.network","oper_state":9,"required_for_online":1,"required_oper_state_for_online_min":7,"required_oper_state_for_online_max":9}"###;
         let stats = parse_interface_stats(MOCK_INTERFACE_STATE, 0, &HashMap::new()).unwrap();
         let stats_json = serde_json::to_string(&stats).unwrap();
         assert_eq!(expected_interface_state_json.to_string(), stats_json);
