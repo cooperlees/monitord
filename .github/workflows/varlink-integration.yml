@@ -1,0 +1,65 @@
+name: Varlink Integration Test
+
+on: [push, pull_request]
+
+jobs:
+  varlink_fedora_rawhide:
+    name: Varlink smoke test on Fedora Rawhide
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Build monitord-dev container image
+        run: docker build -t monitord-dev .
+
+      - name: Start Fedora Rawhide container with systemd
+        run: |
+          docker run -d --name monitord-test \
+            --privileged \
+            --cgroupns=host \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            monitord-dev /sbin/init
+
+      - name: Wait for systemd to be ready
+        run: |
+          for i in $(seq 1 60); do
+            status=$(docker exec monitord-test systemctl is-system-running 2>/dev/null || true)
+            case "$status" in
+              running|degraded) echo "systemd is $status after ${i} polls"; break ;;
+            esac
+            [ "$i" -eq 60 ] && { echo "Timed out waiting for systemd"; exit 1; }
+            printf 'Waiting for systemd (%d/60) status=%s...\n' "$i" "$status"
+            sleep 3
+          done
+
+      - name: Show systemd version
+        run: docker exec monitord-test systemctl --version | head -1
+
+      - name: Build monitord (release)
+        run: docker exec -w /workspace monitord-test cargo build --release
+
+      - name: Enable and start systemd-networkd
+        run: |
+          docker exec monitord-test systemctl enable systemd-networkd
+          docker exec monitord-test systemctl start systemd-networkd
+          docker exec monitord-test systemctl status systemd-networkd --no-pager
+
+      - name: Run monitord with varlink enabled and verify output
+        run: |
+          docker exec monitord-test \
+            /workspace/target/release/monitord \
+            -c /workspace/.github/monitord-varlink-ci.conf \
+            | tee /tmp/monitord-varlink-output.json
+
+          python3 -c "
+import json, sys
+d = json.load(open('/tmp/monitord-varlink-output.json'))
+units_total = d['units']['units_total']
+system_state = d['system_state']
+managed_interfaces = d['networkd']['managed_interfaces']
+assert units_total > 0, f'FAIL: units_total={units_total}'
+assert system_state > 0, f'FAIL: system_state={system_state}'
+print(f'PASS: units_total={units_total}, system_state={system_state}, managed_interfaces={managed_interfaces}')
+"
