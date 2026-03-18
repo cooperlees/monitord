@@ -83,3 +83,78 @@ jobs:
           [ "$iface_oper" != "null" ] || { echo "FAIL: monitord0 not found in interfaces_state"; exit 1; }
           [ "$iface_oper" -lt 9 ] || { echo "FAIL: monitord0 should not be routable, oper_state=$iface_oper"; exit 1; }
           echo "PASS: units_total=$units_total, managed_interfaces=$managed_interfaces, monitord0 oper_state=$iface_oper"
+
+      - name: Generate D-Bus-only config from monitord.conf
+        run: |
+          sed \
+            -e 's/output_format = json-flat/output_format = json-pretty/' \
+            monitord.conf > "$GITHUB_WORKSPACE/monitord-dbus-ci.conf"
+          echo "--- Generated D-Bus config ---"
+          cat "$GITHUB_WORKSPACE/monitord-dbus-ci.conf"
+
+      - name: Run monitord with D-Bus (no varlink) and save output
+        run: |
+          docker exec monitord-test \
+            /workspace/target/release/monitord \
+            -c /workspace/monitord-dbus-ci.conf \
+            | tee /tmp/monitord-dbus-output.json
+          echo "--- D-Bus JSON output ---"
+          cat /tmp/monitord-dbus-output.json
+
+      - name: Compare D-Bus and varlink JSON outputs
+        run: |
+          python3 - <<'EOF'
+          import difflib, json, sys
+
+          # Fields that differ structurally between the D-Bus and varlink collection
+          # paths and are therefore intentionally excluded from cross-comparison:
+          #   service_stats / timer_stats  – D-Bus exposes per-unit resource counters
+          #                                  that the varlink metrics API does not provide
+          #   loaded/masked/not_found_units – load-state breakdowns absent from varlink
+          #   unit_states                  – per-unit state map collected only via D-Bus
+          #   time_in_state_usecs          – wall-clock relative; differs across runs
+          EXCLUDED_KEYS = {
+              "service_stats",
+              "timer_stats",
+              "loaded_units",
+              "masked_units",
+              "not_found_units",
+              "unit_states",
+              "time_in_state_usecs",
+          }
+
+          def normalize(obj):
+              """Strip excluded keys and sort lists by name for a stable comparison."""
+              if isinstance(obj, dict):
+                  return {k: normalize(v) for k, v in obj.items() if k not in EXCLUDED_KEYS}
+              if isinstance(obj, list):
+                  items = [normalize(i) for i in obj]
+                  if items and isinstance(items[0], dict) and "name" in items[0]:
+                      items.sort(key=lambda x: x.get("name", ""))
+                  return items
+              return obj
+
+          with open("/tmp/monitord-dbus-output.json") as f:
+              dbus = normalize(json.load(f))
+          with open("/tmp/monitord-varlink-output.json") as f:
+              varlink = normalize(json.load(f))
+
+          dbus_str    = json.dumps(dbus,    indent=2, sort_keys=True)
+          varlink_str = json.dumps(varlink, indent=2, sort_keys=True)
+
+          if dbus_str == varlink_str:
+              print("PASS: D-Bus and varlink outputs are identical (excluding known-different fields)")
+              sys.exit(0)
+
+          excluded = ", ".join(sorted(EXCLUDED_KEYS))
+          print(f"FAIL: D-Bus and varlink outputs differ (excluded: {excluded})")
+          diff = difflib.unified_diff(
+              dbus_str.splitlines(keepends=True),
+              varlink_str.splitlines(keepends=True),
+              fromfile="dbus",
+              tofile="varlink",
+              n=5,
+          )
+          sys.stdout.writelines(diff)
+          sys.exit(1)
+          EOF
