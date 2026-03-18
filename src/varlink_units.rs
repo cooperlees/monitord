@@ -31,7 +31,10 @@ fn parse_metric_enum<T: FromStr>(metric: &ListOutput) -> Option<T> {
         return None;
     }
     let value_str = metric.value_as_string();
-    match T::from_str(value_str) {
+    // Normalize hyphens to underscores to match enum variant names (e.g. "not-found" -> "not_found"),
+    // mirroring the same replacement done in the D-Bus path (units.rs::parse_state).
+    let normalized = value_str.replace('-', "_");
+    match T::from_str(&normalized) {
         Ok(v) => Some(v),
         Err(_) => {
             warn!(
@@ -362,9 +365,11 @@ mod tests {
         let mut stats = SystemdUnitStats::default();
         let config = default_units_config();
 
+        // systemd sends "not-found" with a hyphen over both D-Bus and varlink;
+        // parse_metric_enum must normalize it to "not_found" before enum parsing.
         let metric = ListOutput {
             name: "io.systemd.Manager.UnitLoadState".to_string(),
-            value: string_value("not_found"), // Enum variant name uses underscore
+            value: string_value("not-found"),
             object: Some("missing.service".to_string()),
             fields: None,
         };
@@ -919,7 +924,7 @@ mod tests {
             },
             ListOutput {
                 name: "io.systemd.Manager.UnitLoadState".to_string(),
-                value: string_value("not_found"),
+                value: string_value("not-found"), // systemd sends hyphenated form over the wire
                 object: Some("missing.service".to_string()),
                 fields: None,
             },
@@ -964,7 +969,7 @@ mod tests {
             },
             ListOutput {
                 name: "io.systemd.Manager.UnitLoadState".to_string(),
-                value: string_value("not_found"),
+                value: string_value("not-found"), // systemd sends hyphenated form over the wire
                 object: Some("svc2.service".to_string()),
                 fields: None,
             },

@@ -226,17 +226,20 @@ pub async fn stat_collector(
                     {
                         Ok(()) => {
                             // Timer properties are not yet exposed via varlink; collect via D-Bus.
-                            if let Err(err) = crate::units::collect_timer_stats_dbus(
-                                &config_clone,
-                                &sdc_clone,
-                                stats_clone,
-                            )
-                            .await
+                            match crate::timer::collect_all_timers_dbus(&sdc_clone, &config_clone)
+                                .await
                             {
-                                warn!(
-                                    "Varlink timer stats (D-Bus fallback) failed: {:?}",
-                                    err
-                                );
+                                Ok(timer_stats) => {
+                                    let mut ms = stats_clone.write().await;
+                                    ms.units.timer_stats = timer_stats.timer_stats;
+                                    ms.units.timer_persistent_units =
+                                        timer_stats.timer_persistent_units;
+                                    ms.units.timer_remain_after_elapse =
+                                        timer_stats.timer_remain_after_elapse;
+                                }
+                                Err(err) => {
+                                    warn!("Varlink timer stats (D-Bus fallback) failed: {:?}", err);
+                                }
                             }
                             return Ok(());
                         }
