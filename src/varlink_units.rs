@@ -69,7 +69,7 @@ pub fn parse_one_metric(
 
     match metric_name_suffix {
         "UnitActiveState" => {
-            if should_skip_unit(&object_name, config) {
+            if !config.state_stats || should_skip_unit(&object_name, config) {
                 return Ok(());
             }
             let active_state: SystemdUnitActiveState = match parse_metric_enum(metric) {
@@ -85,7 +85,7 @@ pub fn parse_one_metric(
                 is_unit_unhealthy(unit_state.active_state, unit_state.load_state);
         }
         "UnitLoadState" => {
-            if should_skip_unit(&object_name, config) {
+            if !config.state_stats || should_skip_unit(&object_name, config) {
                 return Ok(());
             }
             let load_state: SystemdUnitLoadState = match parse_metric_enum(metric) {
@@ -101,7 +101,7 @@ pub fn parse_one_metric(
                 is_unit_unhealthy(unit_state.active_state, unit_state.load_state);
         }
         "NRestarts" => {
-            if should_skip_unit(&object_name, config) {
+            if !config.state_stats || should_skip_unit(&object_name, config) {
                 return Ok(());
             }
             if !metric.value().is_i64() {
@@ -264,10 +264,22 @@ pub async fn get_unit_stats(
 
     let mut stats = SystemdUnitStats::default();
 
-    // Collect per unit state stats - ActiveState + LoadState via metrics API
-    if config.units.state_stats {
-        parse_metrics(&mut stats, socket_path, &config.units).await?;
-    }
+    // Always collect metrics to get aggregate counts (UnitsByTypeTotal, UnitsByStateTotal)
+    // as well as per-unit state data when config.units.state_stats is enabled.
+    parse_metrics(&mut stats, socket_path, &config.units).await?;
+
+    // Derive total_units from the sum of all per-type counts, mirroring what the D-Bus
+    // path computes as `units.len()` from list_units().
+    stats.total_units = stats.automount_units
+        + stats.device_units
+        + stats.mount_units
+        + stats.path_units
+        + stats.scope_units
+        + stats.service_units
+        + stats.slice_units
+        + stats.socket_units
+        + stats.target_units
+        + stats.timer_units;
 
     debug!("unit stats: {:?}", stats);
     Ok(stats)
@@ -550,25 +562,59 @@ mod tests {
         parse_one_metric(&mut stats, &metric4, &config).unwrap();
     }
 
-    #[tokio::test]
-    async fn test_get_unit_stats_with_state_stats_disabled() {
-        let config = crate::config::Config {
-            units: crate::config::UnitsConfig {
-                enabled: true,
-                state_stats: false,
-                state_stats_allowlist: HashSet::new(),
-                state_stats_blocklist: HashSet::new(),
-                state_stats_time_in_state: true,
-            },
-            ..Default::default()
+    #[test]
+    fn test_state_stats_disabled_skips_per_unit_data() {
+        // When state_stats=false, UnitActiveState / UnitLoadState / NRestarts should be
+        // skipped by parse_one_metric so that unit_states and service_stats remain empty.
+        let config = crate::config::UnitsConfig {
+            enabled: true,
+            state_stats: false,
+            state_stats_allowlist: HashSet::new(),
+            state_stats_blocklist: HashSet::new(),
+            state_stats_time_in_state: true,
         };
+        let mut stats = SystemdUnitStats::default();
 
-        let result = get_unit_stats(&config, METRICS_SOCKET_PATH).await;
-        assert!(result.is_ok());
+        let active_state_metric = ListOutput {
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
+            value: string_value("active"),
+            object: Some("test.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &active_state_metric, &config).unwrap();
 
-        let stats = result.unwrap();
+        let load_state_metric = ListOutput {
+            name: "io.systemd.Manager.UnitLoadState".to_string(),
+            value: string_value("loaded"),
+            object: Some("test.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &load_state_metric, &config).unwrap();
+
+        let nrestarts_metric = ListOutput {
+            name: "io.systemd.Manager.NRestarts".to_string(),
+            value: int_value(3),
+            object: Some("test.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &nrestarts_metric, &config).unwrap();
+
+        // Per-unit state data must be absent when state_stats=false
         assert_eq!(stats.unit_states.len(), 0);
         assert_eq!(stats.service_stats.len(), 0);
+
+        // But aggregate type/state counts must still be processed (they are not gated on state_stats)
+        let type_metric = ListOutput {
+            name: "io.systemd.Manager.UnitsByTypeTotal".to_string(),
+            value: int_value(10),
+            object: None,
+            fields: Some(std::collections::HashMap::from([(
+                "type".to_string(),
+                serde_json::json!("service"),
+            )])),
+        };
+        parse_one_metric(&mut stats, &type_metric, &config).unwrap();
+        assert_eq!(stats.service_units, 10);
     }
 
     #[test]

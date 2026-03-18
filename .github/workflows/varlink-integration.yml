@@ -1,0 +1,79 @@
+name: Varlink Integration Test
+
+on: [push, pull_request]
+
+jobs:
+  varlink_fedora_rawhide:
+    name: Varlink smoke test on Fedora Rawhide
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Build monitord-dev container image
+        run: docker build -t monitord-dev .
+
+      - name: Start Fedora Rawhide container with systemd
+        run: |
+          docker run -d --name monitord-test \
+            --privileged \
+            --cgroupns=host \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            monitord-dev /sbin/init
+
+      - name: Wait for systemd to be ready
+        run: |
+          for i in $(seq 1 60); do
+            status=$(docker exec monitord-test systemctl is-system-running 2>/dev/null || true)
+            case "$status" in
+              running|degraded) echo "systemd is $status after ${i} polls"; break ;;
+            esac
+            [ "$i" -eq 60 ] && { echo "Timed out waiting for systemd"; exit 1; }
+            printf 'Waiting for systemd (%d/60) status=%s...\n' "$i" "$status"
+            sleep 3
+          done
+
+      - name: Show systemd version
+        run: docker exec monitord-test systemctl --version | head -1
+
+      - name: Build monitord (release)
+        run: docker exec -w /workspace monitord-test cargo build --release
+
+      - name: Enable and start systemd-networkd
+        run: |
+          docker exec monitord-test systemctl enable systemd-networkd
+          docker exec monitord-test systemctl start systemd-networkd
+          docker exec monitord-test systemctl status systemd-networkd --no-pager
+
+      - name: Confirm varlink sockets are available
+        run: |
+          docker exec monitord-test test -S /run/systemd/report/io.systemd.Manager \
+            && echo "PASS: io.systemd.Manager socket exists" \
+            || echo "WARN: io.systemd.Manager socket not found"
+          docker exec monitord-test test -S /run/systemd/netif/io.systemd.Network \
+            && echo "PASS: io.systemd.Network socket exists" \
+            || echo "WARN: io.systemd.Network socket not found (networkd not managing interfaces)"
+
+      - name: Generate varlink-enabled config from monitord.conf
+        run: |
+          sed \
+            -e '/^\[varlink\]/,/^\[/{s/enabled = false/enabled = true/}' \
+            -e 's/output_format = json-flat/output_format = json-pretty/' \
+            monitord.conf > "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
+          echo "--- Generated config ---"
+          cat "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
+
+      - name: Run monitord with varlink enabled and verify output
+        run: |
+          docker exec monitord-test \
+            /workspace/target/release/monitord \
+            -c /workspace/monitord-varlink-ci.conf \
+            | tee /tmp/monitord-varlink-output.json
+
+          units_total=$(jq '.units.total_units' /tmp/monitord-varlink-output.json)
+          system_state=$(jq '.system_state' /tmp/monitord-varlink-output.json)
+          managed_interfaces=$(jq '.networkd.managed_interfaces' /tmp/monitord-varlink-output.json)
+          [ "$units_total" -gt 0 ] || { echo "FAIL: units_total=$units_total"; exit 1; }
+          [ "$system_state" -gt 0 ] || { echo "FAIL: system_state=$system_state"; exit 1; }
+          echo "PASS: units_total=$units_total, system_state=$system_state, managed_interfaces=$managed_interfaces"

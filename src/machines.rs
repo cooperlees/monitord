@@ -184,12 +184,39 @@ pub async fn update_machines_stats(
         }
 
         if config.networkd.enabled {
-            join_set.spawn(crate::networkd::update_networkd_stats(
-                config.networkd.link_state_dir.clone(),
-                None,
-                sdc.clone(),
-                locked_machine_stats.clone(),
-            ));
+            let config_clone = Arc::clone(&config);
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_machine_stats.clone();
+            let machine_name = machine.clone();
+            join_set.spawn(async move {
+                if config_clone.varlink.enabled {
+                    let socket_path = format!(
+                        "/proc/{}/root{}",
+                        leader_pid,
+                        crate::varlink_networkd::NETWORK_SOCKET_PATH
+                    );
+                    match crate::varlink_networkd::get_networkd_state(&socket_path).await {
+                        Ok(networkd_stats) => {
+                            let mut machine_stats = stats_clone.write().await;
+                            machine_stats.networkd = networkd_stats;
+                            return Ok(());
+                        }
+                        Err(err) => {
+                            warn!(
+                                "Varlink networkd stats failed for container {}, falling back to file-based: {:?}",
+                                machine_name, err
+                            );
+                        }
+                    }
+                }
+                crate::networkd::update_networkd_stats(
+                    config_clone.networkd.link_state_dir.clone(),
+                    None,
+                    sdc_clone,
+                    stats_clone,
+                )
+                .await
+            });
         }
 
         if config.system_state.enabled {

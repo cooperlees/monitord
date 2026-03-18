@@ -599,8 +599,8 @@ systemd Dbus APIs are in use in the following modules:
   - Can do most other calls then on the machine's systemd/dbus
 - networkd
   - `ManagerProxy::list_links()`
-  - Would love to stop parsing `/run/systemd/netif/links` and replace via varlink API
-    - https://github.com/systemd/systemd/issues/36877
+  - Interface state files at `/run/systemd/netif/links` are used by default; the varlink
+    `io.systemd.Network.Describe` API can be enabled instead (see below)
 - system
   - `ManagerProxy::get_version()`
   - `ManagerProxy::system_state()`
@@ -646,22 +646,30 @@ Set `enabled = true` in the `[varlink]` section of `monitord.conf`:
 enabled = true
 ```
 
-When varlink is enabled, monitord will attempt to collect unit stats via the metrics API first.
-If the varlink socket is unavailable (e.g., systemd < v260), it automatically falls back to D-Bus collection.
+When varlink is enabled, monitord will attempt to collect stats via the varlink APIs first,
+automatically falling back to D-Bus or file-based collection when a varlink socket is unavailable
+(e.g., older systemd versions).
 
 ### Metrics collected via Varlink
 
+**Units** (`io.systemd.Metrics` — systemd v260+):
 - Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)
 - Unit counts by state (active, failed, inactive)
 - Per-unit active state and load state (with allowlist/blocklist filtering)
 - Per-unit health status (computed from active + load state)
 - Per-service restart counts (`nrestarts`)
+- Falls back to D-Bus collection if the socket is unavailable
+
+**Networkd interfaces** (`io.systemd.Network.Describe` — systemd v257+):
+- Per-interface operational, carrier, admin, and address states
+- Falls back to parsing `/run/systemd/netif/links` state files if the socket is unavailable
 
 ### Containers
 
 For systemd-nspawn containers, monitord connects to the container's varlink socket via
 `/proc/<leader_pid>/root/run/systemd/report/io.systemd.Manager`, similar to how D-Bus uses
-the container-scoped bus socket.
+the container-scoped bus socket. Networkd stats use
+`/proc/<leader_pid>/root/run/systemd/netif/io.systemd.Network`, with the same file-based fallback.
 
 ### varlink 101
 
