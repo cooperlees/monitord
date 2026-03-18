@@ -491,6 +491,57 @@ pub async fn update_unit_stats(
     Ok(())
 }
 
+/// Collect timer stats via D-Bus and merge them into already-collected unit stats.
+/// Used when unit stats were collected via varlink (which doesn't yet expose timer
+/// properties) so that `timers.*`, `timer_persistent_units`, and
+/// `timer_remain_after_elapse` match the D-Bus output.
+pub async fn collect_timer_stats_dbus(
+    config: &crate::config::Config,
+    connection: &zbus::Connection,
+    locked_machine_stats: Arc<RwLock<MachineStats>>,
+) -> anyhow::Result<()> {
+    if !config.timers.enabled {
+        return Ok(());
+    }
+    let p = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
+    let units = p.list_units().await?;
+
+    // Collect timer stats outside of the lock so we don't hold it over async calls.
+    let mut temp_stats = SystemdUnitStats::default();
+    let mut timer_stats_map = HashMap::new();
+
+    for unit_raw in units {
+        let unit: ListedUnit = unit_raw.into();
+        if !unit.name.contains(".timer") {
+            continue;
+        }
+        if config.timers.blocklist.contains(&unit.name) {
+            debug!("Skipping timer stats for {} due to blocklist", &unit.name);
+            continue;
+        }
+        if !config.timers.allowlist.is_empty() && !config.timers.allowlist.contains(&unit.name) {
+            continue;
+        }
+        match crate::timer::collect_timer_stats(connection, &mut temp_stats, &unit).await {
+            Ok(ts) => {
+                timer_stats_map.insert(unit.name.clone(), ts);
+            }
+            Err(err) => {
+                error!("Failed to get {} stats: {:#?}", &unit.name, err);
+            }
+        }
+    }
+
+    let mut machine_stats = locked_machine_stats.write().await;
+    machine_stats.units.timer_stats = timer_stats_map;
+    machine_stats.units.timer_persistent_units = temp_stats.timer_persistent_units;
+    machine_stats.units.timer_remain_after_elapse = temp_stats.timer_remain_after_elapse;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
