@@ -59,27 +59,33 @@ jobs:
         run: |
           sed \
             -e '/^\[varlink\]/,/^\[/{s/enabled = false/enabled = true/}' \
-            -e 's/output_format = json-flat/output_format = json-pretty/' \
             monitord.conf > "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
-          echo "--- Generated config ---"
+          echo "--- Generated varlink config ---"
           cat "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
 
-      - name: Run monitord with varlink enabled and verify output
+      - name: Run monitord with varlink enabled and save output
         run: |
           docker exec monitord-test \
             /workspace/target/release/monitord \
             -c /workspace/monitord-varlink-ci.conf \
             | tee /tmp/monitord-varlink-output.json
 
-          units_total=$(jq '.units.total_units' /tmp/monitord-varlink-output.json)
-          managed_interfaces=$(jq '.networkd.managed_interfaces' /tmp/monitord-varlink-output.json)
-          # Verify total units collected via varlink
-          [ "$units_total" -gt 0 ] || { echo "FAIL: units_total=$units_total"; exit 1; }
-          # Verify the test dummy interface (monitord0) is managed by networkd
-          [ "$managed_interfaces" -ge 1 ] || { echo "FAIL: managed_interfaces=$managed_interfaces"; exit 1; }
-          # Verify monitord0 appears in the interface list and is not fully routable
-          # (it has no IP configured so oper_state should be carrier/no-carrier/off, i.e. < 9)
-          iface_oper=$(jq '[.networkd.interfaces_state[] | select(.name == "monitord0") | .oper_state] | first' /tmp/monitord-varlink-output.json)
-          [ "$iface_oper" != "null" ] || { echo "FAIL: monitord0 not found in interfaces_state"; exit 1; }
-          [ "$iface_oper" -lt 9 ] || { echo "FAIL: monitord0 should not be routable, oper_state=$iface_oper"; exit 1; }
-          echo "PASS: units_total=$units_total, managed_interfaces=$managed_interfaces, monitord0 oper_state=$iface_oper"
+      - name: Run monitord with D-Bus (no varlink) and save output
+        run: |
+          docker exec monitord-test \
+            /workspace/target/release/monitord \
+            -c /workspace/monitord.conf \
+            | tee /tmp/monitord-dbus-output.json
+
+      - name: Compare D-Bus and varlink JSON outputs
+        run: |
+          # pid1.* values come from procfs and change between sequential runs; exclude them.
+          grep -v '"monitord.pid1\.' /tmp/monitord-dbus-output.json    > /tmp/dbus-filtered.txt
+          grep -v '"monitord.pid1\.' /tmp/monitord-varlink-output.json > /tmp/varlink-filtered.txt
+          if diff -u --label dbus --label varlink \
+              /tmp/dbus-filtered.txt /tmp/varlink-filtered.txt; then
+            echo "PASS: D-Bus and varlink outputs are identical"
+          else
+            echo "FAIL: D-Bus and varlink outputs differ (see diff above)"
+            exit 1
+          fi

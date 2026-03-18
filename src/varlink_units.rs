@@ -31,7 +31,10 @@ fn parse_metric_enum<T: FromStr>(metric: &ListOutput) -> Option<T> {
         return None;
     }
     let value_str = metric.value_as_string();
-    match T::from_str(value_str) {
+    // Normalize hyphens to underscores to match enum variant names (e.g. "not-found" -> "not_found"),
+    // mirroring the same replacement done in the D-Bus path (units.rs::parse_state).
+    let normalized = value_str.replace('-', "_");
+    match T::from_str(&normalized) {
         Ok(v) => Some(v),
         Err(_) => {
             warn!(
@@ -85,13 +88,22 @@ pub fn parse_one_metric(
                 is_unit_unhealthy(unit_state.active_state, unit_state.load_state);
         }
         "UnitLoadState" => {
-            if !config.state_stats || should_skip_unit(&object_name, config) {
-                return Ok(());
-            }
             let load_state: SystemdUnitLoadState = match parse_metric_enum(metric) {
                 Some(v) => v,
                 None => return Ok(()),
             };
+            // Always count aggregate load state totals, matching D-Bus parse_unit() behaviour
+            // which counts every unit regardless of the state_stats allowlist.
+            match load_state {
+                SystemdUnitLoadState::loaded => stats.loaded_units += 1,
+                SystemdUnitLoadState::masked => stats.masked_units += 1,
+                SystemdUnitLoadState::not_found => stats.not_found_units += 1,
+                _ => {}
+            }
+            // Per-unit state tracking is gated by config.
+            if !config.state_stats || should_skip_unit(&object_name, config) {
+                return Ok(());
+            }
             let unit_state = stats
                 .unit_states
                 .entry(object_name.to_string())
@@ -353,9 +365,11 @@ mod tests {
         let mut stats = SystemdUnitStats::default();
         let config = default_units_config();
 
+        // systemd sends "not-found" with a hyphen over both D-Bus and varlink;
+        // parse_metric_enum must normalize it to "not_found" before enum parsing.
         let metric = ListOutput {
             name: "io.systemd.Manager.UnitLoadState".to_string(),
-            value: string_value("not_found"), // Enum variant name uses underscore
+            value: string_value("not-found"),
             object: Some("missing.service".to_string()),
             fields: None,
         };
@@ -877,5 +891,96 @@ mod tests {
         };
         parse_one_metric(&mut stats, &metric, &config).unwrap();
         assert!(!stats.unit_states.contains_key("both.service"));
+    }
+
+    #[test]
+    fn test_load_state_counts_bypass_allowlist() {
+        // loaded_units/masked_units/not_found_units must be counted for every unit,
+        // regardless of the state_stats allowlist (matching D-Bus parse_unit() behaviour).
+        let config = crate::config::UnitsConfig {
+            enabled: true,
+            state_stats: true,
+            // Only "allowed.service" is in the allowlist
+            state_stats_allowlist: HashSet::from(["allowed.service".to_string()]),
+            state_stats_blocklist: HashSet::new(),
+            state_stats_time_in_state: false,
+        };
+        let mut stats = SystemdUnitStats::default();
+
+        let metrics = vec![
+            // allowed unit → counts AND stored in unit_states
+            ListOutput {
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
+                value: string_value("loaded"),
+                object: Some("allowed.service".to_string()),
+                fields: None,
+            },
+            // non-allowed unit → only counted, NOT stored in unit_states
+            ListOutput {
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
+                value: string_value("loaded"),
+                object: Some("other.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
+                value: string_value("not-found"), // systemd sends hyphenated form over the wire
+                object: Some("missing.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
+                value: string_value("masked"),
+                object: Some("masked.service".to_string()),
+                fields: None,
+            },
+        ];
+        for m in metrics {
+            parse_one_metric(&mut stats, &m, &config).unwrap();
+        }
+
+        // Aggregate counts include ALL units regardless of allowlist
+        assert_eq!(stats.loaded_units, 2);
+        assert_eq!(stats.not_found_units, 1);
+        assert_eq!(stats.masked_units, 1);
+        // per-unit state only tracked for the allowed unit
+        assert_eq!(stats.unit_states.len(), 1);
+        assert!(stats.unit_states.contains_key("allowed.service"));
+    }
+
+    #[test]
+    fn test_load_state_counts_when_state_stats_disabled() {
+        // Even when state_stats=false, aggregate load state counts must be populated.
+        let config = crate::config::UnitsConfig {
+            enabled: true,
+            state_stats: false,
+            state_stats_allowlist: HashSet::new(),
+            state_stats_blocklist: HashSet::new(),
+            state_stats_time_in_state: false,
+        };
+        let mut stats = SystemdUnitStats::default();
+
+        let metrics = vec![
+            ListOutput {
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
+                value: string_value("loaded"),
+                object: Some("svc1.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
+                value: string_value("not-found"), // systemd sends hyphenated form over the wire
+                object: Some("svc2.service".to_string()),
+                fields: None,
+            },
+        ];
+        for m in metrics {
+            parse_one_metric(&mut stats, &m, &config).unwrap();
+        }
+
+        assert_eq!(stats.loaded_units, 1);
+        assert_eq!(stats.not_found_units, 1);
+        // No per-unit state tracking when state_stats=false
+        assert_eq!(stats.unit_states.len(), 0);
     }
 }

@@ -137,3 +137,54 @@ pub async fn collect_timer_stats(
 
     Ok(timer_stats)
 }
+
+/// Collect all timer stats via D-Bus and return them ready to merge into unit stats.
+///
+/// Used when unit stats were collected via varlink (which doesn't yet expose timer
+/// properties) so that `timers.*`, `timer_persistent_units`, and
+/// `timer_remain_after_elapse` match the D-Bus output.
+pub async fn collect_all_timers_dbus(
+    connection: &zbus::Connection,
+    config: &crate::config::Config,
+) -> anyhow::Result<crate::units::SystemdUnitStats> {
+    use std::collections::HashMap;
+    use tracing::debug;
+
+    if !config.timers.enabled {
+        return Ok(crate::units::SystemdUnitStats::default());
+    }
+
+    let p = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
+    let units = p.list_units().await?;
+
+    let mut stats = crate::units::SystemdUnitStats::default();
+    let mut timer_stats_map = HashMap::new();
+
+    for unit_raw in units {
+        let unit: crate::units::ListedUnit = unit_raw.into();
+        if !unit.name.contains(".timer") {
+            continue;
+        }
+        if config.timers.blocklist.contains(&unit.name) {
+            debug!("Skipping timer stats for {} due to blocklist", &unit.name);
+            continue;
+        }
+        if !config.timers.allowlist.is_empty() && !config.timers.allowlist.contains(&unit.name) {
+            continue;
+        }
+        match collect_timer_stats(connection, &mut stats, &unit).await {
+            Ok(ts) => {
+                timer_stats_map.insert(unit.name.clone(), ts);
+            }
+            Err(err) => {
+                error!("Failed to get {} stats: {:#?}", &unit.name, err);
+            }
+        }
+    }
+
+    stats.timer_stats = timer_stats_map;
+    Ok(stats)
+}
