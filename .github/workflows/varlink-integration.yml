@@ -46,6 +46,15 @@ jobs:
           docker exec monitord-test systemctl start systemd-networkd
           docker exec monitord-test systemctl status systemd-networkd --no-pager
 
+      - name: Confirm varlink sockets are available
+        run: |
+          docker exec monitord-test test -S /run/systemd/report/io.systemd.Manager \
+            && echo "PASS: io.systemd.Manager socket exists" \
+            || echo "WARN: io.systemd.Manager socket not found"
+          docker exec monitord-test test -S /run/systemd/netif/io.systemd.Network \
+            && echo "PASS: io.systemd.Network socket exists" \
+            || echo "WARN: io.systemd.Network socket not found (networkd not managing interfaces)"
+
       - name: Generate varlink-enabled config from monitord.conf
         run: |
           sed \
@@ -62,7 +71,7 @@ jobs:
             -c /workspace/monitord-varlink-ci.conf \
             | tee /tmp/monitord-varlink-output.json
 
-          units_total=$(jq '.units.units_total' /tmp/monitord-varlink-output.json)
+          units_total=$(jq '.units.total_units' /tmp/monitord-varlink-output.json)
           system_state=$(jq '.system_state' /tmp/monitord-varlink-output.json)
           managed_interfaces=$(jq '.networkd.managed_interfaces' /tmp/monitord-varlink-output.json)
           [ "$units_total" -gt 0 ] || { echo "FAIL: units_total=$units_total"; exit 1; }
