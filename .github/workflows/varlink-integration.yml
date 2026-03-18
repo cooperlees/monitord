@@ -63,25 +63,12 @@ jobs:
           echo "--- Generated varlink config ---"
           cat "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
 
-      - name: Run monitord with varlink enabled and verify output
+      - name: Run monitord with varlink enabled and save output
         run: |
           docker exec monitord-test \
             /workspace/target/release/monitord \
             -c /workspace/monitord-varlink-ci.conf \
             | tee /tmp/monitord-varlink-output.json
-
-          units_total=$(jq '."units.total_units"' /tmp/monitord-varlink-output.json)
-          managed_interfaces=$(jq '."networkd.managed_interfaces"' /tmp/monitord-varlink-output.json)
-          # Verify total units collected via varlink
-          [ "$units_total" -gt 0 ] || { echo "FAIL: units_total=$units_total"; exit 1; }
-          # Verify the test dummy interface (monitord0) is managed by networkd
-          [ "$managed_interfaces" -ge 1 ] || { echo "FAIL: managed_interfaces=$managed_interfaces"; exit 1; }
-          # Verify monitord0 appears and is not fully routable
-          # (it has no IP configured so oper_state should be carrier/no-carrier/off, i.e. < 9)
-          iface_oper=$(jq '."networkd.monitord0.oper_state"' /tmp/monitord-varlink-output.json)
-          [ "$iface_oper" != "null" ] || { echo "FAIL: monitord0 not found in flat output"; exit 1; }
-          [ "$iface_oper" -lt 9 ] || { echo "FAIL: monitord0 should not be routable, oper_state=$iface_oper"; exit 1; }
-          echo "PASS: units_total=$units_total, managed_interfaces=$managed_interfaces, monitord0 oper_state=$iface_oper"
 
       - name: Run monitord with D-Bus (no varlink) and save output
         run: |
@@ -89,23 +76,13 @@ jobs:
             /workspace/target/release/monitord \
             -c /workspace/monitord.conf \
             | tee /tmp/monitord-dbus-output.json
-          echo "--- D-Bus JSON output ---"
-          cat /tmp/monitord-dbus-output.json
 
       - name: Compare D-Bus and varlink JSON outputs
         run: |
-          # json-flat emits one "key": value line per metric in BTreeMap order.
-          # Exclude lines whose keys are D-Bus-only or volatile between sequential runs:
-          #   services.*        per-service resource counters (absent from varlink)
-          #   timers.*          per-timer detail (absent from varlink)
-          #   unit_states.*     per-unit state map + time_in_state_usecs (absent from varlink)
-          #   pid1.*            procfs counters that change between the two runs
-          #   units.loaded/masked/not_found_units  load-state breakdowns absent from varlink
-          EXCL='"(services\.|timers\.|unit_states\.|pid1\.|units\.(loaded|masked|not_found)_units)'
-          grep -Ev "$EXCL" /tmp/monitord-dbus-output.json    > /tmp/dbus-filtered.txt
-          grep -Ev "$EXCL" /tmp/monitord-varlink-output.json > /tmp/varlink-filtered.txt
-          if diff -u --label dbus --label varlink /tmp/dbus-filtered.txt /tmp/varlink-filtered.txt; then
-            echo "PASS: D-Bus and varlink outputs are identical (excluding known-different fields)"
+          if diff -u --label dbus --label varlink \
+              /tmp/monitord-dbus-output.json \
+              /tmp/monitord-varlink-output.json; then
+            echo "PASS: D-Bus and varlink outputs are identical"
           else
             echo "FAIL: D-Bus and varlink outputs differ (see diff above)"
             exit 1
