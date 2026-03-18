@@ -83,3 +83,49 @@ jobs:
           [ "$iface_oper" != "null" ] || { echo "FAIL: monitord0 not found in interfaces_state"; exit 1; }
           [ "$iface_oper" -lt 9 ] || { echo "FAIL: monitord0 should not be routable, oper_state=$iface_oper"; exit 1; }
           echo "PASS: units_total=$units_total, managed_interfaces=$managed_interfaces, monitord0 oper_state=$iface_oper"
+
+      - name: Generate dbus-only config from monitord.conf
+        run: |
+          sed \
+            -e 's/output_format = json-flat/output_format = json-pretty/' \
+            monitord.conf > "$GITHUB_WORKSPACE/monitord-dbus-ci.conf"
+          echo "--- Generated D-Bus config ---"
+          cat "$GITHUB_WORKSPACE/monitord-dbus-ci.conf"
+
+      - name: Run monitord with D-Bus (no varlink) and save output
+        run: |
+          docker exec monitord-test \
+            /workspace/target/release/monitord \
+            -c /workspace/monitord-dbus-ci.conf \
+            | tee /tmp/monitord-dbus-output.json
+          echo "--- D-Bus JSON output ---"
+          cat /tmp/monitord-dbus-output.json
+
+      - name: Compare D-Bus and varlink outputs on key metrics
+        run: |
+          fail=0
+
+          for field in units.total_units units.active_units units.activating_units units.failed_units units.inactive_units networkd.managed_interfaces; do
+            dbus_val=$(jq ".$field" /tmp/monitord-dbus-output.json)
+            varlink_val=$(jq ".$field" /tmp/monitord-varlink-output.json)
+            if [ "$dbus_val" != "$varlink_val" ]; then
+              echo "FAIL: .$field dbus=$dbus_val varlink=$varlink_val"
+              fail=1
+            else
+              echo "PASS: .$field = $dbus_val"
+            fi
+          done
+
+          for state_field in oper_state admin_state carrier_state address_state; do
+            dbus_val=$(jq "[.networkd.interfaces_state[] | select(.name == \"monitord0\") | .$state_field] | first" /tmp/monitord-dbus-output.json)
+            varlink_val=$(jq "[.networkd.interfaces_state[] | select(.name == \"monitord0\") | .$state_field] | first" /tmp/monitord-varlink-output.json)
+            if [ "$dbus_val" != "$varlink_val" ]; then
+              echo "FAIL: monitord0.$state_field dbus=$dbus_val varlink=$varlink_val"
+              fail=1
+            else
+              echo "PASS: monitord0.$state_field = $dbus_val"
+            fi
+          done
+
+          [ "$fail" -eq 0 ] || exit 1
+          echo "PASS: D-Bus and varlink outputs match on all compared metrics"

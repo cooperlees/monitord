@@ -182,6 +182,7 @@ pub fn parse_one_metric(
                     }
                 };
                 match state_str {
+                    "activating" => stats.activating_units = value,
                     "active" => stats.active_units = value,
                     "failed" => stats.failed_units = value,
                     "inactive" => stats.inactive_units = value,
@@ -410,18 +411,29 @@ mod tests {
         parse_one_metric(&mut stats, &type_metric, &config).unwrap();
         assert_eq!(stats.service_units, 42);
 
-        // Test UnitsByStateTotal
-        let state_metric = ListOutput {
-            name: "io.systemd.Manager.UnitsByStateTotal".to_string(),
-            value: int_value(10),
-            object: None,
-            fields: Some(std::collections::HashMap::from([(
-                "state".to_string(),
-                serde_json::json!("active"),
-            )])),
-        };
-        parse_one_metric(&mut stats, &state_metric, &config).unwrap();
+        // Test UnitsByStateTotal for all handled states
+        let state_cases = vec![
+            ("active", 10u64),
+            ("activating", 2u64),
+            ("failed", 3u64),
+            ("inactive", 50u64),
+        ];
+        for (state, count) in &state_cases {
+            let state_metric = ListOutput {
+                name: "io.systemd.Manager.UnitsByStateTotal".to_string(),
+                value: int_value(*count as i64),
+                object: None,
+                fields: Some(std::collections::HashMap::from([(
+                    "state".to_string(),
+                    serde_json::json!(state),
+                )])),
+            };
+            parse_one_metric(&mut stats, &state_metric, &config).unwrap();
+        }
         assert_eq!(stats.active_units, 10);
+        assert_eq!(stats.activating_units, 2);
+        assert_eq!(stats.failed_units, 3);
+        assert_eq!(stats.inactive_units, 50);
     }
 
     #[tokio::test]
