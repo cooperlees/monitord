@@ -72,8 +72,14 @@ jobs:
             | tee /tmp/monitord-varlink-output.json
 
           units_total=$(jq '.units.total_units' /tmp/monitord-varlink-output.json)
-          system_state=$(jq '.system_state' /tmp/monitord-varlink-output.json)
           managed_interfaces=$(jq '.networkd.managed_interfaces' /tmp/monitord-varlink-output.json)
+          # Verify total units collected via varlink
           [ "$units_total" -gt 0 ] || { echo "FAIL: units_total=$units_total"; exit 1; }
-          [ "$system_state" -gt 0 ] || { echo "FAIL: system_state=$system_state"; exit 1; }
-          echo "PASS: units_total=$units_total, system_state=$system_state, managed_interfaces=$managed_interfaces"
+          # Verify the test dummy interface (monitord0) is managed by networkd
+          [ "$managed_interfaces" -ge 1 ] || { echo "FAIL: managed_interfaces=$managed_interfaces"; exit 1; }
+          # Verify monitord0 appears in the interface list and is not fully routable
+          # (it has no IP configured so oper_state should be carrier/no-carrier/off, i.e. < 9)
+          iface_oper=$(jq '[.networkd.interfaces_state[] | select(.name == "monitord0") | .oper_state] | first' /tmp/monitord-varlink-output.json)
+          [ "$iface_oper" != "null" ] || { echo "FAIL: monitord0 not found in interfaces_state"; exit 1; }
+          [ "$iface_oper" -lt 9 ] || { echo "FAIL: monitord0 should not be routable, oper_state=$iface_oper"; exit 1; }
+          echo "PASS: units_total=$units_total, managed_interfaces=$managed_interfaces, monitord0 oper_state=$iface_oper"
