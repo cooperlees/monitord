@@ -46,20 +46,25 @@ jobs:
           docker exec monitord-test systemctl start systemd-networkd
           docker exec monitord-test systemctl status systemd-networkd --no-pager
 
+      - name: Generate varlink-enabled config from monitord.conf
+        run: |
+          sed \
+            -e '/^\[varlink\]/,/^\[/{s/enabled = false/enabled = true/}' \
+            -e 's/output_format = json-flat/output_format = json-pretty/' \
+            monitord.conf > "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
+          echo "--- Generated config ---"
+          cat "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
+
       - name: Run monitord with varlink enabled and verify output
         run: |
           docker exec monitord-test \
             /workspace/target/release/monitord \
-            -c /workspace/.github/monitord-varlink-ci.conf \
+            -c /workspace/monitord-varlink-ci.conf \
             | tee /tmp/monitord-varlink-output.json
 
-          python3 -c "
-import json, sys
-d = json.load(open('/tmp/monitord-varlink-output.json'))
-units_total = d['units']['units_total']
-system_state = d['system_state']
-managed_interfaces = d['networkd']['managed_interfaces']
-assert units_total > 0, f'FAIL: units_total={units_total}'
-assert system_state > 0, f'FAIL: system_state={system_state}'
-print(f'PASS: units_total={units_total}, system_state={system_state}, managed_interfaces={managed_interfaces}')
-"
+          units_total=$(jq '.units.units_total' /tmp/monitord-varlink-output.json)
+          system_state=$(jq '.system_state' /tmp/monitord-varlink-output.json)
+          managed_interfaces=$(jq '.networkd.managed_interfaces' /tmp/monitord-varlink-output.json)
+          [ "$units_total" -gt 0 ] || { echo "FAIL: units_total=$units_total"; exit 1; }
+          [ "$system_state" -gt 0 ] || { echo "FAIL: system_state=$system_state"; exit 1; }
+          echo "PASS: units_total=$units_total, system_state=$system_state, managed_interfaces=$managed_interfaces"
