@@ -39,6 +39,6 @@ jobs:
         run: cp target/${{ matrix.target }}/release/monitord ${{ matrix.artifact }}
 
       - name: Upload binary to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ matrix.artifact }}
