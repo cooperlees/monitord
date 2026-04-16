@@ -273,6 +273,10 @@ Normal `serde_json` non pretty JSON. All on one line. Most compact format.
 Move all key value pairs to the top level and . notate compononets + sub values.
 Is semi pretty too + custom. All unittested ...
 
+`stat_collection_run_time_s` is emitted in **seconds** (with `_s` suffix) to follow
+Prometheus metric naming conventions for duration units, which keeps unit semantics
+clear and consistent when these keys are transformed into Prometheus metric names.
+
 ```json
 {
   "boot.blame.dnf5-automatic.service": 204.159,
@@ -347,6 +351,7 @@ Is semi pretty too + custom. All unittested ...
   "services.chronyd.service.tasks_current": 1,
   "services.chronyd.service.timeout_clean_usec": 18446744073709551615,
   "services.chronyd.service.watchdog_usec": 0,
+  "stat_collection_run_time_s": 0.0874013,
   "system-state": 3,
   "timers.fstrim.timer.accuracy_usec": 3600000000,
   "timers.fstrim.timer.fixed_random_delay": 0,

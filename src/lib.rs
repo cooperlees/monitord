@@ -84,6 +84,8 @@ pub struct MonitordStats {
     pub boot_blame: Option<boot::BootBlameStats>,
     /// Unit verification error statistics
     pub verify_stats: Option<verify::VerifyStats>,
+    /// End-to-end duration of the last stat collection run in seconds.
+    pub stat_collection_run_time_s: f64,
 }
 
 /// Print statistics in the format set in configuration
@@ -325,7 +327,14 @@ pub async fn stat_collector(
             monitord_stats.verify_stats = machine_stats.verify_stats.clone();
         }
 
-        let elapsed_runtime_ms = collect_start_time.elapsed().as_millis();
+        let elapsed_runtime = collect_start_time.elapsed();
+        let elapsed_runtime_ms = elapsed_runtime.as_millis();
+        let elapsed_runtime_s = elapsed_runtime.as_secs_f64();
+
+        {
+            let mut monitord_stats = locked_monitord_stats.write().await;
+            monitord_stats.stat_collection_run_time_s = elapsed_runtime_s;
+        }
 
         info!("stat collection run took {}ms", elapsed_runtime_ms);
         if output_stats {
