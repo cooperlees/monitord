@@ -270,7 +270,7 @@ Normal `serde_json` non pretty JSON. All on one line. Most compact format.
 
 ### json-flat
 
-Move all key value pairs to the top level and . notate compononets + sub values.
+Move all key value pairs to the top level and . notate components + sub values.
 Is semi pretty too + custom. All unittested ...
 
 `stat_collection_run_time_s` is emitted in **seconds** (with `_s` suffix) to follow
