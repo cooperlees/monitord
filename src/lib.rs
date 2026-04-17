@@ -111,7 +111,7 @@ pub fn print_stats(
 }
 
 fn set_stat_collection_run_time(stats: &mut MonitordStats, elapsed_runtime: Duration) {
-    stats.stat_collection_run_time_ms = elapsed_runtime.as_secs_f64() * 1000.0;
+    stats.stat_collection_run_time_ms = elapsed_runtime.as_millis() as f64;
 }
 
 /// Reuse an existing D-Bus connection or create a new system bus connection.
