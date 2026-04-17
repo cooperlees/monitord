@@ -111,7 +111,7 @@ pub fn print_stats(
 }
 
 fn set_stat_collection_run_time(stats: &mut MonitordStats, elapsed_runtime: Duration) {
-    stats.stat_collection_run_time_ms = elapsed_runtime.as_millis() as f64;
+    stats.stat_collection_run_time_ms = elapsed_runtime.as_secs_f64() * 1000.0;
 }
 
 /// Reuse an existing D-Bus connection or create a new system bus connection.
@@ -317,6 +317,9 @@ pub async fn stat_collector(
             }
         }
 
+        let elapsed_runtime = collect_start_time.elapsed();
+        let elapsed_runtime_ms = elapsed_runtime.as_millis();
+
         {
             // Update monitord stats with machine stats
             let mut monitord_stats = locked_monitord_stats.write().await;
@@ -329,13 +332,6 @@ pub async fn stat_collector(
             monitord_stats.dbus_stats = machine_stats.dbus_stats.clone();
             monitord_stats.boot_blame = machine_stats.boot_blame.clone();
             monitord_stats.verify_stats = machine_stats.verify_stats.clone();
-        }
-
-        let elapsed_runtime = collect_start_time.elapsed();
-        let elapsed_runtime_ms = elapsed_runtime.as_millis();
-
-        {
-            let mut monitord_stats = locked_monitord_stats.write().await;
             set_stat_collection_run_time(&mut monitord_stats, elapsed_runtime);
         }
 
@@ -368,9 +364,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_stat_collection_run_time_is_non_negative() {
+    fn test_stat_collection_run_time_ms_conversion() {
         let mut stats = MonitordStats::default();
         set_stat_collection_run_time(&mut stats, Duration::from_millis(5));
-        assert!(stats.stat_collection_run_time_ms >= 0.0);
+        assert_eq!(stats.stat_collection_run_time_ms, 5.0);
+
+        set_stat_collection_run_time(&mut stats, Duration::from_micros(500));
+        assert!((stats.stat_collection_run_time_ms - 0.5).abs() < f64::EPSILON);
     }
 }
