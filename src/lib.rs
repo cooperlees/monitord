@@ -84,8 +84,8 @@ pub struct MonitordStats {
     pub boot_blame: Option<boot::BootBlameStats>,
     /// Unit verification error statistics
     pub verify_stats: Option<verify::VerifyStats>,
-    /// End-to-end duration of the last stat collection run in seconds.
-    pub stat_collection_run_time_s: f64,
+    /// End-to-end duration of the last stat collection run in milliseconds.
+    pub stat_collection_run_time_ms: f64,
 }
 
 /// Print statistics in the format set in configuration
@@ -111,7 +111,7 @@ pub fn print_stats(
 }
 
 fn set_stat_collection_run_time(stats: &mut MonitordStats, elapsed_runtime: Duration) {
-    stats.stat_collection_run_time_s = elapsed_runtime.as_secs_f64();
+    stats.stat_collection_run_time_ms = elapsed_runtime.as_secs_f64() * 1000.0;
 }
 
 /// Reuse an existing D-Bus connection or create a new system bus connection.
@@ -371,6 +371,6 @@ mod tests {
     fn test_stat_collection_run_time_is_non_negative() {
         let mut stats = MonitordStats::default();
         set_stat_collection_run_time(&mut stats, Duration::from_millis(5));
-        assert!(stats.stat_collection_run_time_s >= 0.0);
+        assert!(stats.stat_collection_run_time_ms >= 0.0);
     }
 }
