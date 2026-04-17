@@ -470,6 +470,10 @@ fn flatten_stats(
     key_prefix: &str,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    flat_stats.insert(
+        gen_base_metric_key(key_prefix, "stat_collection_run_time_ms"),
+        stats_struct.stat_collection_run_time_ms.into(),
+    );
     flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_pid1(&stats_struct.pid1, key_prefix));
     flat_stats.insert(
@@ -579,6 +583,7 @@ mod tests {
   "services.unittest.service.tasks_current": 0,
   "services.unittest.service.timeout_clean_usec": 0,
   "services.unittest.service.watchdog_usec": 0,
+  "stat_collection_run_time_ms": 69.0,
   "system-state": 3,
   "timers.unittest.timer.accuracy_usec": 69,
   "timers.unittest.timer.fixed_random_delay": 1,
@@ -660,6 +665,7 @@ mod tests {
                 total: 3,
                 by_type: HashMap::from([("service".to_string(), 2), ("slice".to_string(), 1)]),
             }),
+            stat_collection_run_time_ms: 69.0,
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
@@ -728,7 +734,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(110, json_flat_map.len());
+        assert_eq!(111, json_flat_map.len());
     }
 
     #[test]

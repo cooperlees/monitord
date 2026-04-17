@@ -79,9 +79,9 @@ jobs:
 
       - name: Compare D-Bus and varlink JSON outputs
         run: |
-          # pid1.* values come from procfs and change between sequential runs; exclude them.
-          grep -v '"monitord.pid1\.' /tmp/monitord-dbus-output.json    > /tmp/dbus-filtered.txt
-          grep -v '"monitord.pid1\.' /tmp/monitord-varlink-output.json > /tmp/varlink-filtered.txt
+          # pid1.* values come from procfs and stat_collection_run_time_ms changes between sequential runs; exclude them.
+          grep -v '"monitord\.pid1\.\|stat_collection_run_time_ms' /tmp/monitord-dbus-output.json    > /tmp/dbus-filtered.txt
+          grep -v '"monitord\.pid1\.\|stat_collection_run_time_ms' /tmp/monitord-varlink-output.json > /tmp/varlink-filtered.txt
           if diff -u --label dbus --label varlink \
               /tmp/dbus-filtered.txt /tmp/varlink-filtered.txt; then
             echo "PASS: D-Bus and varlink outputs are identical"
