@@ -277,13 +277,15 @@ pub async fn update_machines_stats(
             ));
         }
 
-        let mut had_error = false;
+        let mut had_connection_error = false;
         while let Some(res) = join_set.join_next().await {
             match res {
                 Ok(r) => match r {
                     Ok(_) => (),
                     Err(e) => {
-                        had_error = true;
+                        if crate::is_connection_error(&e) {
+                            had_connection_error = true;
+                        }
                         error!(
                             "Collection specific failure (container {}): {:?}",
                             machine, e
@@ -291,13 +293,12 @@ pub async fn update_machines_stats(
                     }
                 },
                 Err(e) => {
-                    had_error = true;
                     error!("Join error (container {}): {:?}", machine, e);
                 }
             }
         }
 
-        if had_error {
+        if had_connection_error {
             evict_failed_connection(&cached_connections, &machine).await;
         }
 
