@@ -3,12 +3,14 @@
 //! Collects boot blame metrics showing the slowest units at boot.
 //! Similar to `systemd-analyze blame` but stores N slowest units.
 
+use std::array::TryFromSliceError;
 use std::collections::HashMap;
 use std::io::ErrorKind;
+use std::num::TryFromIntError;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::Result;
 use tokio::sync::RwLock;
 use tracing::debug;
 use zbus::zvariant::ObjectPath;
@@ -25,29 +27,45 @@ const BOOT_ID_PATH: &str = "/proc/sys/kernel/random/boot_id";
 const BOOT_BLAME_CACHE_DIR: &str = "/run/monitord";
 const BOOT_BLAME_CACHE_SUFFIX: &str = "boot_blame.bin";
 
+type BootCacheResult<T> = std::result::Result<T, BootCacheError>;
+
+#[derive(Debug, thiserror::Error)]
+enum BootCacheError {
+    #[error("boot cache I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("boot id from {BOOT_ID_PATH} was empty")]
+    EmptyBootId,
+    #[error("boot cache payload decode error: {0}")]
+    InvalidPayload(&'static str),
+    #[error("boot cache UTF-8 decode error: {0}")]
+    Utf8(#[from] std::string::FromUtf8Error),
+    #[error("boot cache integer conversion error: {0}")]
+    IntConversion(#[from] TryFromIntError),
+    #[error("boot cache slice conversion error: {0}")]
+    SliceConversion(#[from] TryFromSliceError),
+}
+
 fn cache_file_path(cache_dir: &Path, boot_id: &str) -> PathBuf {
     cache_dir.join(format!("{boot_id}.{BOOT_BLAME_CACHE_SUFFIX}"))
 }
 
-async fn get_boot_id() -> Result<String> {
+async fn get_boot_id() -> BootCacheResult<String> {
     let boot_id = tokio::fs::read_to_string(BOOT_ID_PATH).await?;
     let boot_id = boot_id.trim().to_string();
     if boot_id.is_empty() {
-        bail!("empty boot id from {}", BOOT_ID_PATH);
+        return Err(BootCacheError::EmptyBootId);
     }
     Ok(boot_id)
 }
 
-fn encode_boot_blame_stats(stats: &BootBlameStats) -> Result<Vec<u8>> {
+fn encode_boot_blame_stats(stats: &BootBlameStats) -> BootCacheResult<Vec<u8>> {
     let mut out = Vec::new();
-    let entry_count =
-        u32::try_from(stats.len()).map_err(|_| anyhow!("too many boot blame entries"))?;
+    let entry_count = u32::try_from(stats.len())?;
     out.extend_from_slice(&entry_count.to_le_bytes());
 
     for (unit_name, activation_time) in stats {
         let unit_name_bytes = unit_name.as_bytes();
-        let unit_name_len =
-            u32::try_from(unit_name_bytes.len()).map_err(|_| anyhow!("unit name too long"))?;
+        let unit_name_len = u32::try_from(unit_name_bytes.len())?;
         out.extend_from_slice(&unit_name_len.to_le_bytes());
         out.extend_from_slice(unit_name_bytes);
         out.extend_from_slice(&activation_time.to_le_bytes());
@@ -56,21 +74,21 @@ fn encode_boot_blame_stats(stats: &BootBlameStats) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn decode_boot_blame_stats(content: &[u8]) -> Result<BootBlameStats> {
+fn decode_boot_blame_stats(content: &[u8]) -> BootCacheResult<BootBlameStats> {
     const U32_BYTES: usize = std::mem::size_of::<u32>();
     const F64_BYTES: usize = std::mem::size_of::<f64>();
-    fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
-        const U32_BYTES: usize = std::mem::size_of::<u32>();
-        if *offset + U32_BYTES > bytes.len() {
-            bail!("unexpected end of cache payload");
+    fn read_u32(bytes: &[u8], offset: &mut usize) -> BootCacheResult<u32> {
+        if *offset + std::mem::size_of::<u32>() > bytes.len() {
+            return Err(BootCacheError::InvalidPayload("unexpected end of payload"));
         }
-        let value = u32::from_le_bytes(bytes[*offset..*offset + U32_BYTES].try_into()?);
-        *offset += U32_BYTES;
+        let value =
+            u32::from_le_bytes(bytes[*offset..*offset + std::mem::size_of::<u32>()].try_into()?);
+        *offset += std::mem::size_of::<u32>();
         Ok(value)
     }
 
     if content.len() < U32_BYTES {
-        bail!("cache payload too small");
+        return Err(BootCacheError::InvalidPayload("payload too small"));
     }
 
     let mut offset = 0usize;
@@ -80,7 +98,7 @@ fn decode_boot_blame_stats(content: &[u8]) -> Result<BootBlameStats> {
     for _ in 0..entry_count {
         let name_len = read_u32(content, &mut offset)? as usize;
         if offset + name_len + F64_BYTES > content.len() {
-            bail!("invalid cache payload size");
+            return Err(BootCacheError::InvalidPayload("invalid payload size"));
         }
         let unit_name = String::from_utf8(content[offset..offset + name_len].to_vec())?;
         offset += name_len;
@@ -90,7 +108,7 @@ fn decode_boot_blame_stats(content: &[u8]) -> Result<BootBlameStats> {
     }
 
     if offset != content.len() {
-        bail!("trailing bytes in cache payload");
+        return Err(BootCacheError::InvalidPayload("trailing bytes in payload"));
     }
 
     Ok(stats)
@@ -99,7 +117,7 @@ fn decode_boot_blame_stats(content: &[u8]) -> Result<BootBlameStats> {
 async fn read_cached_boot_blame_from_dir(
     cache_dir: &Path,
     boot_id: &str,
-) -> Result<Option<BootBlameStats>> {
+) -> BootCacheResult<Option<BootBlameStats>> {
     let cache_path = cache_file_path(cache_dir, boot_id);
     let content = match tokio::fs::read(&cache_path).await {
         Ok(content) => content,
@@ -113,7 +131,7 @@ async fn write_cached_boot_blame_to_dir(
     cache_dir: &Path,
     boot_id: &str,
     stats: &BootBlameStats,
-) -> Result<()> {
+) -> BootCacheResult<()> {
     tokio::fs::create_dir_all(cache_dir).await?;
     let cache_path = cache_file_path(cache_dir, boot_id);
     let encoded = encode_boot_blame_stats(stats)?;
@@ -121,11 +139,11 @@ async fn write_cached_boot_blame_to_dir(
     Ok(())
 }
 
-async fn read_cached_boot_blame(boot_id: &str) -> Result<Option<BootBlameStats>> {
+async fn read_cached_boot_blame(boot_id: &str) -> BootCacheResult<Option<BootBlameStats>> {
     read_cached_boot_blame_from_dir(Path::new(BOOT_BLAME_CACHE_DIR), boot_id).await
 }
 
-async fn write_cached_boot_blame(boot_id: &str, stats: &BootBlameStats) -> Result<()> {
+async fn write_cached_boot_blame(boot_id: &str, stats: &BootBlameStats) -> BootCacheResult<()> {
     write_cached_boot_blame_to_dir(Path::new(BOOT_BLAME_CACHE_DIR), boot_id, stats).await
 }
 
@@ -174,7 +192,6 @@ pub async fn update_boot_blame_stats(
 
         match get_boot_id().await {
             Ok(boot_id) => {
-                maybe_boot_id = Some(boot_id.clone());
                 match read_cached_boot_blame(&boot_id).await {
                     Ok(Some(cached_boot_blame)) => {
                         let cache_path = cache_file_path(Path::new(BOOT_BLAME_CACHE_DIR), &boot_id);
@@ -195,6 +212,7 @@ pub async fn update_boot_blame_stats(
                         );
                     }
                 }
+                maybe_boot_id = Some(boot_id);
             }
             Err(err) => {
                 debug!("Failed to retrieve boot id for boot blame cache: {}", err);

@@ -363,13 +363,9 @@ impl TryFrom<Ini> for Config {
 
         // [boot] section
         config.boot_blame.enabled = read_config_bool(&ini_config, "boot", "enabled")?;
-        if let Some(cache_enabled) = ini_config.getbool("boot", "cache_enabled").map_err(|err| {
-            MonitordConfigError::InvalidValue {
-                section: "boot".into(),
-                key: "cache_enabled".into(),
-                reason: err,
-            }
-        })? {
+        if let Some(cache_enabled) =
+            read_config_optional_bool(&ini_config, "boot", "cache_enabled")?
+        {
             config.boot_blame.cache_enabled = cache_enabled;
         }
         if let Ok(Some(num_slowest_units)) = ini_config.getuint("boot", "num_slowest_units") {
@@ -418,6 +414,21 @@ fn read_config_bool(config: &Ini, section: &str, key: &str) -> Result<bool, Moni
             Ok(false)
         }
     }
+}
+
+/// Helper function to read optional bool config options while preserving field defaults
+fn read_config_optional_bool(
+    config: &Ini,
+    section: &str,
+    key: &str,
+) -> Result<Option<bool>, MonitordConfigError> {
+    config
+        .getbool(section, key)
+        .map_err(|err| MonitordConfigError::InvalidValue {
+            section: section.into(),
+            key: key.into(),
+            reason: err,
+        })
 }
 
 #[cfg(test)]
