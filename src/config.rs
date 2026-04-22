@@ -190,6 +190,7 @@ impl Default for DBusStatsConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BootBlameConfig {
     pub enabled: bool,
+    pub cache_enabled: bool,
     pub num_slowest_units: u64,
     pub allowlist: HashSet<String>,
     pub blocklist: HashSet<String>,
@@ -198,6 +199,7 @@ impl Default for BootBlameConfig {
     fn default() -> Self {
         BootBlameConfig {
             enabled: false,
+            cache_enabled: true,
             num_slowest_units: 5,
             allowlist: HashSet::new(),
             blocklist: HashSet::new(),
@@ -361,6 +363,15 @@ impl TryFrom<Ini> for Config {
 
         // [boot] section
         config.boot_blame.enabled = read_config_bool(&ini_config, "boot", "enabled")?;
+        if let Some(cache_enabled) = ini_config.getbool("boot", "cache_enabled").map_err(|err| {
+            MonitordConfigError::InvalidValue {
+                section: "boot".into(),
+                key: "cache_enabled".into(),
+                reason: err,
+            }
+        })? {
+            config.boot_blame.cache_enabled = cache_enabled;
+        }
         if let Ok(Some(num_slowest_units)) = ini_config.getuint("boot", "num_slowest_units") {
             config.boot_blame.num_slowest_units = num_slowest_units;
         }
@@ -500,6 +511,7 @@ foo2
 
 [boot]
 enabled = true
+cache_enabled = false
 num_slowest_units = 10
 
 [boot.allowlist]
@@ -542,6 +554,8 @@ output_format = json-flat
         );
         // See that one of the enabled bools are false
         assert!(!expected_config.networkd.enabled);
+        // Boot cache defaults to enabled when not explicitly configured
+        assert!(expected_config.boot_blame.cache_enabled);
     }
 
     #[test]
@@ -594,6 +608,7 @@ output_format = json-flat
             },
             boot_blame: BootBlameConfig {
                 enabled: true,
+                cache_enabled: false,
                 num_slowest_units: 10,
                 allowlist: HashSet::from([String::from("foo.service")]),
                 blocklist: HashSet::from([String::from("bar.service")]),

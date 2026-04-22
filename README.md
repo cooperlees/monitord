@@ -217,6 +217,9 @@ bar
 # Disabled by default
 [boot]
 enabled = false
+# Cache boot blame stats in /run/monitord/<boot_id>.boot_blame.bin
+# Enabled by default; set false to force recalculation every run
+cache_enabled = true
 # Number of slowest units to report
 num_slowest_units = 5
 
@@ -244,6 +247,11 @@ enabled = false
 # noisy.service
 # broken.timer
 ```
+
+When using the provided `monitord.service`, systemd creates `/run/monitord` via
+`RuntimeDirectory=monitord` and assigns ownership to the configured service `User`/`Group`.
+If you run monitord another way, ensure `/run/monitord` exists and is writable by the
+monitord process user so boot cache files can be created.
 
 ## Machines support
 
