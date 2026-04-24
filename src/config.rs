@@ -190,6 +190,7 @@ impl Default for DBusStatsConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BootBlameConfig {
     pub enabled: bool,
+    pub cache_enabled: bool,
     pub num_slowest_units: u64,
     pub allowlist: HashSet<String>,
     pub blocklist: HashSet<String>,
@@ -198,6 +199,7 @@ impl Default for BootBlameConfig {
     fn default() -> Self {
         BootBlameConfig {
             enabled: false,
+            cache_enabled: true,
             num_slowest_units: 5,
             allowlist: HashSet::new(),
             blocklist: HashSet::new(),
@@ -361,6 +363,11 @@ impl TryFrom<Ini> for Config {
 
         // [boot] section
         config.boot_blame.enabled = read_config_bool(&ini_config, "boot", "enabled")?;
+        if let Some(cache_enabled) =
+            read_config_optional_bool(&ini_config, "boot", "cache_enabled")?
+        {
+            config.boot_blame.cache_enabled = cache_enabled;
+        }
         if let Ok(Some(num_slowest_units)) = ini_config.getuint("boot", "num_slowest_units") {
             config.boot_blame.num_slowest_units = num_slowest_units;
         }
@@ -407,6 +414,21 @@ fn read_config_bool(config: &Ini, section: &str, key: &str) -> Result<bool, Moni
             Ok(false)
         }
     }
+}
+
+/// Helper function to read optional bool config options while preserving field defaults
+fn read_config_optional_bool(
+    config: &Ini,
+    section: &str,
+    key: &str,
+) -> Result<Option<bool>, MonitordConfigError> {
+    config
+        .getbool(section, key)
+        .map_err(|err| MonitordConfigError::InvalidValue {
+            section: section.into(),
+            key: key.into(),
+            reason: err,
+        })
 }
 
 #[cfg(test)]
@@ -500,6 +522,7 @@ foo2
 
 [boot]
 enabled = true
+cache_enabled = false
 num_slowest_units = 10
 
 [boot.allowlist]
@@ -542,6 +565,8 @@ output_format = json-flat
         );
         // See that one of the enabled bools are false
         assert!(!expected_config.networkd.enabled);
+        // Boot cache defaults to enabled when not explicitly configured
+        assert!(expected_config.boot_blame.cache_enabled);
     }
 
     #[test]
@@ -594,6 +619,7 @@ output_format = json-flat
             },
             boot_blame: BootBlameConfig {
                 enabled: true,
+                cache_enabled: false,
                 num_slowest_units: 10,
                 allowlist: HashSet::from([String::from("foo.service")]),
                 blocklist: HashSet::from([String::from("bar.service")]),

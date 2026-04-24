@@ -11,6 +11,8 @@ ExecStart=/usr/bin/monitord -c /etc/monitord.conf
 # Create with: useradd --system --no-create-home monitord
 User=monitord
 Group=monitord
+RuntimeDirectory=monitord
+RuntimeDirectoryMode=0750
 
 # Hardening
 ProtectSystem=strict
