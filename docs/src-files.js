@@ -1,2 +1,2 @@
-createSrcSidebar('[["monitord",["",[["dbus",[],["mod.rs","zbus_machine.rs","zbus_machines.rs","zbus_networkd.rs","zbus_service.rs","zbus_systemd.rs","zbus_timer.rs","zbus_unit.rs"]],["varlink",[],["metrics.rs","mod.rs"]]],["boot.rs","config.rs","dbus_stats.rs","json.rs","lib.rs","logging.rs","machines.rs","networkd.rs","pid1.rs","system.rs","timer.rs","unit_constants.rs","units.rs","varlink_units.rs","verify.rs"]]]]');
-//{"start":19,"fragment_lengths":[399]}
+createSrcSidebar('[["monitord",["",[["dbus",[],["mod.rs","zbus_machine.rs","zbus_machines.rs","zbus_networkd.rs","zbus_service.rs","zbus_systemd.rs","zbus_timer.rs","zbus_unit.rs"]],["varlink",[],["metrics.rs","mod.rs","network.rs"]]],["boot.rs","config.rs","dbus_stats.rs","json.rs","lib.rs","logging.rs","machines.rs","networkd.rs","pid1.rs","system.rs","timer.rs","unit_constants.rs","units.rs","varlink_networkd.rs","varlink_units.rs","verify.rs"]]]]');
+//{"start":19,"fragment_lengths":[434]}

@@ -433,6 +433,9 @@ bar
 # Disabled by default
 [boot]
 enabled = false
+# Cache boot blame stats in /run/monitord/&lt;boot_id&gt;.boot_blame.bin
+# Enabled by default; set false to force recalculation every run
+cache_enabled = true
 # Number of slowest units to report
 num_slowest_units = 5
 
@@ -460,6 +463,10 @@ enabled = false
 # noisy.service
 # broken.timer
 </code></pre>
+<p>When using the provided <code>monitord.service</code>, systemd creates <code>/run/monitord</code> via
+<code>RuntimeDirectory=monitord</code> and assigns ownership to the configured service <code>User</code>/<code>Group</code>.
+If you run monitord another way, ensure <code>/run/monitord</code> exists and is writable by the
+monitord process user so boot cache files can be created.</p>
 <h2>Machines support</h2>
 <p>From version <code>&gt;=0.11</code> monitord supports obtaining the same set of key from
 systemd 'machines' (i.e. <code>machinectl --list</code>).</p>
@@ -476,8 +483,11 @@ the <code>machine</code> keyword and machine name. For example:</p>
 <h3>json</h3>
 <p>Normal <code>serde_json</code> non pretty JSON. All on one line. Most compact format.</p>
 <h3>json-flat</h3>
-<p>Move all key value pairs to the top level and . notate compononets + sub values.
+<p>Move all key value pairs to the top level and . notate components + sub values.
 Is semi pretty too + custom. All unittested ...</p>
+<p><code>stat_collection_run_time_ms</code> is emitted in <strong>milliseconds</strong> (with <code>_ms</code> suffix) to follow
+Prometheus metric naming conventions for duration units, which keeps unit semantics
+clear and consistent when these keys are transformed into Prometheus metric names.</p>
 <pre><code class="language-json">{
   &quot;boot.blame.dnf5-automatic.service&quot;: 204.159,
   &quot;boot.blame.cpe_chef.service&quot;: 103.05,
@@ -551,6 +561,7 @@ Is semi pretty too + custom. All unittested ...</p>
   &quot;services.chronyd.service.tasks_current&quot;: 1,
   &quot;services.chronyd.service.timeout_clean_usec&quot;: 18446744073709551615,
   &quot;services.chronyd.service.watchdog_usec&quot;: 0,
+  &quot;stat_collection_run_time_ms&quot;: 87.4013,
   &quot;system-state&quot;: 3,
   &quot;timers.fstrim.timer.accuracy_usec&quot;: 3600000000,
   &quot;timers.fstrim.timer.fixed_random_delay&quot;: 0,
@@ -965,10 +976,8 @@ in the container to run monitord and test.</p>
 <li>Can do most other calls then on the machine's systemd/dbus</li>
 <li>networkd</li>
 <li><code>ManagerProxy::list_links()</code></li>
-<li>Would love to stop parsing <code>/run/systemd/netif/links</code> and replace via varlink API<ul>
-<li>https://github.com/systemd/systemd/issues/36877</li>
-</ul>
-</li>
+<li>Interface state files at <code>/run/systemd/netif/links</code> are used by default; the varlink
+    <code>io.systemd.Network.Describe</code> API can be enabled instead (see below)</li>
 <li>system</li>
 <li><code>ManagerProxy::get_version()</code></li>
 <li><code>ManagerProxy::system_state()</code></li>
@@ -1007,20 +1016,25 @@ at <code>/run/systemd/report/io.systemd.Manager</code> to collect unit counts, a
 <pre><code class="language-ini">[varlink]
 enabled = true
 </code></pre>
-<p>When varlink is enabled, monitord will attempt to collect unit stats via the metrics API first.
-If the varlink socket is unavailable (e.g., systemd &lt; v260), it automatically falls back to D-Bus collection.</p>
+<p>When varlink is enabled, monitord will attempt to collect stats via the varlink APIs first,
+automatically falling back to D-Bus or file-based collection when a varlink socket is unavailable
+(e.g., older systemd versions).</p>
 <h3>Metrics collected via Varlink</h3>
-<ul>
-<li>Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)</li>
-<li>Unit counts by state (active, failed, inactive)</li>
-<li>Per-unit active state and load state (with allowlist/blocklist filtering)</li>
-<li>Per-unit health status (computed from active + load state)</li>
-<li>Per-service restart counts (<code>nrestarts</code>)</li>
-</ul>
+<p><strong>Units</strong> (<code>io.systemd.Metrics</code> — systemd v260+):
+- Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)
+- Unit counts by state (active, failed, inactive)
+- Per-unit active state and load state (with allowlist/blocklist filtering)
+- Per-unit health status (computed from active + load state)
+- Per-service restart counts (<code>nrestarts</code>)
+- Falls back to D-Bus collection if the socket is unavailable</p>
+<p><strong>Networkd interfaces</strong> (<code>io.systemd.Network.Describe</code> — systemd v257+):
+- Per-interface operational, carrier, admin, and address states
+- Falls back to parsing <code>/run/systemd/netif/links</code> state files if the socket is unavailable</p>
 <h3>Containers</h3>
 <p>For systemd-nspawn containers, monitord connects to the container's varlink socket via
 <code>/proc/&lt;leader_pid&gt;/root/run/systemd/report/io.systemd.Manager</code>, similar to how D-Bus uses
-the container-scoped bus socket.</p>
+the container-scoped bus socket. Networkd stats use
+<code>/proc/&lt;leader_pid&gt;/root/run/systemd/netif/io.systemd.Network</code>, with the same file-based fallback.</p>
 <h3>varlink 101</h3>
 <p>varlink might one day replace our DBUS usage. Here are some notes on how to work with systemd varlink
 as there isn't really documentation outside <code>man</code> pages.</p>

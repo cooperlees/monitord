@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["TIMER_STATS_FIELD_NAMES"],"enum":["MonitordTimerError"],"fn":["collect_timer_stats"],"struct":["TimerStats"]};
+window.SIDEBAR_ITEMS = {"constant":["TIMER_STATS_FIELD_NAMES"],"enum":["MonitordTimerError"],"fn":["collect_all_timers_dbus","collect_timer_stats"],"struct":["TimerStats"]};
