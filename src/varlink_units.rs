@@ -5,6 +5,7 @@
 
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use tokio::sync::RwLock;
 use tracing::debug;
@@ -247,11 +248,21 @@ pub async fn parse_metrics(
     socket_path: &str,
     config: &crate::config::UnitsConfig,
 ) -> anyhow::Result<()> {
+    // Parity with the D-Bus path's UnitsCollectionTimings: list_units_ms is the
+    // bulk fetch (varlink List on io.systemd.Manager), per_unit_loop_ms is the
+    // local parse loop. The *_dbus_fetches counters stay 0 here -- itself a
+    // useful signal that the varlink path doesn't pay per-unit D-Bus cost.
+    let bulk_fetch_start = Instant::now();
     let metrics = collect_metrics(socket_path.to_string()).await?;
+    let bulk_fetch_elapsed = bulk_fetch_start.elapsed();
+    stats.collection_timings.list_units_ms = bulk_fetch_elapsed.as_secs_f64() * 1000.0;
 
+    let parse_loop_start = Instant::now();
     for metric in &metrics {
         parse_one_metric(stats, metric, config)?;
     }
+    let parse_loop_elapsed = parse_loop_start.elapsed();
+    stats.collection_timings.per_unit_loop_ms = parse_loop_elapsed.as_secs_f64() * 1000.0;
 
     Ok(())
 }

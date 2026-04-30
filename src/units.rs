@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -35,8 +36,27 @@ pub use crate::unit_constants::is_unit_unhealthy;
 pub use crate::unit_constants::SystemdUnitActiveState;
 pub use crate::unit_constants::SystemdUnitLoadState;
 
+/// Inner timing breakdown for the units collector D-Bus phases.
+///
+/// Helps locate which step of unit collection dominates wall time when the
+/// `units` collector is the slowest one in `MonitordStats::collector_timings`.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct UnitsCollectionTimings {
+    /// Time for the systemd ListUnits D-Bus call (one batched call returning all units).
+    pub list_units_ms: f64,
+    /// Time spent in the per-unit parse loop, including any per-unit D-Bus calls
+    /// (timer property fetches, state stats, service stats).
+    pub per_unit_loop_ms: f64,
+    /// Number of timer units whose properties were fetched via D-Bus this run.
+    pub timer_dbus_fetches: u64,
+    /// Number of unit state D-Bus fetches this run (when state_stats_time_in_state is enabled).
+    pub state_dbus_fetches: u64,
+    /// Number of per-service D-Bus property fetches this run.
+    pub service_dbus_fetches: u64,
+}
+
 #[derive(
-    serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
+    serde::Serialize, serde::Deserialize, Clone, Debug, Default, FieldNamesAsArray, PartialEq,
 )]
 
 /// Aggregated systemd unit statistics: counts by type, load state, active state,
@@ -90,6 +110,9 @@ pub struct SystemdUnitStats {
     pub timer_stats: HashMap<String, TimerStats>,
     /// Per-unit active/load state tracking keyed by unit name
     pub unit_states: HashMap<String, UnitStates>,
+    /// Inner timing breakdown for this collector. Zero-valued before the first
+    /// run completes or when the varlink path is taken.
+    pub collection_timings: UnitsCollectionTimings,
 }
 
 /// Per-service metrics from the org.freedesktop.systemd1.Service and Unit D-Bus interfaces.
@@ -322,21 +345,25 @@ async fn get_time_in_state(
     }
 }
 
-/// Parse state of a unit into our unit_states hash
+/// Parse state of a unit into our unit_states hash.
+///
+/// Returns true when an actual time-in-state D-Bus fetch was performed,
+/// so callers can keep `state_dbus_fetches` honest. Allowlist/blocklist
+/// short-circuits and `state_stats_time_in_state = false` both return false.
 pub async fn parse_state(
     stats: &mut SystemdUnitStats,
     unit: &ListedUnit,
     config: &crate::config::UnitsConfig,
     connection: Option<&zbus::Connection>,
-) -> Result<(), MonitordUnitsError> {
+) -> Result<bool, MonitordUnitsError> {
     if config.state_stats_blocklist.contains(&unit.name) {
         debug!("Skipping state stats for {} due to blocklist", &unit.name);
-        return Ok(());
+        return Ok(false);
     }
     if !config.state_stats_allowlist.is_empty()
         && !config.state_stats_allowlist.contains(&unit.name)
     {
-        return Ok(());
+        return Ok(false);
     }
     let active_state = SystemdUnitActiveState::from_str(&unit.active_state)
         .unwrap_or(SystemdUnitActiveState::unknown);
@@ -345,8 +372,12 @@ pub async fn parse_state(
 
     // Get the state_change_timestamp to determine time in usecs we've been in current state
     let mut time_in_state_usecs: Option<u64> = None;
+    let mut did_dbus_fetch = false;
     if config.state_stats_time_in_state {
         time_in_state_usecs = get_time_in_state(connection, unit).await?;
+        // get_time_in_state only issues a D-Bus call when connection is Some;
+        // the None path logs an error and returns Ok(None) without calling out.
+        did_dbus_fetch = connection.is_some();
     }
 
     stats.unit_states.insert(
@@ -358,7 +389,7 @@ pub async fn parse_state(
             time_in_state_usecs,
         },
     );
-    Ok(())
+    Ok(did_dbus_fetch)
 }
 
 /// Parse a unit and add to overall counts of state, type etc.
@@ -422,9 +453,19 @@ pub async fn parse_unit_state(
         .cache_properties(zbus::proxy::CacheProperties::No)
         .build()
         .await?;
+
+    let list_units_start = Instant::now();
     let units = p.list_units().await?;
+    let list_units_elapsed = list_units_start.elapsed();
+    stats.collection_timings.list_units_ms = list_units_elapsed.as_secs_f64() * 1000.0;
 
     stats.total_units = units.len() as u64;
+
+    let per_unit_loop_start = Instant::now();
+    let mut state_dbus_fetches: u64 = 0;
+    let mut service_dbus_fetches: u64 = 0;
+    let mut timer_dbus_fetches: u64 = 0;
+
     for unit_raw in units {
         let unit: ListedUnit = unit_raw.into();
         // Collect unit types + states counts
@@ -433,7 +474,11 @@ pub async fn parse_unit_state(
         // Collect per unit state stats - ActiveState + LoadState
         // Not collecting SubState (yet)
         if config.units.state_stats {
-            parse_state(&mut stats, &unit, &config.units, Some(connection)).await?;
+            let did_dbus_fetch =
+                parse_state(&mut stats, &unit, &config.units, Some(connection)).await?;
+            if did_dbus_fetch {
+                state_dbus_fetches += 1;
+            }
         }
 
         // Collect service stats
@@ -442,6 +487,7 @@ pub async fn parse_unit_state(
             match parse_service(connection, &unit.name, &unit.unit_object_path).await {
                 Ok(service_stats) => {
                     stats.service_stats.insert(unit.name.clone(), service_stats);
+                    service_dbus_fetches += 1;
                 }
                 Err(err) => error!(
                     "Unable to get service stats for {} {}: {:#?}",
@@ -462,7 +508,10 @@ pub async fn parse_unit_state(
             }
             let timer_stats: Option<TimerStats> =
                 match crate::timer::collect_timer_stats(connection, &mut stats, &unit).await {
-                    Ok(ts) => Some(ts),
+                    Ok(ts) => {
+                        timer_dbus_fetches += 1;
+                        Some(ts)
+                    }
                     Err(err) => {
                         error!("Failed to get {} stats: {:#?}", &unit.name, err);
                         None
@@ -473,6 +522,12 @@ pub async fn parse_unit_state(
             }
         }
     }
+    let per_unit_loop_elapsed = per_unit_loop_start.elapsed();
+    stats.collection_timings.per_unit_loop_ms = per_unit_loop_elapsed.as_secs_f64() * 1000.0;
+    stats.collection_timings.state_dbus_fetches = state_dbus_fetches;
+    stats.collection_timings.service_dbus_fetches = service_dbus_fetches;
+    stats.collection_timings.timer_dbus_fetches = timer_dbus_fetches;
+
     debug!("unit stats: {:?}", stats);
     Ok(stats)
 }
@@ -554,22 +609,26 @@ mod tests {
                     time_in_state_usecs: None,
                 },
             )]),
+            collection_timings: UnitsCollectionTimings::default(),
         };
         let mut stats = SystemdUnitStats::default();
         let systemd_unit = get_unit_file();
         let mut config = crate::config::UnitsConfig::default();
 
-        // Test no allow list or blocklist
-        parse_state(&mut stats, &systemd_unit, &config, None).await?;
+        // Test no allow list or blocklist; with connection: None, parse_state
+        // takes the no-op path inside get_time_in_state and returns false.
+        let did_fetch = parse_state(&mut stats, &systemd_unit, &config, None).await?;
         assert_eq!(expected_stats, stats);
+        assert!(!did_fetch);
 
         // Create an allow list
         config.state_stats_allowlist = HashSet::from([test_unit_name.clone()]);
 
         // test no blocklist and only allow list - Should equal the same as no lists above
         let mut allowlist_stats = SystemdUnitStats::default();
-        parse_state(&mut allowlist_stats, &systemd_unit, &config, None).await?;
+        let did_fetch = parse_state(&mut allowlist_stats, &systemd_unit, &config, None).await?;
         assert_eq!(expected_stats, allowlist_stats);
+        assert!(!did_fetch);
 
         // Now add a blocklist
         config.state_stats_blocklist = HashSet::from([test_unit_name]);
@@ -577,8 +636,10 @@ mod tests {
         // test blocklist with allow list (show it's preferred)
         let mut blocklist_stats = SystemdUnitStats::default();
         let expected_blocklist_stats = SystemdUnitStats::default();
-        parse_state(&mut blocklist_stats, &systemd_unit, &config, None).await?;
+        let did_fetch = parse_state(&mut blocklist_stats, &systemd_unit, &config, None).await?;
         assert_eq!(expected_blocklist_stats, blocklist_stats);
+        // Blocklist short-circuit must NOT count as a D-Bus fetch.
+        assert!(!did_fetch);
         Ok(())
     }
 
@@ -609,6 +670,7 @@ mod tests {
             service_stats: HashMap::new(),
             timer_stats: HashMap::new(),
             unit_states: HashMap::new(),
+            collection_timings: UnitsCollectionTimings::default(),
         };
         let mut stats = SystemdUnitStats::default();
         let systemd_unit = get_unit_file();

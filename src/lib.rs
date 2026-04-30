@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use thiserror::Error;
 use tokio::sync::RwLock;
+use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
@@ -39,6 +40,27 @@ pub mod varlink_units;
 pub mod verify;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
+
+/// Per-collector timing for a single stat collection run.
+///
+/// `start_offset_ms` is the wall time between the top of the collection cycle and
+/// the moment this collector's future was first polled. A non-trivial offset
+/// indicates the spawn/scheduling loop or the runtime is delaying first poll,
+/// which means collectors are not starting in parallel as intended.
+///
+/// `elapsed_ms` is the wall time between first poll and completion.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct CollectorTiming {
+    /// Name of the collector (e.g. "units", "pid1", "dbus_stats")
+    pub name: String,
+    /// Milliseconds from top of the run until the spawned future's first poll.
+    /// Should be small (< a few ms) when collectors are truly running in parallel.
+    pub start_offset_ms: f64,
+    /// Milliseconds from first poll to future completion.
+    pub elapsed_ms: f64,
+    /// Whether the collector returned Ok.
+    pub success: bool,
+}
 
 /// Stats collected for a single systemd-nspawn container or VM managed by systemd-machined
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
@@ -86,6 +108,11 @@ pub struct MonitordStats {
     pub verify_stats: Option<verify::VerifyStats>,
     /// End-to-end duration of the last stat collection run in milliseconds.
     pub stat_collection_run_time_ms: f64,
+    /// Per-collector timings from the last run, sorted slowest first. Empty
+    /// before the first run completes. Callers compute parallelism ratio
+    /// (sum of `elapsed_ms` / `stat_collection_run_time_ms`) and identify the
+    /// gating collector (first entry) directly from this vector.
+    pub collector_timings: Vec<CollectorTiming>,
 }
 
 /// Print statistics in the format set in configuration
@@ -112,6 +139,31 @@ pub fn print_stats(
 
 fn set_stat_collection_run_time(stats: &mut MonitordStats, elapsed_runtime: Duration) {
     stats.stat_collection_run_time_ms = elapsed_runtime.as_secs_f64() * 1000.0;
+}
+
+/// Output produced by every spawned collector future after wrapping with timing.
+type TimedCollectorOutput = (String, anyhow::Result<()>, Duration, Duration);
+
+/// Spawn a collector future onto the join set with timing instrumentation.
+///
+/// The wrapping closure records the moment the future is first polled (relative
+/// to `collect_start`) and the elapsed wall time until it completes. Both
+/// durations and the collector name are returned alongside the original result.
+fn spawn_timed<F>(
+    join_set: &mut tokio::task::JoinSet<TimedCollectorOutput>,
+    name: &'static str,
+    collect_start: Instant,
+    fut: F,
+) where
+    F: std::future::Future<Output = anyhow::Result<()>> + Send + 'static,
+{
+    join_set.spawn(async move {
+        let task_first_poll = Instant::now();
+        let start_offset = task_first_poll.duration_since(collect_start);
+        let result = fut.await;
+        let elapsed = task_first_poll.elapsed();
+        (name.to_string(), result, start_offset, elapsed)
+    });
 }
 
 /// Reuse an existing D-Bus connection or create a new system bus connection.
@@ -153,7 +205,7 @@ pub async fn stat_collector(
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
     let sdc = get_or_create_dbus_connection(&config, maybe_connection).await?;
-    let mut join_set = tokio::task::JoinSet::new();
+    let mut join_set: tokio::task::JoinSet<TimedCollectorOutput> = tokio::task::JoinSet::new();
     let mut had_error;
 
     loop {
@@ -162,17 +214,21 @@ pub async fn stat_collector(
 
         // Always collect systemd version
 
-        join_set.spawn(crate::system::update_version(
-            sdc.clone(),
-            locked_machine_stats.clone(),
-        ));
+        spawn_timed(
+            &mut join_set,
+            "version",
+            collect_start_time,
+            crate::system::update_version(sdc.clone(), locked_machine_stats.clone()),
+        );
 
         // Collect pid1 procfs stats
         if config.pid1.enabled {
-            join_set.spawn(crate::pid1::update_pid1_stats(
-                1,
-                locked_machine_stats.clone(),
-            ));
+            spawn_timed(
+                &mut join_set,
+                "pid1",
+                collect_start_time,
+                crate::pid1::update_pid1_stats(1, locked_machine_stats.clone()),
+            );
         }
 
         // Run networkd collector if enabled
@@ -180,7 +236,7 @@ pub async fn stat_collector(
             let config_clone = Arc::clone(&config);
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
-            join_set.spawn(async move {
+            spawn_timed(&mut join_set, "networkd", collect_start_time, async move {
                 if config_clone.varlink.enabled {
                     let socket_path = crate::varlink_networkd::NETWORK_SOCKET_PATH.to_string();
                     match crate::varlink_networkd::get_networkd_state(&socket_path).await {
@@ -209,10 +265,12 @@ pub async fn stat_collector(
 
         // Run system running (SystemState) state collector
         if config.system_state.enabled {
-            join_set.spawn(crate::system::update_system_stats(
-                sdc.clone(),
-                locked_machine_stats.clone(),
-            ));
+            spawn_timed(
+                &mut join_set,
+                "system_state",
+                collect_start_time,
+                crate::system::update_system_stats(sdc.clone(), locked_machine_stats.clone()),
+            );
         }
 
         // Run service collectors if there are services listed in config
@@ -220,7 +278,7 @@ pub async fn stat_collector(
             let config_clone = Arc::clone(&config);
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
-            join_set.spawn(async move {
+            spawn_timed(&mut join_set, "units", collect_start_time, async move {
                 if config_clone.varlink.enabled {
                     let socket_path = crate::varlink_units::METRICS_SOCKET_PATH.to_string();
                     match crate::varlink_units::update_unit_stats(
@@ -262,54 +320,81 @@ pub async fn stat_collector(
         }
 
         if config.machines.enabled {
-            join_set.spawn(crate::machines::update_machines_stats(
-                Arc::clone(&config),
-                sdc.clone(),
-                locked_monitord_stats.clone(),
-                cached_machine_connections.clone(),
-            ));
+            spawn_timed(
+                &mut join_set,
+                "machines",
+                collect_start_time,
+                crate::machines::update_machines_stats(
+                    Arc::clone(&config),
+                    sdc.clone(),
+                    locked_monitord_stats.clone(),
+                    cached_machine_connections.clone(),
+                ),
+            );
         }
 
         if config.dbus_stats.enabled {
-            join_set.spawn(crate::dbus_stats::update_dbus_stats(
-                Arc::clone(&config),
-                sdc.clone(),
-                locked_machine_stats.clone(),
-            ));
+            spawn_timed(
+                &mut join_set,
+                "dbus_stats",
+                collect_start_time,
+                crate::dbus_stats::update_dbus_stats(
+                    Arc::clone(&config),
+                    sdc.clone(),
+                    locked_machine_stats.clone(),
+                ),
+            );
         }
 
         if config.boot_blame.enabled {
-            join_set.spawn(crate::boot::update_boot_blame_stats(
-                Arc::clone(&config),
-                sdc.clone(),
-                locked_machine_stats.clone(),
-            ));
+            spawn_timed(
+                &mut join_set,
+                "boot_blame",
+                collect_start_time,
+                crate::boot::update_boot_blame_stats(
+                    Arc::clone(&config),
+                    sdc.clone(),
+                    locked_machine_stats.clone(),
+                ),
+            );
         }
 
         if config.verify.enabled {
-            join_set.spawn(crate::verify::update_verify_stats(
-                sdc.clone(),
-                locked_machine_stats.clone(),
-                config.verify.allowlist.clone(),
-                config.verify.blocklist.clone(),
-            ));
+            spawn_timed(
+                &mut join_set,
+                "verify",
+                collect_start_time,
+                crate::verify::update_verify_stats(
+                    sdc.clone(),
+                    locked_machine_stats.clone(),
+                    config.verify.allowlist.clone(),
+                    config.verify.blocklist.clone(),
+                ),
+            );
         }
 
         if join_set.len() == 1 {
             warn!("No collectors except systemd version scheduled to run. Exiting");
         }
 
-        // Check all collection for errors and log if one fails
+        // Drain join_set, collect per-collector timings + log per-collector failures
         had_error = false;
+        let mut timings: Vec<CollectorTiming> = Vec::new();
         while let Some(res) = join_set.join_next().await {
             match res {
-                Ok(r) => match r {
-                    Ok(_) => (),
-                    Err(e) => {
+                Ok((name, collector_result, start_offset, elapsed)) => {
+                    let success = collector_result.is_ok();
+                    if let Err(e) = collector_result {
                         had_error = true;
-                        error!("Collection specific failure: {:?}", e);
+                        error!("Collector '{}' failure: {:?}", name, e);
                     }
-                },
+                    timings.push(CollectorTiming {
+                        name,
+                        start_offset_ms: start_offset.as_secs_f64() * 1000.0,
+                        elapsed_ms: elapsed.as_secs_f64() * 1000.0,
+                        success,
+                    });
+                }
                 Err(e) => {
                     had_error = true;
                     error!("Join error: {:?}", e);
@@ -319,6 +404,25 @@ pub async fn stat_collector(
 
         let elapsed_runtime = collect_start_time.elapsed();
         let elapsed_runtime_ms = elapsed_runtime.as_millis();
+
+        // Sort timings by elapsed desc so the slowest collector is first in the JSON output
+        timings.sort_by(|a, b| {
+            b.elapsed_ms
+                .partial_cmp(&a.elapsed_ms)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Per-collector lines log at debug! to keep daemon-mode noise low.
+        // The same data is on MonitordStats::collector_timings for callers that need it.
+        for t in &timings {
+            debug!(
+                "collector '{}' start_offset={:.1}ms elapsed={:.1}ms{}",
+                t.name,
+                t.start_offset_ms,
+                t.elapsed_ms,
+                if t.success { "" } else { " (FAILED)" },
+            );
+        }
 
         {
             // Update monitord stats with machine stats
@@ -333,6 +437,7 @@ pub async fn stat_collector(
             monitord_stats.boot_blame = machine_stats.boot_blame.clone();
             monitord_stats.verify_stats = machine_stats.verify_stats.clone();
             set_stat_collection_run_time(&mut monitord_stats, elapsed_runtime);
+            monitord_stats.collector_timings = timings;
         }
 
         info!("stat collection run took {}ms", elapsed_runtime_ms);
