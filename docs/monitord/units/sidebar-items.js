@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["SERVICE_FIELD_NAMES","UNIT_FIELD_NAMES","UNIT_STATES_FIELD_NAMES"],"enum":["MonitordUnitsError"],"fn":["parse_state","parse_unit_state","update_unit_stats"],"struct":["ListedUnit","ServiceStats","SystemdUnitStats","UnitStates"]};
+window.SIDEBAR_ITEMS = {"constant":["SERVICE_FIELD_NAMES","UNIT_FIELD_NAMES","UNIT_STATES_FIELD_NAMES"],"enum":["MonitordUnitsError"],"fn":["parse_state","parse_unit_state","update_unit_stats"],"struct":["ListedUnit","ServiceStats","SystemdUnitStats","UnitStates","UnitsCollectionTimings"]};

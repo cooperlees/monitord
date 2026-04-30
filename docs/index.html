@@ -494,6 +494,17 @@ clear and consistent when these keys are transformed into Prometheus metric name
   &quot;boot.blame.sys-module-fuse.device&quot;: 16.21,
   &quot;boot.blame.dev-ttyS0.device&quot;: 15.809,
   &quot;boot.blame.systemd-networkd-wait-online.service&quot;: 1.674,
+  &quot;collection_timings.list_units_ms&quot;: 5.26,
+  &quot;collection_timings.per_unit_loop_ms&quot;: 42.99,
+  &quot;collection_timings.service_dbus_fetches&quot;: 0,
+  &quot;collection_timings.state_dbus_fetches&quot;: 0,
+  &quot;collection_timings.timer_dbus_fetches&quot;: 24,
+  &quot;collector_timings.boot_blame.elapsed_ms&quot;: 53.36,
+  &quot;collector_timings.boot_blame.start_offset_ms&quot;: 0.08,
+  &quot;collector_timings.boot_blame.success&quot;: 1,
+  &quot;collector_timings.units.elapsed_ms&quot;: 53.24,
+  &quot;collector_timings.units.start_offset_ms&quot;: 0.06,
+  &quot;collector_timings.units.success&quot;: 1,
   &quot;dbus.active_connections&quot;: 10,
   &quot;dbus.bus_names&quot;: 16,
   &quot;dbus.incomplete_connections&quot;: 0,
@@ -606,6 +617,74 @@ clear and consistent when these keys are transformed into Prometheus metric name
 </code></pre>
 <h3>json-pretty</h3>
 <p>Normal <code>serde_json</code> pretty representations of each components structs.</p>
+<h3>Per-collector timing metrics</h3>
+<p><code>monitord</code> records the wall time each collector future spends inside a single
+<code>stat_collector</code> cycle and exposes the result on <code>MonitordStats::collector_timings</code>,
+plus an inner phase breakdown for the units collector
+(<code>SystemdUnitStats::collection_timings</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>collector_timings.&lt;name&gt;.start_offset_ms</code></td>
+<td>ms from the top of the cycle until the spawned future was first polled. Should be sub-ms when collectors are running in parallel; a non-trivial value means the spawn loop or runtime is delaying first poll.</td>
+</tr>
+<tr>
+<td><code>collector_timings.&lt;name&gt;.elapsed_ms</code></td>
+<td>ms from first poll to completion for that collector.</td>
+</tr>
+<tr>
+<td><code>collector_timings.&lt;name&gt;.success</code></td>
+<td>1 if the collector returned Ok, 0 otherwise.</td>
+</tr>
+<tr>
+<td><code>collection_timings.list_units_ms</code></td>
+<td>ms for the systemd <code>ListUnits</code> D-Bus call (one batched call).</td>
+</tr>
+<tr>
+<td><code>collection_timings.per_unit_loop_ms</code></td>
+<td>ms spent walking each listed unit, including any per-unit D-Bus calls (timer/state/service).</td>
+</tr>
+<tr>
+<td><code>collection_timings.timer_dbus_fetches</code></td>
+<td>Count of timer D-Bus property fetches this run.</td>
+</tr>
+<tr>
+<td><code>collection_timings.state_dbus_fetches</code></td>
+<td>Count of unit-state D-Bus fetches (only when <code>state_stats_time_in_state</code> is enabled).</td>
+</tr>
+<tr>
+<td><code>collection_timings.service_dbus_fetches</code></td>
+<td>Count of per-service D-Bus property fetches.</td>
+</tr>
+</tbody>
+</table>
+<p>Comparing <code>sum(collector_timings.*.elapsed_ms)</code> against
+<code>stat_collection_run_time_ms</code> gives an effective parallelism ratio
+(<code>sum / wall ≈ N</code> means N-way parallelism, ≈ 1 means effectively serial).</p>
+<p>The per-collector lines are also emitted to logs at <code>debug!</code> level. The end-of-cycle
+"stat collection run took {}ms" summary stays at <code>info!</code>.</p>
+<h4>Varlink-vs-D-Bus parity</h4>
+<p><code>collection_timings</code> is populated identically by the D-Bus path
+(<code>units::parse_unit_state</code>) and the varlink path
+(<code>varlink_units::parse_metrics</code>). In the varlink case, <code>list_units_ms</code> is the
+bulk varlink <code>List</code> call on <code>io.systemd.Manager</code> and <code>per_unit_loop_ms</code> is the
+local parse loop; the <code>*_dbus_fetches</code> counters stay at zero, which is itself a
+useful signal that the varlink path is not paying per-unit D-Bus cost. This
+makes <code>varlink.enabled = true</code> vs <code>false</code> directly comparable on the same host.</p>
+<p><strong>Convention for new collectors moved to varlink:</strong> when porting a collector
+from D-Bus to varlink, add the equivalent inner timings so the two
+implementations remain comparable. The minimum is wall time of the bulk
+fetch (analogous to <code>list_units_ms</code>) and the local parse loop (analogous to
+<code>per_unit_loop_ms</code>), recorded onto a struct nested inside the collector's
+public stats type. Single-shot varlink calls (e.g. networkd <code>Describe</code>) do
+not need an inner split — the outer <code>collector_timings.&lt;name&gt;.elapsed_ms</code>
+already covers them.</p>
 <h3>Metric Value Reference</h3>
 <p>Many metrics are serialized as integers. Here are the enum mappings:</p>
 <p><strong>system-state</strong></p>
