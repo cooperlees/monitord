@@ -443,6 +443,25 @@ Comparing `sum(collector_timings.*.elapsed_ms)` against
 The per-collector lines are also emitted to logs at `debug!` level. The end-of-cycle
 "stat collection run took {}ms" summary stays at `info!`.
 
+#### Varlink-vs-D-Bus parity
+
+`collection_timings` is populated identically by the D-Bus path
+(`units::parse_unit_state`) and the varlink path
+(`varlink_units::parse_metrics`). In the varlink case, `list_units_ms` is the
+bulk varlink `List` call on `io.systemd.Manager` and `per_unit_loop_ms` is the
+local parse loop; the `*_dbus_fetches` counters stay at zero, which is itself a
+useful signal that the varlink path is not paying per-unit D-Bus cost. This
+makes `varlink.enabled = true` vs `false` directly comparable on the same host.
+
+**Convention for new collectors moved to varlink:** when porting a collector
+from D-Bus to varlink, add the equivalent inner timings so the two
+implementations remain comparable. The minimum is wall time of the bulk
+fetch (analogous to `list_units_ms`) and the local parse loop (analogous to
+`per_unit_loop_ms`), recorded onto a struct nested inside the collector's
+public stats type. Single-shot varlink calls (e.g. networkd `Describe`) do
+not need an inner split — the outer `collector_timings.<name>.elapsed_ms`
+already covers them.
+
 ### Metric Value Reference
 
 Many metrics are serialized as integers. Here are the enum mappings:
