@@ -292,6 +292,17 @@ clear and consistent when these keys are transformed into Prometheus metric name
   "boot.blame.sys-module-fuse.device": 16.21,
   "boot.blame.dev-ttyS0.device": 15.809,
   "boot.blame.systemd-networkd-wait-online.service": 1.674,
+  "collection_timings.list_units_ms": 5.26,
+  "collection_timings.per_unit_loop_ms": 42.99,
+  "collection_timings.service_dbus_fetches": 0,
+  "collection_timings.state_dbus_fetches": 0,
+  "collection_timings.timer_dbus_fetches": 24,
+  "collector_timings.boot_blame.elapsed_ms": 53.36,
+  "collector_timings.boot_blame.start_offset_ms": 0.08,
+  "collector_timings.boot_blame.success": 1,
+  "collector_timings.units.elapsed_ms": 53.24,
+  "collector_timings.units.start_offset_ms": 0.06,
+  "collector_timings.units.success": 1,
   "dbus.active_connections": 10,
   "dbus.bus_names": 16,
   "dbus.incomplete_connections": 0,
@@ -406,6 +417,31 @@ clear and consistent when these keys are transformed into Prometheus metric name
 ### json-pretty
 
 Normal `serde_json` pretty representations of each components structs.
+
+### Per-collector timing metrics
+
+`monitord` records the wall time each collector future spends inside a single
+`stat_collector` cycle and exposes the result on `MonitordStats::collector_timings`,
+plus an inner phase breakdown for the units collector
+(`SystemdUnitStats::collection_timings`).
+
+| Field | Meaning |
+|-------|---------|
+| `collector_timings.<name>.start_offset_ms` | ms from the top of the cycle until the spawned future was first polled. Should be sub-ms when collectors are running in parallel; a non-trivial value means the spawn loop or runtime is delaying first poll. |
+| `collector_timings.<name>.elapsed_ms` | ms from first poll to completion for that collector. |
+| `collector_timings.<name>.success` | 1 if the collector returned Ok, 0 otherwise. |
+| `collection_timings.list_units_ms` | ms for the systemd `ListUnits` D-Bus call (one batched call). |
+| `collection_timings.per_unit_loop_ms` | ms spent walking each listed unit, including any per-unit D-Bus calls (timer/state/service). |
+| `collection_timings.timer_dbus_fetches` | Count of timer D-Bus property fetches this run. |
+| `collection_timings.state_dbus_fetches` | Count of unit-state D-Bus fetches (only when `state_stats_time_in_state` is enabled). |
+| `collection_timings.service_dbus_fetches` | Count of per-service D-Bus property fetches. |
+
+Comparing `sum(collector_timings.*.elapsed_ms)` against
+`stat_collection_run_time_ms` gives an effective parallelism ratio
+(`sum / wall ≈ N` means N-way parallelism, ≈ 1 means effectively serial).
+
+The per-collector lines are also emitted to logs at `debug!` level. The end-of-cycle
+"stat collection run took {}ms" summary stays at `info!`.
 
 ### Metric Value Reference
 

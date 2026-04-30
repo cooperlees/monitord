@@ -272,6 +272,10 @@ fn flatten_machines(
         };
         flat_stats.extend(flatten_networkd(&stats.networkd, &machine_key_prefix));
         flat_stats.extend(flatten_units(&stats.units, &machine_key_prefix));
+        flat_stats.extend(flatten_units_collection_timings(
+            &stats.units.collection_timings,
+            &machine_key_prefix,
+        ));
         flat_stats.extend(flatten_pid1(&stats.pid1, &machine_key_prefix));
         flat_stats.insert(
             gen_base_metric_key(&machine_key_prefix, "system-state"),
@@ -464,6 +468,58 @@ fn flatten_verify_stats(
     flat_stats
 }
 
+fn flatten_collector_timings(
+    timings: &[crate::CollectorTiming],
+    key_prefix: &str,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let base_metric_name = gen_base_metric_key(key_prefix, "collector_timings");
+    for t in timings {
+        flat_stats.insert(
+            format!("{base_metric_name}.{}.start_offset_ms", t.name),
+            t.start_offset_ms.into(),
+        );
+        flat_stats.insert(
+            format!("{base_metric_name}.{}.elapsed_ms", t.name),
+            t.elapsed_ms.into(),
+        );
+        flat_stats.insert(
+            format!("{base_metric_name}.{}.success", t.name),
+            (if t.success { 1u64 } else { 0u64 }).into(),
+        );
+    }
+    flat_stats
+}
+
+fn flatten_units_collection_timings(
+    timings: &units::UnitsCollectionTimings,
+    key_prefix: &str,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let base_metric_name = gen_base_metric_key(key_prefix, "collection_timings");
+    flat_stats.insert(
+        format!("{base_metric_name}.list_units_ms"),
+        timings.list_units_ms.into(),
+    );
+    flat_stats.insert(
+        format!("{base_metric_name}.per_unit_loop_ms"),
+        timings.per_unit_loop_ms.into(),
+    );
+    flat_stats.insert(
+        format!("{base_metric_name}.timer_dbus_fetches"),
+        timings.timer_dbus_fetches.into(),
+    );
+    flat_stats.insert(
+        format!("{base_metric_name}.state_dbus_fetches"),
+        timings.state_dbus_fetches.into(),
+    );
+    flat_stats.insert(
+        format!("{base_metric_name}.service_dbus_fetches"),
+        timings.service_dbus_fetches.into(),
+    );
+    flat_stats
+}
+
 /// Take the standard returned structs and move all to a flat BTreeMap<str, float|int> like JSON
 fn flatten_stats(
     stats_struct: &MonitordStats,
@@ -474,6 +530,14 @@ fn flatten_stats(
         gen_base_metric_key(key_prefix, "stat_collection_run_time_ms"),
         stats_struct.stat_collection_run_time_ms.into(),
     );
+    flat_stats.extend(flatten_collector_timings(
+        &stats_struct.collector_timings,
+        key_prefix,
+    ));
+    flat_stats.extend(flatten_units_collection_timings(
+        &stats_struct.units.collection_timings,
+        key_prefix,
+    ));
     flat_stats.extend(flatten_networkd(&stats_struct.networkd, key_prefix));
     flat_stats.extend(flatten_pid1(&stats_struct.pid1, key_prefix));
     flat_stats.insert(
@@ -520,6 +584,22 @@ mod tests {
   "boot.blame.cpe_chef.service": 103.05,
   "boot.blame.dnf5-automatic.service": 204.159,
   "boot.blame.sys-module-fuse.device": 16.21,
+  "collection_timings.list_units_ms": 5.0,
+  "collection_timings.per_unit_loop_ms": 37.0,
+  "collection_timings.service_dbus_fetches": 1,
+  "collection_timings.state_dbus_fetches": 0,
+  "collection_timings.timer_dbus_fetches": 4,
+  "collector_timings.boot_blame.elapsed_ms": 12.5,
+  "collector_timings.boot_blame.start_offset_ms": 0.25,
+  "collector_timings.boot_blame.success": 0,
+  "collector_timings.units.elapsed_ms": 42.0,
+  "collector_timings.units.start_offset_ms": 0.5,
+  "collector_timings.units.success": 1,
+  "machines.foo.collection_timings.list_units_ms": 0.0,
+  "machines.foo.collection_timings.per_unit_loop_ms": 0.0,
+  "machines.foo.collection_timings.service_dbus_fetches": 0,
+  "machines.foo.collection_timings.state_dbus_fetches": 0,
+  "machines.foo.collection_timings.timer_dbus_fetches": 0,
   "machines.foo.networkd.managed_interfaces": 0,
   "machines.foo.system-state": 0,
   "machines.foo.timers.unittest.timer.accuracy_usec": 69,
@@ -666,6 +746,27 @@ mod tests {
                 by_type: HashMap::from([("service".to_string(), 2), ("slice".to_string(), 1)]),
             }),
             stat_collection_run_time_ms: 69.0,
+            collector_timings: vec![
+                crate::CollectorTiming {
+                    name: "units".to_string(),
+                    start_offset_ms: 0.5,
+                    elapsed_ms: 42.0,
+                    success: true,
+                },
+                crate::CollectorTiming {
+                    name: "boot_blame".to_string(),
+                    start_offset_ms: 0.25,
+                    elapsed_ms: 12.5,
+                    success: false,
+                },
+            ],
+        };
+        stats.units.collection_timings = units::UnitsCollectionTimings {
+            list_units_ms: 5.0,
+            per_unit_loop_ms: 37.0,
+            timer_dbus_fetches: 4,
+            state_dbus_fetches: 0,
+            service_dbus_fetches: 1,
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
@@ -734,7 +835,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(111, json_flat_map.len());
+        assert_eq!(127, json_flat_map.len());
     }
 
     #[test]
@@ -762,7 +863,12 @@ mod tests {
     #[test]
     fn test_unit_counters_covers_all_scalar_fields() {
         // Fields of SystemdUnitStats that are nested maps, not scalar counters.
-        const NON_COUNTER_FIELDS: &[&str] = &["service_stats", "timer_stats", "unit_states"];
+        const NON_COUNTER_FIELDS: &[&str] = &[
+            "service_stats",
+            "timer_stats",
+            "unit_states",
+            "collection_timings",
+        ];
 
         // Scalar counter field names expected from SystemdUnitStats.
         let expected: std::collections::BTreeSet<&str> = units::UNIT_FIELD_NAMES
