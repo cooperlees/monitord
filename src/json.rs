@@ -647,22 +647,7 @@ mod tests {
   "pid1.fd_count": 69,
   "pid1.memory_usage_bytes": 69,
   "pid1.tasks": 1,
-  "services.unittest.service.active_enter_timestamp": 0,
-  "services.unittest.service.active_exit_timestamp": 0,
-  "services.unittest.service.cpuusage_nsec": 0,
-  "services.unittest.service.inactive_exit_timestamp": 0,
-  "services.unittest.service.ioread_bytes": 0,
-  "services.unittest.service.ioread_operations": 0,
-  "services.unittest.service.memory_available": 0,
-  "services.unittest.service.memory_current": 0,
-  "services.unittest.service.nrestarts": 0,
-  "services.unittest.service.processes": 0,
-  "services.unittest.service.restart_usec": 0,
-  "services.unittest.service.state_change_timestamp": 0,
   "services.unittest.service.status_errno": -69,
-  "services.unittest.service.tasks_current": 0,
-  "services.unittest.service.timeout_clean_usec": 0,
-  "services.unittest.service.watchdog_usec": 0,
   "stat_collection_run_time_ms": 69.0,
   "system-state": 3,
   "timers.unittest.timer.accuracy_usec": 69,
@@ -773,7 +758,7 @@ mod tests {
             service_unit_name.clone(),
             units::ServiceStats {
                 // Ensure json-flat handles negative i32s
-                status_errno: -69,
+                status_errno: Some(-69),
                 ..Default::default()
             },
         );
@@ -835,7 +820,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(127, json_flat_map.len());
+        assert_eq!(112, json_flat_map.len());
     }
 
     #[test]
