@@ -11,7 +11,13 @@ const LONG_ABOUT: &str = "monitord: Know how happy your systemd is! 😊";
 #[clap(author, version, about, long_about = LONG_ABOUT)]
 struct Cli {
     /// Location of your monitord config
-    #[clap(short, long, value_parser, env = "MONITORD_CONFIG", default_value = "/etc/monitord.conf")]
+    #[clap(
+        short,
+        long,
+        value_parser,
+        env = "MONITORD_CONFIG",
+        default_value = "/etc/monitord.conf"
+    )]
     config: PathBuf,
 
     /// Adjust the console log-level
