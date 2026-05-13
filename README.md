@@ -96,6 +96,7 @@ Install via cargo or use as a dependency in your `Cargo.toml`.
 - Create (copy from repo) a `monitord.conf`
   - Defaults to looking for it at /etc/monitord.conf
 - `monitord --help`
+  - Also support `MONITORD_CONFIG` env var to set config path
 
 ```console
 crl-linux:monitord cooper$ monitord --help
