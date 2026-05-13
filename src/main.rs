@@ -6,13 +6,18 @@ use tracing::debug;
 use tracing::info;
 
 const LONG_ABOUT: &str = "monitord: Know how happy your systemd is! 😊";
-
 /// Clap CLI Args struct with metadata in help output
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = LONG_ABOUT)]
 struct Cli {
     /// Location of your monitord config
-    #[clap(short, long, value_parser, default_value = "/etc/monitord.conf")]
+    #[clap(
+        short,
+        long,
+        value_parser,
+        env = "MONITORD_CONFIG",
+        default_value = "/etc/monitord.conf"
+    )]
     config: PathBuf,
 
     /// Adjust the console log-level
