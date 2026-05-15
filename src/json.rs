@@ -114,6 +114,39 @@ fn flatten_pid1(
     ]
 }
 
+fn flatten_unit_files_scope(
+    scope: &units::UnitFilesScope,
+    base: &str,
+) -> Vec<(String, serde_json::Value)> {
+    let mut flat_stats = Vec::new();
+    for (unit_type, count) in &scope.generated {
+        flat_stats.push((
+            format!("{base}.generated.{unit_type}_units"),
+            (*count).into(),
+        ));
+    }
+    for (unit_type, count) in &scope.transient {
+        flat_stats.push((
+            format!("{base}.transient.{unit_type}_units"),
+            (*count).into(),
+        ));
+    }
+    flat_stats
+}
+
+fn flatten_unit_files(
+    unit_files: &units::UnitFilesStats,
+    key_prefix: &str,
+) -> Vec<(String, serde_json::Value)> {
+    let base = gen_base_metric_key(key_prefix, "unit_files");
+    let mut flat_stats = flatten_unit_files_scope(&unit_files.root, &format!("{base}.root"));
+    flat_stats.extend(flatten_unit_files_scope(
+        &unit_files.user,
+        &format!("{base}.user"),
+    ));
+    flat_stats
+}
+
 fn flatten_services(
     service_stats_hash: &HashMap<String, units::ServiceStats>,
     key_prefix: &str,
@@ -272,6 +305,10 @@ fn flatten_machines(
         };
         flat_stats.extend(flatten_networkd(&stats.networkd, &machine_key_prefix));
         flat_stats.extend(flatten_units(&stats.units, &machine_key_prefix));
+        flat_stats.extend(flatten_unit_files(
+            &stats.units.unit_files,
+            &machine_key_prefix,
+        ));
         flat_stats.extend(flatten_units_collection_timings(
             &stats.units.collection_timings,
             &machine_key_prefix,
@@ -554,6 +591,10 @@ fn flatten_stats(
         key_prefix,
     ));
     flat_stats.extend(flatten_units(&stats_struct.units, key_prefix));
+    flat_stats.extend(flatten_unit_files(
+        &stats_struct.units.unit_files,
+        key_prefix,
+    ));
     flat_stats.insert(
         gen_base_metric_key(key_prefix, "version"),
         stats_struct.version.to_string().into(),
@@ -864,6 +905,7 @@ mod tests {
     fn test_unit_counters_covers_all_scalar_fields() {
         // Fields of SystemdUnitStats that are nested maps, not scalar counters.
         const NON_COUNTER_FIELDS: &[&str] = &[
+            "unit_files",
             "service_stats",
             "timer_stats",
             "unit_states",

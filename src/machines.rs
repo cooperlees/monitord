@@ -249,22 +249,41 @@ pub async fn update_machines_stats(
                     )
                     .await
                     {
-                        Ok(()) => Ok(()),
+                        Ok(()) => {
+                            let container_root = format!("/proc/{}/root", leader_pid);
+                            let unit_files = tokio::task::spawn_blocking(move || {
+                                crate::units::collect_unit_files_stats(&container_root)
+                            })
+                            .await;
+                            if let Ok(unit_files) = unit_files {
+                                let mut ms = stats_clone.write().await;
+                                ms.units.unit_files = unit_files;
+                            }
+                            Ok(())
+                        }
                         Err(err) => {
                             warn!(
                                 "Varlink units stats failed, falling back to D-Bus: {:?}",
                                 err
                             );
-                            crate::units::update_unit_stats(config_clone, sdc_clone, stats_clone)
-                                .await
+                            let container_root = format!("/proc/{}/root", leader_pid);
+                            crate::units::update_unit_stats(
+                                config_clone,
+                                sdc_clone,
+                                stats_clone,
+                                container_root,
+                            )
+                            .await
                         }
                     }
                 });
             } else {
+                let container_root = format!("/proc/{}/root", leader_pid);
                 join_set.spawn(crate::units::update_unit_stats(
                     Arc::clone(&config),
                     sdc.clone(),
                     locked_machine_stats.clone(),
+                    container_root,
                 ));
             }
         }
