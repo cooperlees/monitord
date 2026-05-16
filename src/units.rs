@@ -15,6 +15,7 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::error;
+use tracing::warn;
 use zbus::zvariant::ObjectPath;
 use zbus::zvariant::OwnedObjectPath;
 
@@ -479,7 +480,7 @@ async fn count_unit_files_by_type(path: &str) -> HashMap<String, u64> {
             }
             Ok(None) => break,
             Err(err) => {
-                debug!("Error reading entry in {}: {:?}", path, err);
+                warn!("Error reading entry in {}: {:?}", path, err);
                 continue;
             }
         }
@@ -506,7 +507,7 @@ async fn enumerate_user_transient_dirs(fs_root: &str) -> Vec<String> {
                     }
                     Ok(None) => break,
                     Err(err) => {
-                        debug!("Error reading entry in {}: {:?}", user_dir, err);
+                        warn!("Error reading entry in {}: {:?}", user_dir, err);
                         continue;
                     }
                 }
