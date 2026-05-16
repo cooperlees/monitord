@@ -44,6 +44,8 @@ pub use crate::unit_constants::SystemdUnitLoadState;
 pub struct UnitsCollectionTimings {
     /// Time for the systemd ListUnits D-Bus call (one batched call returning all units).
     pub list_units_ms: f64,
+    /// Time for filesystem unit file stats collection (runs concurrently with list_units).
+    pub unit_files_ms: f64,
     /// Time spent in the per-unit parse loop, including any per-unit D-Bus calls
     /// (timer property fetches, state stats, service stats).
     pub per_unit_loop_ms: f64,
@@ -530,8 +532,7 @@ pub async fn collect_unit_files_stats(fs_root: &str) -> UnitFilesStats {
 
     // Second batch: read every user transient directory in parallel.
     let user_transient_counts =
-        futures_util::future::join_all(user_dirs.iter().map(|d| count_unit_files_by_type(d)))
-            .await;
+        futures_util::future::join_all(user_dirs.iter().map(|d| count_unit_files_by_type(d))).await;
 
     let mut user_transient = HashMap::new();
     for counts in user_transient_counts {
@@ -577,14 +578,27 @@ pub async fn parse_unit_state(
         .build()
         .await?;
 
-    // Run filesystem collection and D-Bus list_units in parallel.
-    let list_units_start = Instant::now();
-    let (unit_files, units_result) = tokio::join!(
-        collect_unit_files_stats(fs_root),
-        p.list_units(),
+    // Run filesystem collection and D-Bus list_units in parallel, timing each independently.
+    let (unit_files_result, units_result) = tokio::join!(
+        async {
+            let start = Instant::now();
+            let files = if config.units.unit_files {
+                collect_unit_files_stats(fs_root).await
+            } else {
+                UnitFilesStats::default()
+            };
+            (files, start.elapsed().as_secs_f64() * 1000.0)
+        },
+        async {
+            let start = Instant::now();
+            let units = p.list_units().await;
+            (units, start.elapsed().as_secs_f64() * 1000.0)
+        },
     );
-    let list_units_elapsed = list_units_start.elapsed();
-    stats.collection_timings.list_units_ms = list_units_elapsed.as_secs_f64() * 1000.0;
+    let (unit_files, unit_files_ms) = unit_files_result;
+    let (units_result, list_units_ms) = units_result;
+    stats.collection_timings.unit_files_ms = unit_files_ms;
+    stats.collection_timings.list_units_ms = list_units_ms;
     stats.unit_files = unit_files;
 
     let units = units_result?;

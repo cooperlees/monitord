@@ -289,8 +289,6 @@ pub async fn stat_collector(
                     .await
                     {
                         Ok(()) => {
-                            let unit_files =
-                                crate::units::collect_unit_files_stats("").await;
                             // Timer properties are not yet exposed via varlink; collect via D-Bus.
                             match crate::timer::collect_all_timers_dbus(&sdc_clone, &config_clone)
                                 .await
@@ -307,8 +305,11 @@ pub async fn stat_collector(
                                     warn!("Varlink timer stats (D-Bus fallback) failed: {:?}", err);
                                 }
                             }
-                            let mut ms = stats_clone.write().await;
-                            ms.units.unit_files = unit_files;
+                            if config_clone.units.unit_files {
+                                let unit_files = crate::units::collect_unit_files_stats("").await;
+                                let mut ms = stats_clone.write().await;
+                                ms.units.unit_files = unit_files;
+                            }
                             return Ok(());
                         }
                         Err(err) => {

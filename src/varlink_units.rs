@@ -344,6 +344,7 @@ mod tests {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: false,
+            unit_files: true,
         }
     }
 
@@ -597,6 +598,7 @@ mod tests {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: true,
+            unit_files: true,
         };
         let mut stats = SystemdUnitStats::default();
 
@@ -827,6 +829,7 @@ mod tests {
             state_stats_allowlist: HashSet::from(["allowed.service".to_string()]),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: false,
+            unit_files: true,
         };
 
         // Allowed unit should be tracked
@@ -859,6 +862,7 @@ mod tests {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::from(["blocked.service".to_string()]),
             state_stats_time_in_state: false,
+            unit_files: true,
         };
 
         // Blocked unit should be skipped
@@ -891,6 +895,7 @@ mod tests {
             state_stats_allowlist: HashSet::from(["both.service".to_string()]),
             state_stats_blocklist: HashSet::from(["both.service".to_string()]),
             state_stats_time_in_state: false,
+            unit_files: true,
         };
 
         // Unit in both lists should be blocked (blocklist takes priority)
@@ -915,6 +920,7 @@ mod tests {
             state_stats_allowlist: HashSet::from(["allowed.service".to_string()]),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: false,
+            unit_files: true,
         };
         let mut stats = SystemdUnitStats::default();
 
@@ -968,6 +974,7 @@ mod tests {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: false,
+            unit_files: true,
         };
         let mut stats = SystemdUnitStats::default();
 

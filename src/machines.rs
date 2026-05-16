@@ -251,10 +251,12 @@ pub async fn update_machines_stats(
                     {
                         Ok(()) => {
                             let container_root = format!("/proc/{}/root", leader_pid);
-                            let unit_files =
-                                crate::units::collect_unit_files_stats(&container_root).await;
-                            let mut ms = stats_clone.write().await;
-                            ms.units.unit_files = unit_files;
+                            if config_clone.units.unit_files {
+                                let unit_files =
+                                    crate::units::collect_unit_files_stats(&container_root).await;
+                                let mut ms = stats_clone.write().await;
+                                ms.units.unit_files = unit_files;
+                            }
                             Ok(())
                         }
                         Err(err) => {
