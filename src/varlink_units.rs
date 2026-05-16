@@ -141,7 +141,7 @@ pub fn parse_one_metric(
                 .service_stats
                 .entry(object_name.to_string())
                 .or_default()
-                .nrestarts = nrestarts;
+                .nrestarts = Some(nrestarts);
         }
         "UnitsByTypeTotal" => {
             if let Some(type_str) = metric.get_field_as_str("type") {
@@ -414,7 +414,7 @@ mod tests {
                 .get("my-service.service")
                 .unwrap()
                 .nrestarts,
-            5
+            Some(5)
         );
     }
 

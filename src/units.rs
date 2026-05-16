@@ -138,42 +138,62 @@ pub struct SystemdUnitStats {
 
 /// Per-service metrics from the org.freedesktop.systemd1.Service and Unit D-Bus interfaces.
 /// Ref: <https://www.freedesktop.org/software/systemd/man/org.freedesktop.systemd1.html>
+///
+/// Fields are `Option` so that collection paths that only populate a subset
+/// (e.g. varlink only provides `nrestarts`) do not emit zero-valued keys for
+/// the fields they never fetched.
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, FieldNamesAsArray, PartialEq,
 )]
 pub struct ServiceStats {
     /// Realtime timestamp (usec since epoch) when the unit most recently entered the active state
-    pub active_enter_timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_enter_timestamp: Option<u64>,
     /// Realtime timestamp (usec since epoch) when the unit most recently left the active state
-    pub active_exit_timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_exit_timestamp: Option<u64>,
     /// Total CPU time consumed by this service's cgroup in nanoseconds
-    pub cpuusage_nsec: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpuusage_nsec: Option<u64>,
     /// Realtime timestamp (usec since epoch) when the unit most recently left the inactive state
-    pub inactive_exit_timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inactive_exit_timestamp: Option<u64>,
     /// Total bytes read from block I/O by this service's cgroup
-    pub ioread_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ioread_bytes: Option<u64>,
     /// Total number of block I/O read operations by this service's cgroup
-    pub ioread_operations: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ioread_operations: Option<u64>,
     /// Memory available to the service (MemoryAvailable from cgroup), in bytes
-    pub memory_available: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_available: Option<u64>,
     /// Current memory usage of the service's cgroup in bytes
-    pub memory_current: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_current: Option<u64>,
     /// Number of times systemd has restarted this service (automatic restarts)
-    pub nrestarts: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nrestarts: Option<u32>,
     /// Current number of processes in this service's cgroup
-    pub processes: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub processes: Option<u32>,
     /// Configured restart delay for this service in microseconds (RestartUSec)
-    pub restart_usec: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restart_usec: Option<u64>,
     /// Realtime timestamp (usec since epoch) of the most recent state change of any kind
-    pub state_change_timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_change_timestamp: Option<u64>,
     /// errno-style exit status code from the main process (0 = success)
-    pub status_errno: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_errno: Option<i32>,
     /// Current number of tasks (threads) in this service's cgroup
-    pub tasks_current: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tasks_current: Option<u64>,
     /// Timeout in microseconds for the cleanup of resources after the service exits
-    pub timeout_clean_usec: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_clean_usec: Option<u64>,
     /// Watchdog timeout in microseconds; the service must ping within this interval or be killed
-    pub watchdog_usec: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub watchdog_usec: Option<u64>,
 }
 
 /// Per-unit state tracking combining active state, load state, and computed health.
@@ -316,22 +336,22 @@ async fn parse_service(
     );
 
     Ok(ServiceStats {
-        active_enter_timestamp: active_enter_timestamp?,
-        active_exit_timestamp: active_exit_timestamp?,
-        cpuusage_nsec: cpuusage_nsec?,
-        inactive_exit_timestamp: inactive_exit_timestamp?,
-        ioread_bytes: ioread_bytes?,
-        ioread_operations: ioread_operations?,
-        memory_current: memory_current?,
-        memory_available: memory_available?,
-        nrestarts: nrestarts?,
-        processes: processes?.len().try_into()?,
-        restart_usec: restart_usec?,
-        state_change_timestamp: state_change_timestamp?,
-        status_errno: status_errno?,
-        tasks_current: tasks_current?,
-        timeout_clean_usec: timeout_clean_usec?,
-        watchdog_usec: watchdog_usec?,
+        active_enter_timestamp: Some(active_enter_timestamp?),
+        active_exit_timestamp: Some(active_exit_timestamp?),
+        cpuusage_nsec: Some(cpuusage_nsec?),
+        inactive_exit_timestamp: Some(inactive_exit_timestamp?),
+        ioread_bytes: Some(ioread_bytes?),
+        ioread_operations: Some(ioread_operations?),
+        memory_current: Some(memory_current?),
+        memory_available: Some(memory_available?),
+        nrestarts: Some(nrestarts?),
+        processes: Some(processes?.len().try_into()?),
+        restart_usec: Some(restart_usec?),
+        state_change_timestamp: Some(state_change_timestamp?),
+        status_errno: Some(status_errno?),
+        tasks_current: Some(tasks_current?),
+        timeout_clean_usec: Some(timeout_clean_usec?),
+        watchdog_usec: Some(watchdog_usec?),
     })
 }
 
