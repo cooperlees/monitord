@@ -55,6 +55,22 @@ pub struct UnitsCollectionTimings {
     pub service_dbus_fetches: u64,
 }
 
+/// Unit file counts for a scope (root or user), broken down by unit type.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct UnitFilesScope {
+    /// Generated unit files by type (e.g. "service" => 2, "mount" => 5)
+    pub generated: HashMap<String, u64>,
+    /// Transient unit files by type (e.g. "service" => 10, "scope" => 6)
+    pub transient: HashMap<String, u64>,
+}
+
+/// Unit file statistics collected from the filesystem for root and user scopes.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct UnitFilesStats {
+    pub root: UnitFilesScope,
+    pub user: UnitFilesScope,
+}
+
 #[derive(
     serde::Serialize, serde::Deserialize, Clone, Debug, Default, FieldNamesAsArray, PartialEq,
 )]
@@ -104,6 +120,8 @@ pub struct SystemdUnitStats {
     pub timer_remain_after_elapse: u64,
     /// Total number of units known to systemd (all types, all states)
     pub total_units: u64,
+    /// Unit file statistics from the filesystem (e.g. generator output counts)
+    pub unit_files: UnitFilesStats,
     /// Per-service detailed metrics keyed by unit name (e.g. "sshd.service")
     pub service_stats: HashMap<String, ServiceStats>,
     /// Per-timer detailed metrics keyed by unit name (e.g. "logrotate.timer")
@@ -429,10 +447,80 @@ fn parse_unit(stats: &mut SystemdUnitStats, unit: &ListedUnit) {
     }
 }
 
+const GENERATOR_DIRS: &[&str] = &[
+    "/run/systemd/generator",
+    "/run/systemd/generator.early",
+    "/run/systemd/generator.late",
+];
+const TRANSIENT_DIR: &str = "/run/systemd/transient";
+
+fn count_unit_files_by_type(path: &str) -> HashMap<String, u64> {
+    let dir = match std::fs::read_dir(path) {
+        Ok(d) => d,
+        Err(err) => {
+            debug!("Unable to read {}: {:?}", path, err);
+            return HashMap::new();
+        }
+    };
+    let mut counts = HashMap::new();
+    for entry in dir.filter_map(|e| e.ok()) {
+        if !entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name();
+        let unit_type = name
+            .to_str()
+            .and_then(|n| n.rsplit('.').next())
+            .unwrap_or("unknown");
+        *counts.entry(unit_type.to_string()).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn merge_counts(target: &mut HashMap<String, u64>, source: HashMap<String, u64>) {
+    for (unit_type, count) in source {
+        *target.entry(unit_type).or_insert(0) += count;
+    }
+}
+
+/// Collect unit file statistics from the filesystem.
+/// `fs_root` is prepended to all paths — empty string for the host,
+/// `/proc/<pid>/root` for containers.
+pub fn collect_unit_files_stats(fs_root: &str) -> UnitFilesStats {
+    let mut root_generated = HashMap::new();
+    for dir in GENERATOR_DIRS {
+        merge_counts(
+            &mut root_generated,
+            count_unit_files_by_type(&format!("{fs_root}{dir}")),
+        );
+    }
+
+    let mut user_transient = HashMap::new();
+    let user_dir = format!("{fs_root}/run/user");
+    if let Ok(entries) = std::fs::read_dir(&user_dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = format!("{}/systemd/transient", entry.path().display());
+            merge_counts(&mut user_transient, count_unit_files_by_type(&path));
+        }
+    }
+
+    UnitFilesStats {
+        root: UnitFilesScope {
+            generated: root_generated,
+            transient: count_unit_files_by_type(&format!("{fs_root}{TRANSIENT_DIR}")),
+        },
+        user: UnitFilesScope {
+            generated: HashMap::new(),
+            transient: user_transient,
+        },
+    }
+}
+
 /// Pull all units from dbus and count how system is setup and behaving
 pub async fn parse_unit_state(
     config: &crate::config::Config,
     connection: &zbus::Connection,
+    fs_root: &str,
 ) -> Result<SystemdUnitStats, MonitordUnitsError> {
     if !config.units.state_stats_allowlist.is_empty() {
         debug!(
@@ -449,6 +537,11 @@ pub async fn parse_unit_state(
     }
 
     let mut stats = SystemdUnitStats::default();
+
+    let fs_root_owned = fs_root.to_string();
+    let unit_files_handle =
+        tokio::task::spawn_blocking(move || collect_unit_files_stats(&fs_root_owned));
+
     let p = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
         .build()
@@ -528,18 +621,26 @@ pub async fn parse_unit_state(
     stats.collection_timings.service_dbus_fetches = service_dbus_fetches;
     stats.collection_timings.timer_dbus_fetches = timer_dbus_fetches;
 
+    match unit_files_handle.await {
+        Ok(unit_files) => stats.unit_files = unit_files,
+        Err(err) => error!("Failed to collect unit file stats: {:?}", err),
+    }
+
     debug!("unit stats: {:?}", stats);
     Ok(stats)
 }
 
-/// Async wrapper than can update uni stats when passed a locked struct
+/// Async wrapper that can update unit stats when passed a locked struct.
+/// `fs_root` is prepended to filesystem paths for unit file stats —
+/// empty string for the host, `/proc/<pid>/root` for containers.
 pub async fn update_unit_stats(
     config: Arc<crate::config::Config>,
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
+    fs_root: String,
 ) -> anyhow::Result<()> {
     let mut machine_stats = locked_machine_stats.write().await;
-    match parse_unit_state(&config, &connection).await {
+    match parse_unit_state(&config, &connection, &fs_root).await {
         Ok(units_stats) => machine_stats.units = units_stats,
         Err(err) => error!("units stats failed: {:?}", err),
     }
@@ -598,6 +699,7 @@ mod tests {
             timer_persistent_units: 0,
             timer_remain_after_elapse: 0,
             total_units: 0,
+            unit_files: UnitFilesStats::default(),
             service_stats: HashMap::new(),
             timer_stats: HashMap::new(),
             unit_states: HashMap::from([(
@@ -667,6 +769,7 @@ mod tests {
             timer_persistent_units: 0,
             timer_remain_after_elapse: 0,
             total_units: 0,
+            unit_files: UnitFilesStats::default(),
             service_stats: HashMap::new(),
             timer_stats: HashMap::new(),
             unit_states: HashMap::new(),
@@ -693,5 +796,57 @@ mod tests {
     fn test_iterators() {
         assert!(SystemdUnitActiveState::iter().collect::<Vec<_>>().len() > 0);
         assert!(SystemdUnitLoadState::iter().collect::<Vec<_>>().len() > 0);
+    }
+
+    #[test]
+    fn test_count_unit_files_by_type() {
+        let dir = tempfile::tempdir().expect("Unable to create temp dir");
+        let path = dir.path();
+
+        std::fs::write(path.join("sshd.service"), "").unwrap();
+        std::fs::write(path.join("nginx.service"), "").unwrap();
+        std::fs::write(path.join("boot.mount"), "").unwrap();
+        std::fs::write(path.join("swap.swap"), "").unwrap();
+        std::fs::create_dir(path.join("multi-user.target.wants")).unwrap();
+
+        let counts = count_unit_files_by_type(path.to_str().unwrap());
+        assert_eq!(counts.get("service"), Some(&2));
+        assert_eq!(counts.get("mount"), Some(&1));
+        assert_eq!(counts.get("swap"), Some(&1));
+        assert_eq!(counts.get("wants"), None);
+        assert_eq!(counts.len(), 3);
+    }
+
+    #[test]
+    fn test_count_unit_files_by_type_nonexistent_dir() {
+        let counts = count_unit_files_by_type("/nonexistent/path");
+        assert!(counts.is_empty());
+    }
+
+    #[test]
+    fn test_collect_unit_files_stats_with_fs_root() {
+        let root = tempfile::tempdir().expect("Unable to create temp dir");
+        let root_path = root.path();
+
+        let gen_dir = root_path.join("run/systemd/generator");
+        std::fs::create_dir_all(&gen_dir).unwrap();
+        std::fs::write(gen_dir.join("boot.mount"), "").unwrap();
+        std::fs::write(gen_dir.join("swap.swap"), "").unwrap();
+
+        let transient_dir = root_path.join("run/systemd/transient");
+        std::fs::create_dir_all(&transient_dir).unwrap();
+        std::fs::write(transient_dir.join("run-thing.service"), "").unwrap();
+
+        let user_transient = root_path.join("run/user/1000/systemd/transient");
+        std::fs::create_dir_all(&user_transient).unwrap();
+        std::fs::write(user_transient.join("app-code.scope"), "").unwrap();
+        std::fs::write(user_transient.join("app-term.scope"), "").unwrap();
+
+        let stats = collect_unit_files_stats(root_path.to_str().unwrap());
+        assert_eq!(stats.root.generated.get("mount"), Some(&1));
+        assert_eq!(stats.root.generated.get("swap"), Some(&1));
+        assert_eq!(stats.root.transient.get("service"), Some(&1));
+        assert_eq!(stats.user.transient.get("scope"), Some(&2));
+        assert!(stats.user.generated.is_empty());
     }
 }
