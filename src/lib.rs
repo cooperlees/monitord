@@ -307,10 +307,8 @@ pub async fn stat_collector(
                                     warn!("Varlink timer stats (D-Bus fallback) failed: {:?}", err);
                                 }
                             }
-                            {
-                                let mut ms = stats_clone.write().await;
-                                ms.units.unit_files = unit_files;
-                            }
+                            let mut ms = stats_clone.write().await;
+                            ms.units.unit_files = unit_files;
                             return Ok(());
                         }
                         Err(err) => {
