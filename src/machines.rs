@@ -251,14 +251,10 @@ pub async fn update_machines_stats(
                     {
                         Ok(()) => {
                             let container_root = format!("/proc/{}/root", leader_pid);
-                            let unit_files = tokio::task::spawn_blocking(move || {
-                                crate::units::collect_unit_files_stats(&container_root)
-                            })
-                            .await;
-                            if let Ok(unit_files) = unit_files {
-                                let mut ms = stats_clone.write().await;
-                                ms.units.unit_files = unit_files;
-                            }
+                            let unit_files =
+                                crate::units::collect_unit_files_stats(&container_root).await;
+                            let mut ms = stats_clone.write().await;
+                            ms.units.unit_files = unit_files;
                             Ok(())
                         }
                         Err(err) => {

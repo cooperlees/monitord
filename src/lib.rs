@@ -289,9 +289,8 @@ pub async fn stat_collector(
                     .await
                     {
                         Ok(()) => {
-                            let unit_files_handle = tokio::task::spawn_blocking(|| {
-                                crate::units::collect_unit_files_stats("")
-                            });
+                            let unit_files =
+                                crate::units::collect_unit_files_stats("").await;
                             // Timer properties are not yet exposed via varlink; collect via D-Bus.
                             match crate::timer::collect_all_timers_dbus(&sdc_clone, &config_clone)
                                 .await
@@ -308,7 +307,7 @@ pub async fn stat_collector(
                                     warn!("Varlink timer stats (D-Bus fallback) failed: {:?}", err);
                                 }
                             }
-                            if let Ok(unit_files) = unit_files_handle.await {
+                            {
                                 let mut ms = stats_clone.write().await;
                                 ms.units.unit_files = unit_files;
                             }

@@ -447,15 +447,10 @@ fn parse_unit(stats: &mut SystemdUnitStats, unit: &ListedUnit) {
     }
 }
 
-const GENERATOR_DIRS: &[&str] = &[
-    "/run/systemd/generator",
-    "/run/systemd/generator.early",
-    "/run/systemd/generator.late",
-];
 const TRANSIENT_DIR: &str = "/run/systemd/transient";
 
-fn count_unit_files_by_type(path: &str) -> HashMap<String, u64> {
-    let dir = match std::fs::read_dir(path) {
+async fn count_unit_files_by_type(path: &str) -> HashMap<String, u64> {
+    let mut dir = match tokio::fs::read_dir(path).await {
         Ok(d) => d,
         Err(err) => {
             debug!("Unable to read {}: {:?}", path, err);
@@ -463,8 +458,12 @@ fn count_unit_files_by_type(path: &str) -> HashMap<String, u64> {
         }
     };
     let mut counts = HashMap::new();
-    for entry in dir.filter_map(|e| e.ok()) {
-        if !entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+    while let Ok(Some(entry)) = dir.next_entry().await {
+        let file_type = match entry.file_type().await {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !file_type.is_file() {
             continue;
         }
         let name = entry.file_name();
@@ -483,31 +482,66 @@ fn merge_counts(target: &mut HashMap<String, u64>, source: HashMap<String, u64>)
     }
 }
 
+/// Enumerate the per-user systemd transient directories under `{fs_root}/run/user`.
+async fn enumerate_user_transient_dirs(fs_root: &str) -> Vec<String> {
+    let user_dir = format!("{fs_root}/run/user");
+    match tokio::fs::read_dir(&user_dir).await {
+        Ok(mut entries) => {
+            let mut dirs = Vec::new();
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                dirs.push(format!("{}/systemd/transient", entry.path().display()));
+            }
+            dirs
+        }
+        Err(err) => {
+            debug!("Unable to read {}: {:?}", user_dir, err);
+            Vec::new()
+        }
+    }
+}
+
 /// Collect unit file statistics from the filesystem.
 /// `fs_root` is prepended to all paths — empty string for the host,
 /// `/proc/<pid>/root` for containers.
-pub fn collect_unit_files_stats(fs_root: &str) -> UnitFilesStats {
+///
+/// All directory reads are issued in parallel: the three generator directories,
+/// the root transient directory, and user-dir enumeration run concurrently in a
+/// first batch; per-user transient reads run concurrently in a second batch.
+pub async fn collect_unit_files_stats(fs_root: &str) -> UnitFilesStats {
+    // Pre-bind formatted paths to extend their lifetime across the join.
+    let gen_path = format!("{fs_root}/run/systemd/generator");
+    let gen_early_path = format!("{fs_root}/run/systemd/generator.early");
+    let gen_late_path = format!("{fs_root}/run/systemd/generator.late");
+    let transient_path = format!("{fs_root}{TRANSIENT_DIR}");
+
+    // First batch: fixed paths + user dir enumeration all in parallel.
+    let (gen, gen_early, gen_late, root_transient, user_dirs) = tokio::join!(
+        count_unit_files_by_type(&gen_path),
+        count_unit_files_by_type(&gen_early_path),
+        count_unit_files_by_type(&gen_late_path),
+        count_unit_files_by_type(&transient_path),
+        enumerate_user_transient_dirs(fs_root),
+    );
+
     let mut root_generated = HashMap::new();
-    for dir in GENERATOR_DIRS {
-        merge_counts(
-            &mut root_generated,
-            count_unit_files_by_type(&format!("{fs_root}{dir}")),
-        );
-    }
+    merge_counts(&mut root_generated, gen);
+    merge_counts(&mut root_generated, gen_early);
+    merge_counts(&mut root_generated, gen_late);
+
+    // Second batch: read every user transient directory in parallel.
+    let user_transient_counts =
+        futures_util::future::join_all(user_dirs.iter().map(|d| count_unit_files_by_type(d)))
+            .await;
 
     let mut user_transient = HashMap::new();
-    let user_dir = format!("{fs_root}/run/user");
-    if let Ok(entries) = std::fs::read_dir(&user_dir) {
-        for entry in entries.filter_map(|e| e.ok()) {
-            let path = format!("{}/systemd/transient", entry.path().display());
-            merge_counts(&mut user_transient, count_unit_files_by_type(&path));
-        }
+    for counts in user_transient_counts {
+        merge_counts(&mut user_transient, counts);
     }
 
     UnitFilesStats {
         root: UnitFilesScope {
             generated: root_generated,
-            transient: count_unit_files_by_type(&format!("{fs_root}{TRANSIENT_DIR}")),
+            transient: root_transient,
         },
         user: UnitFilesScope {
             generated: HashMap::new(),
@@ -538,20 +572,22 @@ pub async fn parse_unit_state(
 
     let mut stats = SystemdUnitStats::default();
 
-    let fs_root_owned = fs_root.to_string();
-    let unit_files_handle =
-        tokio::task::spawn_blocking(move || collect_unit_files_stats(&fs_root_owned));
-
     let p = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
         .build()
         .await?;
 
+    // Run filesystem collection and D-Bus list_units in parallel.
     let list_units_start = Instant::now();
-    let units = p.list_units().await?;
+    let (unit_files, units_result) = tokio::join!(
+        collect_unit_files_stats(fs_root),
+        p.list_units(),
+    );
     let list_units_elapsed = list_units_start.elapsed();
     stats.collection_timings.list_units_ms = list_units_elapsed.as_secs_f64() * 1000.0;
+    stats.unit_files = unit_files;
 
+    let units = units_result?;
     stats.total_units = units.len() as u64;
 
     let per_unit_loop_start = Instant::now();
@@ -620,11 +656,6 @@ pub async fn parse_unit_state(
     stats.collection_timings.state_dbus_fetches = state_dbus_fetches;
     stats.collection_timings.service_dbus_fetches = service_dbus_fetches;
     stats.collection_timings.timer_dbus_fetches = timer_dbus_fetches;
-
-    match unit_files_handle.await {
-        Ok(unit_files) => stats.unit_files = unit_files,
-        Err(err) => error!("Failed to collect unit file stats: {:?}", err),
-    }
 
     debug!("unit stats: {:?}", stats);
     Ok(stats)
@@ -798,8 +829,8 @@ mod tests {
         assert!(SystemdUnitLoadState::iter().collect::<Vec<_>>().len() > 0);
     }
 
-    #[test]
-    fn test_count_unit_files_by_type() {
+    #[tokio::test]
+    async fn test_count_unit_files_by_type() {
         let dir = tempfile::tempdir().expect("Unable to create temp dir");
         let path = dir.path();
 
@@ -809,7 +840,7 @@ mod tests {
         std::fs::write(path.join("swap.swap"), "").unwrap();
         std::fs::create_dir(path.join("multi-user.target.wants")).unwrap();
 
-        let counts = count_unit_files_by_type(path.to_str().unwrap());
+        let counts = count_unit_files_by_type(path.to_str().unwrap()).await;
         assert_eq!(counts.get("service"), Some(&2));
         assert_eq!(counts.get("mount"), Some(&1));
         assert_eq!(counts.get("swap"), Some(&1));
@@ -817,14 +848,14 @@ mod tests {
         assert_eq!(counts.len(), 3);
     }
 
-    #[test]
-    fn test_count_unit_files_by_type_nonexistent_dir() {
-        let counts = count_unit_files_by_type("/nonexistent/path");
+    #[tokio::test]
+    async fn test_count_unit_files_by_type_nonexistent_dir() {
+        let counts = count_unit_files_by_type("/nonexistent/path").await;
         assert!(counts.is_empty());
     }
 
-    #[test]
-    fn test_collect_unit_files_stats_with_fs_root() {
+    #[tokio::test]
+    async fn test_collect_unit_files_stats_with_fs_root() {
         let root = tempfile::tempdir().expect("Unable to create temp dir");
         let root_path = root.path();
 
@@ -842,7 +873,7 @@ mod tests {
         std::fs::write(user_transient.join("app-code.scope"), "").unwrap();
         std::fs::write(user_transient.join("app-term.scope"), "").unwrap();
 
-        let stats = collect_unit_files_stats(root_path.to_str().unwrap());
+        let stats = collect_unit_files_stats(root_path.to_str().unwrap()).await;
         assert_eq!(stats.root.generated.get("mount"), Some(&1));
         assert_eq!(stats.root.generated.get("swap"), Some(&1));
         assert_eq!(stats.root.transient.get("service"), Some(&1));
