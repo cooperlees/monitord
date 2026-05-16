@@ -318,7 +318,9 @@ impl TryFrom<Ini> for Config {
         }
         config.units.state_stats_time_in_state =
             read_config_bool(&ini_config, "units", "state_stats_time_in_state")?;
-        config.units.unit_files = read_config_bool(&ini_config, "units", "unit_files")?;
+        if let Some(unit_files) = read_config_optional_bool(&ini_config, "units", "unit_files")? {
+            config.units.unit_files = unit_files;
+        }
 
         // [machines] section
         config.machines.enabled = read_config_bool(&ini_config, "machines", "enabled")?;

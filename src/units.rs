@@ -460,20 +460,29 @@ async fn count_unit_files_by_type(path: &str) -> HashMap<String, u64> {
         }
     };
     let mut counts = HashMap::new();
-    while let Ok(Some(entry)) = dir.next_entry().await {
-        let file_type = match entry.file_type().await {
-            Ok(ft) => ft,
-            Err(_) => continue,
-        };
-        if !file_type.is_file() {
-            continue;
+    loop {
+        match dir.next_entry().await {
+            Ok(Some(entry)) => {
+                let file_type = match entry.file_type().await {
+                    Ok(ft) => ft,
+                    Err(_) => continue,
+                };
+                if !file_type.is_file() {
+                    continue;
+                }
+                let name = entry.file_name();
+                let unit_type = name
+                    .to_str()
+                    .and_then(|n| n.rsplit('.').next())
+                    .unwrap_or("unknown");
+                *counts.entry(unit_type.to_string()).or_insert(0) += 1;
+            }
+            Ok(None) => break,
+            Err(err) => {
+                debug!("Error reading entry in {}: {:?}", path, err);
+                continue;
+            }
         }
-        let name = entry.file_name();
-        let unit_type = name
-            .to_str()
-            .and_then(|n| n.rsplit('.').next())
-            .unwrap_or("unknown");
-        *counts.entry(unit_type.to_string()).or_insert(0) += 1;
     }
     counts
 }
@@ -490,8 +499,17 @@ async fn enumerate_user_transient_dirs(fs_root: &str) -> Vec<String> {
     match tokio::fs::read_dir(&user_dir).await {
         Ok(mut entries) => {
             let mut dirs = Vec::new();
-            while let Ok(Some(entry)) = entries.next_entry().await {
-                dirs.push(format!("{}/systemd/transient", entry.path().display()));
+            loop {
+                match entries.next_entry().await {
+                    Ok(Some(entry)) => {
+                        dirs.push(format!("{}/systemd/transient", entry.path().display()));
+                    }
+                    Ok(None) => break,
+                    Err(err) => {
+                        debug!("Error reading entry in {}: {:?}", user_dir, err);
+                        continue;
+                    }
+                }
             }
             dirs
         }
