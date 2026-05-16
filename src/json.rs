@@ -804,6 +804,7 @@ mod tests {
         };
         stats.units.collection_timings = units::UnitsCollectionTimings {
             list_units_ms: 5.0,
+            unit_files_ms: 2.0,
             per_unit_loop_ms: 37.0,
             timer_dbus_fetches: 4,
             state_dbus_fetches: 0,

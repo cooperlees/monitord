@@ -120,6 +120,7 @@ pub struct UnitsConfig {
     pub state_stats_allowlist: HashSet<String>,
     pub state_stats_blocklist: HashSet<String>,
     pub state_stats_time_in_state: bool,
+    pub unit_files: bool,
 }
 impl Default for UnitsConfig {
     fn default() -> Self {
@@ -129,6 +130,7 @@ impl Default for UnitsConfig {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: true,
+            unit_files: true,
         }
     }
 }
@@ -316,6 +318,9 @@ impl TryFrom<Ini> for Config {
         }
         config.units.state_stats_time_in_state =
             read_config_bool(&ini_config, "units", "state_stats_time_in_state")?;
+        if let Some(unit_files) = read_config_optional_bool(&ini_config, "units", "unit_files")? {
+            config.units.unit_files = unit_files;
+        }
 
         // [machines] section
         config.machines.enabled = read_config_bool(&ini_config, "machines", "enabled")?;
@@ -475,6 +480,7 @@ bar.timer
 enabled = true
 state_stats = true
 state_stats_time_in_state = true
+unit_files = true
 
 [units.state_stats.allowlist]
 foo.service
@@ -598,6 +604,7 @@ output_format = json-flat
                 state_stats_allowlist: HashSet::from([String::from("foo.service")]),
                 state_stats_blocklist: HashSet::from([String::from("bar.service")]),
                 state_stats_time_in_state: true,
+                unit_files: true,
             },
             machines: MachinesConfig {
                 enabled: true,
