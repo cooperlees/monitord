@@ -14,10 +14,10 @@ categories = ["network-programming", "os::linux-apis"]
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.5", features = ["derive", "std", "help", "env"], default-features = false }
+clap = { version = "4.6", features = ["derive", "std", "help", "env"], default-features = false }
 configparser = { version = "3.1.0", features = ["indexmap"] }
 futures-util = "0.3"
-indexmap = "2.9"
+indexmap = "2.14"
 int-enum = "1.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -27,15 +27,15 @@ struct-field-names-as-array = "0.3"
 strum = "0.27"
 strum_macros = "0.27"
 thiserror = "2.0"
-tokio = { version = "1.47.1", features = ["fs", "rt", "rt-multi-thread", "macros", "tracing", "time", "sync"] }
+tokio = { version = "1.52.1", features = ["fs", "rt", "rt-multi-thread", "macros", "tracing", "time", "sync"] }
 tracing = "0.1"
 tracing-core = "0.1"
 tracing-glog = "0.4"
 tracing-subscriber = "0.3"
 uzers = "0.12"
 zbus = { version = "5.14.0", features = ["tokio"], default-features = false }
-zvariant = "5.10.0"
-zvariant_derive = "5.10.0"
+zvariant = "5.11.0"
+zvariant_derive = "5.11.0"
 zlink = "0.4.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
