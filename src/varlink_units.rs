@@ -3,6 +3,7 @@
 //! All main systemd unit statistics. Counts of types of units, unit states and
 //! queued jobs. We also house service specific statistics and system unit states.
 
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -14,6 +15,7 @@ use tracing::warn;
 
 use crate::unit_constants::{
     is_unit_unhealthy, is_unit_unhealthy_for_service, SystemdUnitActiveState, SystemdUnitLoadState,
+    SYSTEMD_SERVICE_SUFFIX,
 };
 use crate::units::SystemdUnitStats;
 use crate::varlink::metrics::{ListOutput, Metrics};
@@ -278,13 +280,13 @@ fn apply_oneshot_service_health_override(
     if !config.ignore_inactive_oneshot_services {
         return;
     }
-    let mut oneshot_services = std::collections::HashSet::new();
+    let mut oneshot_services = HashSet::new();
     for metric in metrics {
         if metric.name_suffix() != "Type" || !metric.value().is_string() {
             continue;
         }
         let object_name = metric.object_name();
-        if !object_name.ends_with(".service") {
+        if !object_name.ends_with(SYSTEMD_SERVICE_SUFFIX) {
             continue;
         }
         if metric.value_as_string() == "oneshot" {

@@ -37,6 +37,7 @@ pub use crate::unit_constants::is_unit_unhealthy;
 pub use crate::unit_constants::is_unit_unhealthy_for_service;
 pub use crate::unit_constants::SystemdUnitActiveState;
 pub use crate::unit_constants::SystemdUnitLoadState;
+pub use crate::unit_constants::SYSTEMD_SERVICE_SUFFIX;
 
 /// Inner timing breakdown for the units collector D-Bus phases.
 ///
@@ -394,7 +395,7 @@ pub async fn parse_state(
         .unwrap_or(SystemdUnitLoadState::unknown);
     let mut is_oneshot_service = false;
     if config.ignore_inactive_oneshot_services
-        && unit.name.ends_with(".service")
+        && unit.name.ends_with(SYSTEMD_SERVICE_SUFFIX)
         && matches!(active_state, SystemdUnitActiveState::inactive)
         && matches!(load_state, SystemdUnitLoadState::loaded)
     {
