@@ -280,7 +280,7 @@ fn apply_oneshot_service_health_override(
     if !config.ignore_inactive_oneshot_services {
         return;
     }
-    let mut oneshot_services = HashSet::new();
+    let mut oneshot_service_names = HashSet::new();
     for metric in metrics {
         if metric.name_suffix() != "Type" || !metric.value().is_string() {
             continue;
@@ -290,14 +290,14 @@ fn apply_oneshot_service_health_override(
             continue;
         }
         if metric.value_as_string() == "oneshot" {
-            oneshot_services.insert(object_name);
+            oneshot_service_names.insert(object_name);
         }
     }
     for (unit_name, unit_state) in stats.unit_states.iter_mut() {
         unit_state.unhealthy = is_unit_unhealthy_for_service(
             unit_state.active_state,
             unit_state.load_state,
-            oneshot_services.contains(unit_name),
+            oneshot_service_names.contains(unit_name),
             config.ignore_inactive_oneshot_services,
         );
     }

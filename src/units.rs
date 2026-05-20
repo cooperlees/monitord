@@ -401,7 +401,7 @@ pub async fn parse_state(
     {
         if let Some(conn) = connection {
             match is_oneshot_service_unit(conn, unit).await {
-                Ok(v) => is_oneshot_service = v,
+                Ok(is_oneshot) => is_oneshot_service = is_oneshot,
                 Err(err) => warn!(
                     "Unable to get Service.Type for {} (assuming not oneshot): {:?}",
                     &unit.name, err
