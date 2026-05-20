@@ -120,6 +120,7 @@ pub struct UnitsConfig {
     pub state_stats_allowlist: HashSet<String>,
     pub state_stats_blocklist: HashSet<String>,
     pub state_stats_time_in_state: bool,
+    pub ignore_inactive_oneshot_services: bool,
     pub unit_files: bool,
 }
 impl Default for UnitsConfig {
@@ -130,6 +131,7 @@ impl Default for UnitsConfig {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: true,
+            ignore_inactive_oneshot_services: true,
             unit_files: true,
         }
     }
@@ -318,6 +320,11 @@ impl TryFrom<Ini> for Config {
         }
         config.units.state_stats_time_in_state =
             read_config_bool(&ini_config, "units", "state_stats_time_in_state")?;
+        if let Some(ignore_inactive_oneshot_services) =
+            read_config_optional_bool(&ini_config, "units", "ignore_inactive_oneshot_services")?
+        {
+            config.units.ignore_inactive_oneshot_services = ignore_inactive_oneshot_services;
+        }
         if let Some(unit_files) = read_config_optional_bool(&ini_config, "units", "unit_files")? {
             config.units.unit_files = unit_files;
         }
@@ -480,6 +487,7 @@ bar.timer
 enabled = true
 state_stats = true
 state_stats_time_in_state = true
+ignore_inactive_oneshot_services = true
 unit_files = true
 
 [units.state_stats.allowlist]
@@ -573,6 +581,31 @@ output_format = json-flat
         assert!(!expected_config.networkd.enabled);
         // Boot cache defaults to enabled when not explicitly configured
         assert!(expected_config.boot_blame.cache_enabled);
+        // Oneshot inactive services are ignored by default
+        assert!(expected_config.units.ignore_inactive_oneshot_services);
+    }
+
+    #[test]
+    fn test_units_ignore_inactive_oneshot_services_override() {
+        let units_override_config = r###"
+[monitord]
+output_format = json
+
+[units]
+ignore_inactive_oneshot_services = false
+"###;
+        let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
+        monitord_config
+            .write_all(units_override_config.as_bytes())
+            .expect("Unable to write out temp config file");
+
+        let mut ini_config = Ini::new();
+        let _config_map = ini_config
+            .load(monitord_config.path())
+            .expect("Unable to load ini config");
+
+        let parsed_config: Config = ini_config.try_into().expect("Failed to parse config");
+        assert!(!parsed_config.units.ignore_inactive_oneshot_services);
     }
 
     #[test]
@@ -604,6 +637,7 @@ output_format = json-flat
                 state_stats_allowlist: HashSet::from([String::from("foo.service")]),
                 state_stats_blocklist: HashSet::from([String::from("bar.service")]),
                 state_stats_time_in_state: true,
+                ignore_inactive_oneshot_services: true,
                 unit_files: true,
             },
             machines: MachinesConfig {

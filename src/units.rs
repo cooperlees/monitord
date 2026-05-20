@@ -34,6 +34,7 @@ use crate::MachineStats;
 
 // Re-export the enums and function from unit_constants for backwards compatibility
 pub use crate::unit_constants::is_unit_unhealthy;
+pub use crate::unit_constants::is_unit_unhealthy_for_service;
 pub use crate::unit_constants::SystemdUnitActiveState;
 pub use crate::unit_constants::SystemdUnitLoadState;
 
@@ -188,6 +189,7 @@ pub struct UnitStates {
     pub load_state: SystemdUnitLoadState,
     /// Computed health flag: true when a loaded unit is not active, or when load state is error/not_found.
     /// Masked units are never marked unhealthy since masking is an intentional admin action.
+    /// Optional config can ignore inactive oneshot services.
     pub unhealthy: bool,
     /// Microseconds elapsed since the unit's most recent state change.
     /// None when time-in-state tracking is disabled in config (expensive D-Bus lookup per unit).
@@ -390,6 +392,22 @@ pub async fn parse_state(
         .unwrap_or(SystemdUnitActiveState::unknown);
     let load_state = SystemdUnitLoadState::from_str(&unit.load_state.replace('-', "_"))
         .unwrap_or(SystemdUnitLoadState::unknown);
+    let mut is_oneshot_service = false;
+    if config.ignore_inactive_oneshot_services
+        && unit.name.ends_with(".service")
+        && matches!(active_state, SystemdUnitActiveState::inactive)
+        && matches!(load_state, SystemdUnitLoadState::loaded)
+    {
+        if let Some(conn) = connection {
+            match is_oneshot_service_unit(conn, unit).await {
+                Ok(v) => is_oneshot_service = v,
+                Err(err) => warn!(
+                    "Unable to get Service.Type for {} (assuming not oneshot): {:?}",
+                    &unit.name, err
+                ),
+            }
+        }
+    }
 
     // Get the state_change_timestamp to determine time in usecs we've been in current state
     let mut time_in_state_usecs: Option<u64> = None;
@@ -406,11 +424,28 @@ pub async fn parse_state(
         UnitStates {
             active_state,
             load_state,
-            unhealthy: is_unit_unhealthy(active_state, load_state),
+            unhealthy: is_unit_unhealthy_for_service(
+                active_state,
+                load_state,
+                is_oneshot_service,
+                config.ignore_inactive_oneshot_services,
+            ),
             time_in_state_usecs,
         },
     );
     Ok(did_dbus_fetch)
+}
+
+async fn is_oneshot_service_unit(
+    connection: &zbus::Connection,
+    unit: &ListedUnit,
+) -> Result<bool, MonitordUnitsError> {
+    let sp = crate::dbus::zbus_service::ServiceProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .path(ObjectPath::from(unit.unit_object_path.clone()))?
+        .build()
+        .await?;
+    Ok(sp.type_().await? == "oneshot")
 }
 
 /// Parse a unit and add to overall counts of state, type etc.

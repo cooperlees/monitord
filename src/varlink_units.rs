@@ -12,7 +12,9 @@ use tracing::debug;
 
 use tracing::warn;
 
-use crate::unit_constants::{is_unit_unhealthy, SystemdUnitActiveState, SystemdUnitLoadState};
+use crate::unit_constants::{
+    is_unit_unhealthy, is_unit_unhealthy_for_service, SystemdUnitActiveState, SystemdUnitLoadState,
+};
 use crate::units::SystemdUnitStats;
 use crate::varlink::metrics::{ListOutput, Metrics};
 use crate::MachineStats;
@@ -261,10 +263,42 @@ pub async fn parse_metrics(
     for metric in &metrics {
         parse_one_metric(stats, metric, config)?;
     }
+    apply_oneshot_service_health_override(stats, &metrics, config);
     let parse_loop_elapsed = parse_loop_start.elapsed();
     stats.collection_timings.per_unit_loop_ms = parse_loop_elapsed.as_secs_f64() * 1000.0;
 
     Ok(())
+}
+
+fn apply_oneshot_service_health_override(
+    stats: &mut SystemdUnitStats,
+    metrics: &[ListOutput],
+    config: &crate::config::UnitsConfig,
+) {
+    if !config.ignore_inactive_oneshot_services {
+        return;
+    }
+    let mut oneshot_services = std::collections::HashSet::new();
+    for metric in metrics {
+        if metric.name_suffix() != "Type" || !metric.value().is_string() {
+            continue;
+        }
+        let object_name = metric.object_name();
+        if !object_name.ends_with(".service") {
+            continue;
+        }
+        if metric.value_as_string() == "oneshot" {
+            oneshot_services.insert(object_name);
+        }
+    }
+    for (unit_name, unit_state) in stats.unit_states.iter_mut() {
+        unit_state.unhealthy = is_unit_unhealthy_for_service(
+            unit_state.active_state,
+            unit_state.load_state,
+            oneshot_services.contains(unit_name),
+            config.ignore_inactive_oneshot_services,
+        );
+    }
 }
 
 pub async fn get_unit_stats(
@@ -344,6 +378,7 @@ mod tests {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: false,
+            ignore_inactive_oneshot_services: true,
             unit_files: true,
         }
     }
@@ -598,6 +633,7 @@ mod tests {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: true,
+            ignore_inactive_oneshot_services: true,
             unit_files: true,
         };
         let mut stats = SystemdUnitStats::default();
@@ -821,6 +857,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_parse_metrics_oneshot_inactive_not_unhealthy() {
+        let mut stats = SystemdUnitStats::default();
+        let config = default_units_config();
+        let metrics = vec![
+            ListOutput {
+                name: "io.systemd.Manager.UnitActiveState".to_string(),
+                value: string_value("inactive"),
+                object: Some("done.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
+                value: string_value("loaded"),
+                object: Some("done.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Service.Type".to_string(),
+                value: string_value("oneshot"),
+                object: Some("done.service".to_string()),
+                fields: None,
+            },
+        ];
+
+        for metric in &metrics {
+            parse_one_metric(&mut stats, metric, &config).unwrap();
+        }
+        apply_oneshot_service_health_override(&mut stats, &metrics, &config);
+
+        assert!(!stats.unit_states.get("done.service").unwrap().unhealthy);
+    }
+
+    #[tokio::test]
+    async fn test_parse_metrics_oneshot_override_can_be_disabled() {
+        let mut stats = SystemdUnitStats::default();
+        let mut config = default_units_config();
+        config.ignore_inactive_oneshot_services = false;
+        let metrics = vec![
+            ListOutput {
+                name: "io.systemd.Manager.UnitActiveState".to_string(),
+                value: string_value("inactive"),
+                object: Some("done.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Manager.UnitLoadState".to_string(),
+                value: string_value("loaded"),
+                object: Some("done.service".to_string()),
+                fields: None,
+            },
+            ListOutput {
+                name: "io.systemd.Service.Type".to_string(),
+                value: string_value("oneshot"),
+                object: Some("done.service".to_string()),
+                fields: None,
+            },
+        ];
+
+        for metric in &metrics {
+            parse_one_metric(&mut stats, metric, &config).unwrap();
+        }
+        apply_oneshot_service_health_override(&mut stats, &metrics, &config);
+
+        assert!(stats.unit_states.get("done.service").unwrap().unhealthy);
+    }
+
+    #[tokio::test]
     async fn test_allowlist_filtering() {
         let mut stats = SystemdUnitStats::default();
         let config = crate::config::UnitsConfig {
@@ -829,6 +932,7 @@ mod tests {
             state_stats_allowlist: HashSet::from(["allowed.service".to_string()]),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: false,
+            ignore_inactive_oneshot_services: true,
             unit_files: true,
         };
 
@@ -862,6 +966,7 @@ mod tests {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::from(["blocked.service".to_string()]),
             state_stats_time_in_state: false,
+            ignore_inactive_oneshot_services: true,
             unit_files: true,
         };
 
@@ -895,6 +1000,7 @@ mod tests {
             state_stats_allowlist: HashSet::from(["both.service".to_string()]),
             state_stats_blocklist: HashSet::from(["both.service".to_string()]),
             state_stats_time_in_state: false,
+            ignore_inactive_oneshot_services: true,
             unit_files: true,
         };
 
@@ -920,6 +1026,7 @@ mod tests {
             state_stats_allowlist: HashSet::from(["allowed.service".to_string()]),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: false,
+            ignore_inactive_oneshot_services: true,
             unit_files: true,
         };
         let mut stats = SystemdUnitStats::default();
@@ -974,6 +1081,7 @@ mod tests {
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
             state_stats_time_in_state: false,
+            ignore_inactive_oneshot_services: true,
             unit_files: true,
         };
         let mut stats = SystemdUnitStats::default();

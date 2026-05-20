@@ -69,9 +69,27 @@ pub fn is_unit_unhealthy(
     active_state: SystemdUnitActiveState,
     load_state: SystemdUnitLoadState,
 ) -> bool {
+    is_unit_unhealthy_for_service(active_state, load_state, false, false)
+}
+
+/// Check if a unit is unhealthy with optional oneshot-service handling.
+pub fn is_unit_unhealthy_for_service(
+    active_state: SystemdUnitActiveState,
+    load_state: SystemdUnitLoadState,
+    is_oneshot_service: bool,
+    ignore_inactive_oneshot_services: bool,
+) -> bool {
     match load_state {
         // We're loaded so let's see if we're active or not
-        SystemdUnitLoadState::loaded => !matches!(active_state, SystemdUnitActiveState::active),
+        SystemdUnitLoadState::loaded => {
+            if ignore_inactive_oneshot_services
+                && is_oneshot_service
+                && matches!(active_state, SystemdUnitActiveState::inactive)
+            {
+                return false;
+            }
+            !matches!(active_state, SystemdUnitActiveState::active)
+        }
         // An admin can change a unit to be masked on purpose
         // so we are going to ignore all masked units due to that
         SystemdUnitLoadState::masked => false,
@@ -112,6 +130,34 @@ mod tests {
             // Can never really be active here with error, but check we ignore it
             SystemdUnitActiveState::active,
             SystemdUnitLoadState::error,
+        ));
+    }
+
+    #[test]
+    fn test_is_unit_unhealthy_for_oneshot_service() {
+        assert!(!is_unit_unhealthy_for_service(
+            SystemdUnitActiveState::inactive,
+            SystemdUnitLoadState::loaded,
+            true,
+            true
+        ));
+        assert!(is_unit_unhealthy_for_service(
+            SystemdUnitActiveState::inactive,
+            SystemdUnitLoadState::loaded,
+            true,
+            false
+        ));
+        assert!(is_unit_unhealthy_for_service(
+            SystemdUnitActiveState::failed,
+            SystemdUnitLoadState::loaded,
+            true,
+            true
+        ));
+        assert!(is_unit_unhealthy_for_service(
+            SystemdUnitActiveState::inactive,
+            SystemdUnitLoadState::loaded,
+            false,
+            true
         ));
     }
 
