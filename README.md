@@ -192,6 +192,7 @@ bar.timer
 [units]
 enabled = true
 state_stats = true
+ignore_inactive_oneshot_services = true
 
 # Filter what services you want collect state stats for
 # If both lists are configured blocklist is preferred
