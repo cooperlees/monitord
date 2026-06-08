@@ -221,9 +221,9 @@ enabled = false
 # Cache boot blame stats in <cache_dir>/<boot_id>.boot_blame.bin
 # Enabled by default; set false to force recalculation every run
 cache_enabled = true
-# Directory where boot blame cache files are stored
-# Defaults to /run/monitord if not set
-cache_dir = /tmp
+# Directory where boot blame cache files are stored (optional)
+# Defaults to /run/monitord if not set; avoid world-writable dirs like /tmp when running privileged
+# cache_dir = /tmp
 # Number of slowest units to report
 num_slowest_units = 5
 
