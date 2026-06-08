@@ -408,6 +408,7 @@ bar.timer
 [units]
 enabled = true
 state_stats = true
+ignore_inactive_oneshot_services = true
 
 # Filter what services you want collect state stats for
 # If both lists are configured blocklist is preferred
@@ -434,9 +435,12 @@ bar
 # Disabled by default
 [boot]
 enabled = false
-# Cache boot blame stats in /run/monitord/&lt;boot_id&gt;.boot_blame.bin
+# Cache boot blame stats in &lt;cache_dir&gt;/&lt;boot_id&gt;.boot_blame.bin
 # Enabled by default; set false to force recalculation every run
 cache_enabled = true
+# Directory where boot blame cache files are stored (optional)
+# Defaults to /run/monitord if not set; avoid world-writable dirs like /tmp when running privileged
+# cache_dir = /tmp
 # Number of slowest units to report
 num_slowest_units = 5
 
@@ -466,8 +470,9 @@ enabled = false
 </code></pre>
 <p>When using the provided <code>monitord.service</code>, systemd creates <code>/run/monitord</code> via
 <code>RuntimeDirectory=monitord</code> and assigns ownership to the configured service <code>User</code>/<code>Group</code>.
-If you run monitord another way, ensure <code>/run/monitord</code> exists and is writable by the
-monitord process user so boot cache files can be created.</p>
+If you run monitord another way and use the default <code>cache_dir</code> (<code>/run/monitord</code>), ensure the
+directory exists and is writable by the monitord process user so boot cache files can be created.
+Alternatively, set <code>cache_dir</code> to a location like <code>/tmp</code> that is always writable.</p>
 <h2>Machines support</h2>
 <p>From version <code>&gt;=0.11</code> monitord supports obtaining the same set of key from
 systemd 'machines' (i.e. <code>machinectl --list</code>).</p>
