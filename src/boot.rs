@@ -24,7 +24,6 @@ use crate::MachineStats;
 pub type BootBlameStats = HashMap<String, f64>;
 
 const BOOT_ID_PATH: &str = "/proc/sys/kernel/random/boot_id";
-const BOOT_BLAME_CACHE_DIR: &str = "/run/monitord";
 const BOOT_BLAME_CACHE_SUFFIX: &str = "boot_blame.bin";
 
 type BootCacheResult<T> = std::result::Result<T, BootCacheError>;
@@ -139,14 +138,6 @@ async fn write_cached_boot_blame_to_dir(
     Ok(())
 }
 
-async fn read_cached_boot_blame(boot_id: &str) -> BootCacheResult<Option<BootBlameStats>> {
-    read_cached_boot_blame_from_dir(Path::new(BOOT_BLAME_CACHE_DIR), boot_id).await
-}
-
-async fn write_cached_boot_blame(boot_id: &str, stats: &BootBlameStats) -> BootCacheResult<()> {
-    write_cached_boot_blame_to_dir(Path::new(BOOT_BLAME_CACHE_DIR), boot_id, stats).await
-}
-
 /// Calculate the activation time for a unit
 /// Returns the time in seconds from InactiveExitTimestamp to ActiveEnterTimestamp
 async fn get_unit_activation_time(
@@ -190,11 +181,12 @@ pub async fn update_boot_blame_stats(
             return Ok(());
         }
 
+        let cache_dir = Path::new(&config.boot_blame.cache_dir);
         match get_boot_id().await {
             Ok(boot_id) => {
-                match read_cached_boot_blame(&boot_id).await {
+                match read_cached_boot_blame_from_dir(cache_dir, &boot_id).await {
                     Ok(Some(cached_boot_blame)) => {
-                        let cache_path = cache_file_path(Path::new(BOOT_BLAME_CACHE_DIR), &boot_id);
+                        let cache_path = cache_file_path(cache_dir, &boot_id);
                         debug!(
                             "Using cached boot blame stats from {}",
                             cache_path.display()
@@ -276,10 +268,13 @@ pub async fn update_boot_blame_stats(
     if config.boot_blame.cache_enabled {
         if let Some(boot_id) = maybe_boot_id {
             if let Some(cached_stats) = stats.boot_blame.as_ref() {
-                if let Err(err) = write_cached_boot_blame(&boot_id, cached_stats).await {
+                let cache_dir = Path::new(&config.boot_blame.cache_dir);
+                if let Err(err) =
+                    write_cached_boot_blame_to_dir(cache_dir, &boot_id, cached_stats).await
+                {
                     debug!(
                         "Failed to write boot blame cache for boot id {} to {}: {}",
-                        boot_id, BOOT_BLAME_CACHE_DIR, err
+                        boot_id, config.boot_blame.cache_dir, err
                     );
                 } else {
                     debug!("Updated boot blame cache for boot id {}", boot_id);

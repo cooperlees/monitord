@@ -193,6 +193,7 @@ impl Default for DBusStatsConfig {
 pub struct BootBlameConfig {
     pub enabled: bool,
     pub cache_enabled: bool,
+    pub cache_dir: String,
     pub num_slowest_units: u64,
     pub allowlist: HashSet<String>,
     pub blocklist: HashSet<String>,
@@ -202,6 +203,7 @@ impl Default for BootBlameConfig {
         BootBlameConfig {
             enabled: false,
             cache_enabled: true,
+            cache_dir: "/run/monitord".to_string(),
             num_slowest_units: 5,
             allowlist: HashSet::new(),
             blocklist: HashSet::new(),
@@ -373,6 +375,9 @@ impl TryFrom<Ini> for Config {
         {
             config.boot_blame.cache_enabled = cache_enabled;
         }
+        if let Some(cache_dir) = ini_config.get("boot", "cache_dir") {
+            config.boot_blame.cache_dir = cache_dir;
+        }
         if let Ok(Some(num_slowest_units)) = ini_config.getuint("boot", "num_slowest_units") {
             config.boot_blame.num_slowest_units = num_slowest_units;
         }
@@ -529,6 +534,7 @@ foo2
 [boot]
 enabled = true
 cache_enabled = false
+cache_dir = /tmp/monitord-test
 num_slowest_units = 10
 
 [boot.allowlist]
@@ -627,6 +633,7 @@ output_format = json-flat
             boot_blame: BootBlameConfig {
                 enabled: true,
                 cache_enabled: false,
+                cache_dir: "/tmp/monitord-test".to_string(),
                 num_slowest_units: 10,
                 allowlist: HashSet::from([String::from("foo.service")]),
                 blocklist: HashSet::from([String::from("bar.service")]),
