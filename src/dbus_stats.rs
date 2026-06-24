@@ -6,11 +6,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::error;
+use tracing::{debug, error};
 use uzers::get_user_by_uid;
 use zbus::fdo::{DBusProxy, StatsProxy};
 use zbus::names::BusName;
@@ -192,12 +192,13 @@ pub struct DBusBrokerUserAccounting {
     pub bytes: Option<CurMaxPair>,
     /// File descriptor quota: remaining (cur) and maximum (max) allowed FDs across all connections
     pub fds: Option<CurMaxPair>,
-    /// Stale pidfd descriptors held by dbus-broker for dead processes for this user.
+    /// Unattributed stale pidfd descriptors held by the system dbus-broker.
     ///
     /// dbus-broker exposes these through procfs, not D-Bus UserAccounting. The kernel
     /// reports dead pidfds as `Pid: -1` in `/proc/<dbus-broker>/fdinfo/<fd>`.
-    /// We can only reliably attribute this to root today because the stale pidfd no
-    /// longer exposes the original process credentials through procfs.
+    /// The stale pidfd no longer exposes the original process credentials through
+    /// procfs, so monitord surfaces the system-broker count on uid 0/root for metric
+    /// compatibility. This does not mean root owns those stale pidfds.
     pub stale_fds: Option<u32>,
     /// Match rule quota: remaining (cur) and maximum (max) allowed match rules across all connections
     pub matches: Option<CurMaxPair>,
@@ -390,6 +391,7 @@ fn count_stale_pidfds(proc_root: &Path, pid: u32) -> io::Result<u32> {
     Ok(count)
 }
 
+#[cfg(test)]
 fn collect_system_dbus_broker_stale_fds_from_proc(proc_root: &Path) -> io::Result<Option<u32>> {
     let Some(pid) = find_system_dbus_broker_pid(proc_root)? else {
         return Ok(None);
@@ -398,11 +400,61 @@ fn collect_system_dbus_broker_stale_fds_from_proc(proc_root: &Path) -> io::Resul
     Ok(Some(count_stale_pidfds(proc_root, pid)?))
 }
 
+fn collect_system_dbus_broker_stale_fds_with_cache(
+    proc_root: &Path,
+    broker_pid_cache: &Mutex<Option<u32>>,
+) -> io::Result<Option<u32>> {
+    let cached_pid = *broker_pid_cache
+        .lock()
+        .map_err(|_| io::Error::new(io::ErrorKind::Other, "dbus-broker pid cache poisoned"))?;
+
+    if let Some(pid) = cached_pid {
+        match count_stale_pidfds(proc_root, pid) {
+            Ok(count) => return Ok(Some(count)),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                if let Ok(mut cached_pid) = broker_pid_cache.lock() {
+                    if *cached_pid == Some(pid) {
+                        *cached_pid = None;
+                    }
+                }
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    let Some(pid) = find_system_dbus_broker_pid(proc_root)? else {
+        return Ok(None);
+    };
+
+    let count = count_stale_pidfds(proc_root, pid)?;
+    let mut cached_pid = broker_pid_cache
+        .lock()
+        .map_err(|_| io::Error::new(io::ErrorKind::Other, "dbus-broker pid cache poisoned"))?;
+    *cached_pid = Some(pid);
+
+    Ok(Some(count))
+}
+
+fn is_expected_procfs_error(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+    )
+}
+
 fn collect_system_dbus_broker_stale_fds() -> Option<u32> {
-    match collect_system_dbus_broker_stale_fds_from_proc(Path::new("/proc")) {
+    static SYSTEM_DBUS_BROKER_PID: OnceLock<Mutex<Option<u32>>> = OnceLock::new();
+
+    let broker_pid_cache = SYSTEM_DBUS_BROKER_PID.get_or_init(|| Mutex::new(None));
+
+    match collect_system_dbus_broker_stale_fds_with_cache(Path::new("/proc"), broker_pid_cache) {
         Ok(stale_fds) => stale_fds,
         Err(err) => {
-            error!("failed to collect dbus-broker stale fd stats: {}", err);
+            if is_expected_procfs_error(&err) {
+                debug!("could not collect dbus-broker stale fd stats: {}", err);
+            } else {
+                error!("failed to collect dbus-broker stale fd stats: {}", err);
+            }
             None
         }
     }
@@ -745,6 +797,12 @@ async fn parse_dbus_stats_inner(
         .build()
         .await?;
 
+    let stale_fds_task = if collect_stale_fds && config.dbus_stats.stale_fd_stats {
+        Some(tokio::task::spawn_blocking(collect_system_dbus_broker_stale_fds))
+    } else {
+        None
+    };
+
     let stats = stats_proxy.get_stats().await?;
     let peers = parse_peer_accounting(
         &dbus_proxy,
@@ -753,10 +811,15 @@ async fn parse_dbus_stats_inner(
     )
     .await?;
 
-    let stale_fds = if collect_stale_fds {
-        collect_system_dbus_broker_stale_fds()
-    } else {
-        None
+    let stale_fds = match stale_fds_task {
+        Some(task) => match task.await {
+            Ok(stale_fds) => stale_fds,
+            Err(err) => {
+                error!("dbus-broker stale fd collection task failed: {}", err);
+                None
+            }
+        },
+        None => None,
     };
     let mut dbus_broker_user_accounting = stats
         .rest()

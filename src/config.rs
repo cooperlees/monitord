@@ -152,6 +152,7 @@ impl Default for MachinesConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DBusStatsConfig {
     pub enabled: bool,
+    pub stale_fd_stats: bool,
 
     pub user_stats: bool,
     pub user_allowlist: HashSet<String>,
@@ -170,6 +171,7 @@ impl Default for DBusStatsConfig {
     fn default() -> Self {
         DBusStatsConfig {
             enabled: true,
+            stale_fd_stats: true,
 
             user_stats: false,
             user_allowlist: HashSet::new(),
@@ -328,6 +330,11 @@ impl TryFrom<Ini> for Config {
 
         // [dbus] section
         config.dbus_stats.enabled = read_config_bool(&ini_config, "dbus", "enabled")?;
+        if let Some(stale_fd_stats) =
+            read_config_optional_bool(&ini_config, "dbus", "stale_fd_stats")?
+        {
+            config.dbus_stats.stale_fd_stats = stale_fd_stats;
+        }
 
         config.dbus_stats.user_stats = read_config_bool(&ini_config, "dbus", "user_stats")?;
         if let Some(user_allowlist) = config_map.get("dbus.user.allowlist") {
@@ -494,6 +501,7 @@ foo2
 
 [dbus]
 enabled = true
+stale_fd_stats = true
 user_stats = true
 peer_stats = true
 peer_well_known_names_only = true
@@ -606,6 +614,7 @@ output_format = json-flat
             },
             dbus_stats: DBusStatsConfig {
                 enabled: true,
+                stale_fd_stats: true,
                 user_stats: true,
                 user_allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
                 user_blocklist: HashSet::from([String::from("foo2")]),

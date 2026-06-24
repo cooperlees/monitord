@@ -157,6 +157,8 @@ output_format = json
 [dbus]
 # Summary counters - both dbus-broker + dbus-daemon
 enabled = false
+# Count stale pidfds held by the system dbus-broker from procfs
+stale_fd_stats = true
 # dbus.user.* metrics: user stats as reported by dbus-broker
 user_stats = false
 # dbus.oeer.* metrics: peer stats as reported by dbus-broker
@@ -555,6 +557,12 @@ Many metrics are serialized as integers. Here are the enum mappings:
 You're going to need to be root or allow permissiong to pull dbus stats.
 For dbus-broker here is example config allow a user `monitord` to query
 `getStats`
+
+When `stale_fd_stats = true`, monitord also inspects
+`/proc/<dbus-broker>/fdinfo` for stale pidfds reported by the kernel as
+`Pid: -1`. These counters are emitted as `dbus.stale_fds` and, for metric
+compatibility, `dbus.user.root.stale_fds`; the per-user root value is the
+unattributed system-broker count, not proof that root owns those descriptors.
 
 ```xml
 [cooper@l33t ~]# cat /etc/dbus-1/system.d/allow_monitord_stats.conf
