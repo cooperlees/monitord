@@ -24,6 +24,8 @@ pub enum MonitordDbusStatsError {
     ZbusError(#[from] zbus::Error),
     #[error("D-Bus fdo error: {0}")]
     FdoError(#[from] zbus::fdo::Error),
+    #[error("Task join error: {0}")]
+    JoinError(#[from] tokio::task::JoinError),
 }
 
 // Unfortunately, various DBus daemons (ex: dbus-broker and dbus-daemon)
@@ -406,7 +408,7 @@ fn collect_system_dbus_broker_stale_fds_with_cache(
 ) -> io::Result<Option<u32>> {
     let cached_pid = *broker_pid_cache
         .lock()
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, "dbus-broker pid cache poisoned"))?;
+        .map_err(|_| io::Error::other("dbus-broker pid cache poisoned"))?;
 
     if let Some(pid) = cached_pid {
         match count_stale_pidfds(proc_root, pid) {
@@ -429,7 +431,7 @@ fn collect_system_dbus_broker_stale_fds_with_cache(
     let count = count_stale_pidfds(proc_root, pid)?;
     let mut cached_pid = broker_pid_cache
         .lock()
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, "dbus-broker pid cache poisoned"))?;
+        .map_err(|_| io::Error::other("dbus-broker pid cache poisoned"))?;
     *cached_pid = Some(pid);
 
     Ok(Some(count))
@@ -544,7 +546,7 @@ fn parse_peer_struct(
 }
 
 async fn parse_peer_accounting(
-    dbus_proxy: &DBusProxy<'_>,
+    connection: &zbus::Connection,
     config: &crate::config::Config,
     owned_value: Option<&OwnedValue>,
 ) -> Result<Option<Vec<DBusBrokerPeerAccounting>>, MonitordDbusStatsError> {
@@ -564,7 +566,7 @@ async fn parse_peer_accounting(
         _ => return Ok(None),
     };
 
-    let well_known_to_peer_names = get_well_known_to_peer_names(dbus_proxy).await?;
+    let well_known_to_peer_names = get_well_known_to_peer_names(connection).await?;
 
     let result = peers_value
         .iter()
@@ -764,18 +766,33 @@ fn parse_user_accounting(
 }
 
 async fn get_well_known_to_peer_names(
-    dbus_proxy: &DBusProxy<'_>,
+    connection: &zbus::Connection,
 ) -> Result<HashMap<String, String>, MonitordDbusStatsError> {
-    let dbus_names = dbus_proxy.list_names().await?;
-    let mut result = HashMap::new();
+    let dbus_proxy: DBusProxy<'static> = DBusProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
 
-    for owned_busname in dbus_names.iter() {
-        let name: &BusName = owned_busname;
-        if let BusName::WellKnown(_) = name {
-            // TODO parallelize
-            let owner = dbus_proxy.get_name_owner(name.clone()).await?;
-            result.insert(owner.to_string(), name.to_string());
+    let dbus_names = dbus_proxy.list_names().await?;
+
+    // Each well-known name's owner is an independent D-Bus round-trip, so fan the
+    // lookups out across the tokio runtime and collect them as they complete
+    // rather than issuing one blocking call after another.
+    let mut join_set = tokio::task::JoinSet::new();
+    for owned_busname in dbus_names {
+        if let BusName::WellKnown(_) = &*owned_busname {
+            let dbus_proxy = dbus_proxy.clone();
+            join_set.spawn(async move {
+                let owner = dbus_proxy.get_name_owner((&owned_busname).into()).await?;
+                Ok::<_, MonitordDbusStatsError>((owner.to_string(), owned_busname.to_string()))
+            });
         }
+    }
+
+    let mut result = HashMap::new();
+    while let Some(joined) = join_set.join_next().await {
+        let (owner, name) = joined??;
+        result.insert(owner, name);
     }
 
     Ok(result)
@@ -787,11 +804,6 @@ async fn parse_dbus_stats_inner(
     connection: &zbus::Connection,
     collect_stale_fds: bool,
 ) -> Result<DBusStats, MonitordDbusStatsError> {
-    let dbus_proxy = DBusProxy::builder(connection)
-        .cache_properties(zbus::proxy::CacheProperties::No)
-        .build()
-        .await?;
-
     let stats_proxy = StatsProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
         .build()
@@ -807,7 +819,7 @@ async fn parse_dbus_stats_inner(
 
     let stats = stats_proxy.get_stats().await?;
     let peers = parse_peer_accounting(
-        &dbus_proxy,
+        connection,
         config,
         stats.rest().get("org.bus1.DBus.Debug.Stats.PeerAccounting"),
     )
