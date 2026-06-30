@@ -5,11 +5,12 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::error;
+use tracing::{debug, error};
 use uzers::get_user_by_uid;
 use zbus::fdo::{DBusProxy, StatsProxy};
 use zbus::names::BusName;
@@ -23,6 +24,8 @@ pub enum MonitordDbusStatsError {
     ZbusError(#[from] zbus::Error),
     #[error("D-Bus fdo error: {0}")]
     FdoError(#[from] zbus::fdo::Error),
+    #[error("Task join error: {0}")]
+    JoinError(#[from] tokio::task::JoinError),
 }
 
 // Unfortunately, various DBus daemons (ex: dbus-broker and dbus-daemon)
@@ -191,6 +194,14 @@ pub struct DBusBrokerUserAccounting {
     pub bytes: Option<CurMaxPair>,
     /// File descriptor quota: remaining (cur) and maximum (max) allowed FDs across all connections
     pub fds: Option<CurMaxPair>,
+    /// Unattributed stale pidfd descriptors held by the system dbus-broker.
+    ///
+    /// dbus-broker exposes these through procfs, not D-Bus UserAccounting. The kernel
+    /// reports dead pidfds as `Pid: -1` in `/proc/<dbus-broker>/fdinfo/<fd>`.
+    /// The stale pidfd no longer exposes the original process credentials through
+    /// procfs, so monitord surfaces the system-broker count on uid 0/root for metric
+    /// compatibility. This does not mean root owns those stale pidfds.
+    pub stale_fds: Option<u32>,
     /// Match rule quota: remaining (cur) and maximum (max) allowed match rules across all connections
     pub matches: Option<CurMaxPair>,
     /// Object quota: remaining (cur) and maximum (max) allowed objects (names, replies) across all connections
@@ -236,6 +247,8 @@ pub struct DBusStats {
     pub peak_match_rules: Option<u32>,
     /// Peak number of match rules registered by a single connection
     pub peak_match_rules_per_connection: Option<u32>,
+    /// Stale pidfd descriptors held by the system dbus-broker process.
+    pub stale_fds: Option<u32>,
 
     /// Per-peer resource accounting (dbus-broker only), keyed by unique connection name
     pub dbus_broker_peer_accounting: Option<HashMap<String, DBusBrokerPeerAccounting>>,
@@ -256,6 +269,196 @@ impl DBusStats {
 
     pub fn user_accounting(&self) -> Option<&HashMap<u32, DBusBrokerUserAccounting>> {
         self.dbus_broker_user_accounting.as_ref()
+    }
+}
+
+fn parse_ppid_from_stat(stat: &str) -> Option<u32> {
+    let (_, after_comm) = stat.rsplit_once(") ")?;
+    let mut fields = after_comm.split_whitespace();
+    let _state = fields.next()?;
+    fields.next()?.parse().ok()
+}
+
+fn proc_cmdline_args(path: &Path) -> io::Result<Vec<String>> {
+    let bytes = fs::read(path)?;
+    Ok(bytes
+        .split(|b| *b == b'\0')
+        .filter(|arg| !arg.is_empty())
+        .map(|arg| String::from_utf8_lossy(arg).into_owned())
+        .collect())
+}
+
+fn proc_pid_dirs(proc_root: &Path) -> io::Result<Vec<(u32, std::path::PathBuf)>> {
+    let mut result = Vec::new();
+    for entry in fs::read_dir(proc_root)? {
+        let entry = entry?;
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        let Ok(pid) = name.parse::<u32>() else {
+            continue;
+        };
+        result.push((pid, entry.path()));
+    }
+    Ok(result)
+}
+
+fn find_system_dbus_broker_pid(proc_root: &Path) -> io::Result<Option<u32>> {
+    let pid_dirs = proc_pid_dirs(proc_root)?;
+    let mut launcher_pids = Vec::new();
+
+    for (pid, path) in &pid_dirs {
+        let args = match proc_cmdline_args(&path.join("cmdline")) {
+            Ok(args) => args,
+            Err(_) => continue,
+        };
+
+        let is_system_launcher = args
+            .first()
+            .map(|arg| arg.ends_with("dbus-broker-launch"))
+            .unwrap_or(false)
+            && (args
+                .windows(2)
+                .any(|window| window[0] == "--scope" && window[1] == "system")
+                || args.iter().any(|arg| arg == "--scope=system"));
+
+        if is_system_launcher {
+            launcher_pids.push(*pid);
+        }
+    }
+
+    for (pid, path) in &pid_dirs {
+        let args = match proc_cmdline_args(&path.join("cmdline")) {
+            Ok(args) => args,
+            Err(_) => continue,
+        };
+
+        let is_broker = args
+            .first()
+            .map(|arg| arg.ends_with("dbus-broker"))
+            .unwrap_or(false);
+        if !is_broker {
+            continue;
+        }
+
+        let stat = match fs::read_to_string(path.join("stat")) {
+            Ok(stat) => stat,
+            Err(_) => continue,
+        };
+        let Some(ppid) = parse_ppid_from_stat(&stat) else {
+            continue;
+        };
+        if launcher_pids.contains(&ppid) {
+            return Ok(Some(*pid));
+        }
+    }
+
+    Ok(None)
+}
+
+fn is_stale_pidfd(fd_path: &Path, fdinfo_path: &Path) -> bool {
+    let Ok(target) = fs::read_link(fd_path) else {
+        return false;
+    };
+    if target != Path::new("anon_inode:[pidfd]") {
+        return false;
+    }
+
+    let Ok(fdinfo) = fs::read_to_string(fdinfo_path) else {
+        return false;
+    };
+    fdinfo.lines().any(|line| {
+        let Some(pid) = line.strip_prefix("Pid:") else {
+            return false;
+        };
+        pid.trim() == "-1"
+    })
+}
+
+fn count_stale_pidfds(proc_root: &Path, pid: u32) -> io::Result<u32> {
+    let fd_dir = proc_root.join(pid.to_string()).join("fd");
+    let fdinfo_dir = proc_root.join(pid.to_string()).join("fdinfo");
+    let mut count: u32 = 0;
+
+    for entry in fs::read_dir(fdinfo_dir)? {
+        let entry = entry?;
+        let fd_name = entry.file_name();
+        let fd_path = fd_dir.join(&fd_name);
+        if is_stale_pidfd(&fd_path, &entry.path()) {
+            count = count.saturating_add(1);
+        }
+    }
+
+    Ok(count)
+}
+
+#[cfg(test)]
+fn collect_system_dbus_broker_stale_fds_from_proc(proc_root: &Path) -> io::Result<Option<u32>> {
+    let Some(pid) = find_system_dbus_broker_pid(proc_root)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(count_stale_pidfds(proc_root, pid)?))
+}
+
+fn collect_system_dbus_broker_stale_fds_with_cache(
+    proc_root: &Path,
+    broker_pid_cache: &Mutex<Option<u32>>,
+) -> io::Result<Option<u32>> {
+    let cached_pid = *broker_pid_cache
+        .lock()
+        .map_err(|_| io::Error::other("dbus-broker pid cache poisoned"))?;
+
+    if let Some(pid) = cached_pid {
+        match count_stale_pidfds(proc_root, pid) {
+            Ok(count) => return Ok(Some(count)),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                if let Ok(mut cached_pid) = broker_pid_cache.lock() {
+                    if *cached_pid == Some(pid) {
+                        *cached_pid = None;
+                    }
+                }
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    let Some(pid) = find_system_dbus_broker_pid(proc_root)? else {
+        return Ok(None);
+    };
+
+    let count = count_stale_pidfds(proc_root, pid)?;
+    let mut cached_pid = broker_pid_cache
+        .lock()
+        .map_err(|_| io::Error::other("dbus-broker pid cache poisoned"))?;
+    *cached_pid = Some(pid);
+
+    Ok(Some(count))
+}
+
+fn is_expected_procfs_error(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+    )
+}
+
+fn collect_system_dbus_broker_stale_fds() -> Option<u32> {
+    static SYSTEM_DBUS_BROKER_PID: OnceLock<Mutex<Option<u32>>> = OnceLock::new();
+
+    let broker_pid_cache = SYSTEM_DBUS_BROKER_PID.get_or_init(|| Mutex::new(None));
+
+    match collect_system_dbus_broker_stale_fds_with_cache(Path::new("/proc"), broker_pid_cache) {
+        Ok(stale_fds) => stale_fds,
+        Err(err) => {
+            if is_expected_procfs_error(&err) {
+                debug!("could not collect dbus-broker stale fd stats: {}", err);
+            } else {
+                error!("failed to collect dbus-broker stale fd stats: {}", err);
+            }
+            None
+        }
     }
 }
 
@@ -343,7 +546,7 @@ fn parse_peer_struct(
 }
 
 async fn parse_peer_accounting(
-    dbus_proxy: &DBusProxy<'_>,
+    connection: &zbus::Connection,
     config: &crate::config::Config,
     owned_value: Option<&OwnedValue>,
 ) -> Result<Option<Vec<DBusBrokerPeerAccounting>>, MonitordDbusStatsError> {
@@ -363,7 +566,7 @@ async fn parse_peer_accounting(
         _ => return Ok(None),
     };
 
-    let well_known_to_peer_names = get_well_known_to_peer_names(dbus_proxy).await?;
+    let well_known_to_peer_names = get_well_known_to_peer_names(connection).await?;
 
     let result = peers_value
         .iter()
@@ -563,45 +766,88 @@ fn parse_user_accounting(
 }
 
 async fn get_well_known_to_peer_names(
-    dbus_proxy: &DBusProxy<'_>,
+    connection: &zbus::Connection,
 ) -> Result<HashMap<String, String>, MonitordDbusStatsError> {
-    let dbus_names = dbus_proxy.list_names().await?;
-    let mut result = HashMap::new();
+    let dbus_proxy: DBusProxy<'static> = DBusProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
 
-    for owned_busname in dbus_names.iter() {
-        let name: &BusName = owned_busname;
-        if let BusName::WellKnown(_) = name {
-            // TODO parallelize
-            let owner = dbus_proxy.get_name_owner(name.clone()).await?;
-            result.insert(owner.to_string(), name.to_string());
+    let dbus_names = dbus_proxy.list_names().await?;
+
+    // Each well-known name's owner is an independent D-Bus round-trip, so fan the
+    // lookups out across the tokio runtime and collect them as they complete
+    // rather than issuing one blocking call after another.
+    let mut join_set = tokio::task::JoinSet::new();
+    for owned_busname in dbus_names {
+        if let BusName::WellKnown(_) = &*owned_busname {
+            let dbus_proxy = dbus_proxy.clone();
+            join_set.spawn(async move {
+                let owner = dbus_proxy.get_name_owner((&owned_busname).into()).await?;
+                Ok::<_, MonitordDbusStatsError>((owner.to_string(), owned_busname.to_string()))
+            });
         }
+    }
+
+    let mut result = HashMap::new();
+    while let Some(joined) = join_set.join_next().await {
+        let (owner, name) = joined??;
+        result.insert(owner, name);
     }
 
     Ok(result)
 }
 
 /// Pull all units from dbus and count how system is setup and behaving
-pub async fn parse_dbus_stats(
+async fn parse_dbus_stats_inner(
     config: &crate::config::Config,
     connection: &zbus::Connection,
+    collect_stale_fds: bool,
 ) -> Result<DBusStats, MonitordDbusStatsError> {
-    let dbus_proxy = DBusProxy::builder(connection)
-        .cache_properties(zbus::proxy::CacheProperties::No)
-        .build()
-        .await?;
-
     let stats_proxy = StatsProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
         .build()
         .await?;
 
+    let stale_fds_task = if collect_stale_fds && config.dbus_stats.stale_fd_stats {
+        Some(tokio::task::spawn_blocking(
+            collect_system_dbus_broker_stale_fds,
+        ))
+    } else {
+        None
+    };
+
     let stats = stats_proxy.get_stats().await?;
     let peers = parse_peer_accounting(
-        &dbus_proxy,
+        connection,
         config,
         stats.rest().get("org.bus1.DBus.Debug.Stats.PeerAccounting"),
     )
     .await?;
+
+    let stale_fds = match stale_fds_task {
+        Some(task) => match task.await {
+            Ok(stale_fds) => stale_fds,
+            Err(err) => {
+                error!("dbus-broker stale fd collection task failed: {}", err);
+                None
+            }
+        },
+        None => None,
+    };
+    let mut dbus_broker_user_accounting = stats
+        .rest()
+        .get("org.bus1.DBus.Debug.Stats.UserAccounting")
+        .map(|user| parse_user_accounting(config, user))
+        .unwrap_or_default();
+
+    if let (Some(stale_fds), Some(user_accounting)) =
+        (stale_fds, dbus_broker_user_accounting.as_mut())
+    {
+        if let Some(root) = user_accounting.get_mut(&0) {
+            root.stale_fds = Some(stale_fds);
+        }
+    }
 
     let dbus_stats = DBusStats {
         serial: stats.serial(),
@@ -613,18 +859,23 @@ pub async fn parse_dbus_stats(
         match_rules: stats.match_rules(),
         peak_match_rules: stats.peak_match_rules(),
         peak_match_rules_per_connection: stats.peak_match_rules_per_connection(),
+        stale_fds,
 
         // attempt to parse dbus-broker specific stats
         dbus_broker_peer_accounting: filter_and_collect_peer_accounting(config, peers.as_ref()),
         dbus_broker_cgroup_accounting: filter_and_collect_cgroup_accounting(config, peers.as_ref()),
-        dbus_broker_user_accounting: stats
-            .rest()
-            .get("org.bus1.DBus.Debug.Stats.UserAccounting")
-            .map(|user| parse_user_accounting(config, user))
-            .unwrap_or_default(),
+        dbus_broker_user_accounting,
     };
 
     Ok(dbus_stats)
+}
+
+/// Pull all units from dbus and count how system is setup and behaving
+pub async fn parse_dbus_stats(
+    config: &crate::config::Config,
+    connection: &zbus::Connection,
+) -> Result<DBusStats, MonitordDbusStatsError> {
+    parse_dbus_stats_inner(config, connection, true).await
 }
 
 /// Async wrapper than can update dbus stats when passed a locked struct
@@ -633,7 +884,28 @@ pub async fn update_dbus_stats(
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    match parse_dbus_stats(&config, &connection).await {
+    update_dbus_stats_inner(config, connection, locked_machine_stats, true).await
+}
+
+/// Async wrapper for nested machine/container buses.
+///
+/// Stale pidfd accounting is read from host procfs and currently cannot be
+/// attributed to nested machine D-Bus brokers, so machine stats skip it.
+pub async fn update_machine_dbus_stats(
+    config: Arc<crate::config::Config>,
+    connection: zbus::Connection,
+    locked_machine_stats: Arc<RwLock<MachineStats>>,
+) -> anyhow::Result<()> {
+    update_dbus_stats_inner(config, connection, locked_machine_stats, false).await
+}
+
+async fn update_dbus_stats_inner(
+    config: Arc<crate::config::Config>,
+    connection: zbus::Connection,
+    locked_machine_stats: Arc<RwLock<MachineStats>>,
+    collect_stale_fds: bool,
+) -> anyhow::Result<()> {
+    match parse_dbus_stats_inner(&config, &connection, collect_stale_fds).await {
         Ok(dbus_stats) => {
             let mut machine_stats = locked_machine_stats.write().await;
             machine_stats.dbus_stats = Some(dbus_stats)
@@ -646,12 +918,97 @@ pub async fn update_dbus_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
     use zvariant::{Array, OwnedValue, Str, Structure, Value};
+
+    fn write_fake_proc_process(proc_root: &Path, pid: u32, ppid: u32, cmdline: &[&str]) {
+        let pid_dir = proc_root.join(pid.to_string());
+        fs::create_dir_all(pid_dir.join("fd")).expect("create fake fd dir");
+        fs::create_dir_all(pid_dir.join("fdinfo")).expect("create fake fdinfo dir");
+
+        let mut cmdline_bytes = Vec::new();
+        for arg in cmdline {
+            cmdline_bytes.extend_from_slice(arg.as_bytes());
+            cmdline_bytes.push(0);
+        }
+        fs::write(pid_dir.join("cmdline"), cmdline_bytes).expect("write fake cmdline");
+        fs::write(
+            pid_dir.join("stat"),
+            format!("{pid} (fake process) S {ppid} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"),
+        )
+        .expect("write fake stat");
+    }
+
+    fn write_fake_fd(proc_root: &Path, pid: u32, fd: u32, target: &str, fdinfo: &str) {
+        let pid_dir = proc_root.join(pid.to_string());
+        symlink(target, pid_dir.join("fd").join(fd.to_string())).expect("create fake fd link");
+        fs::write(pid_dir.join("fdinfo").join(fd.to_string()), fdinfo).expect("write fake fdinfo");
+    }
 
     #[test]
     fn test_cur_max_pair_usage() {
         let p = CurMaxPair { cur: 10, max: 100 };
         assert_eq!(p.get_usage(), 90);
+    }
+
+    #[test]
+    fn test_parse_ppid_from_stat_handles_comm_with_spaces() {
+        let stat = "42 (dbus broker worker) S 7 0 0 0 0";
+        assert_eq!(parse_ppid_from_stat(stat), Some(7));
+    }
+
+    #[test]
+    fn test_collect_system_dbus_broker_stale_fds_from_proc() {
+        let tempdir = tempfile::tempdir().expect("create tempdir");
+        let proc_root = tempdir.path();
+
+        write_fake_proc_process(
+            proc_root,
+            10,
+            1,
+            &[
+                "/usr/bin/dbus-broker-launch",
+                "--scope",
+                "system",
+                "--audit",
+            ],
+        );
+        write_fake_proc_process(proc_root, 11, 10, &["dbus-broker", "--log", "10"]);
+        write_fake_proc_process(
+            proc_root,
+            20,
+            1,
+            &["/usr/bin/dbus-broker-launch", "--scope", "user"],
+        );
+        write_fake_proc_process(proc_root, 21, 20, &["dbus-broker", "--log", "10"]);
+
+        write_fake_fd(
+            proc_root,
+            11,
+            0,
+            "anon_inode:[pidfd]",
+            "Pid:\t-1\nNSpid:\t-1\n",
+        );
+        write_fake_fd(
+            proc_root,
+            11,
+            1,
+            "anon_inode:[pidfd]",
+            "Pid:\t123\nNSpid:\t123\n",
+        );
+        write_fake_fd(proc_root, 11, 2, "socket:[123]", "scm_fds: 0\n");
+        write_fake_fd(
+            proc_root,
+            21,
+            0,
+            "anon_inode:[pidfd]",
+            "Pid:\t-1\nNSpid:\t-1\n",
+        );
+
+        assert_eq!(
+            collect_system_dbus_broker_stale_fds_from_proc(proc_root).expect("collect stale fds"),
+            Some(1)
+        );
     }
 
     #[test]

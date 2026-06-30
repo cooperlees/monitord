@@ -287,7 +287,7 @@ pub async fn update_machines_stats(
         }
 
         if config.dbus_stats.enabled {
-            join_set.spawn(crate::dbus_stats::update_dbus_stats(
+            join_set.spawn(crate::dbus_stats::update_machine_dbus_stats(
                 Arc::clone(&config),
                 sdc.clone(),
                 locked_machine_stats.clone(),

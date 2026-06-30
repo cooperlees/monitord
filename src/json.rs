@@ -366,6 +366,7 @@ fn flatten_dbus_stats(
             "peak_match_rules_per_connection",
             dbus_stats.peak_match_rules_per_connection,
         ),
+        ("stale_fds", dbus_stats.stale_fds),
     ];
 
     for (field_name, value) in fields {
@@ -446,6 +447,13 @@ fn flatten_dbus_stats(
                         val.get_usage().into(),
                     );
                 }
+            }
+
+            if let Some(stale_fds) = user.stale_fds {
+                flat_stats.insert(
+                    format!("{base_metric_name}.user.{user_name}.stale_fds"),
+                    stale_fds.into(),
+                );
             }
         }
     }
