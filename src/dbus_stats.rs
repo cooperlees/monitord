@@ -798,7 +798,9 @@ async fn parse_dbus_stats_inner(
         .await?;
 
     let stale_fds_task = if collect_stale_fds && config.dbus_stats.stale_fd_stats {
-        Some(tokio::task::spawn_blocking(collect_system_dbus_broker_stale_fds))
+        Some(tokio::task::spawn_blocking(
+            collect_system_dbus_broker_stale_fds,
+        ))
     } else {
         None
     };
