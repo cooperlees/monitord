@@ -373,6 +373,8 @@ output_format = json
 [dbus]
 # Summary counters - both dbus-broker + dbus-daemon
 enabled = false
+# Count stale pidfds held by the system dbus-broker from procfs
+stale_fd_stats = true
 # dbus.user.* metrics: user stats as reported by dbus-broker
 user_stats = false
 # dbus.oeer.* metrics: peer stats as reported by dbus-broker
@@ -676,6 +678,10 @@ plus an inner phase breakdown for the units collector
 <td><code>collection_timings.service_dbus_fetches</code></td>
 <td>Count of per-service D-Bus property fetches.</td>
 </tr>
+<tr>
+<td><code>collection_timings.slowest_units</code></td>
+<td>The <code>units.slowest_units_count</code> slowest units this run (unit name, duration ms), descending. Empty when <code>slowest_units_count = 0</code>. D-Bus path only (see parity note below).</td>
+</tr>
 </tbody>
 </table>
 <p>Comparing <code>sum(collector_timings.*.elapsed_ms)</code> against
@@ -974,6 +980,11 @@ already covers them.</p>
 <p>You're going to need to be root or allow permissiong to pull dbus stats.
 For dbus-broker here is example config allow a user <code>monitord</code> to query
 <code>getStats</code></p>
+<p>When <code>stale_fd_stats = true</code>, monitord also inspects
+<code>/proc/&lt;dbus-broker&gt;/fdinfo</code> for stale pidfds reported by the kernel as
+<code>Pid: -1</code>. These counters are emitted as <code>dbus.stale_fds</code> and, for metric
+compatibility, <code>dbus.user.root.stale_fds</code>; the per-user root value is the
+unattributed system-broker count, not proof that root owns those descriptors.</p>
 <pre><code class="language-xml">[cooper@l33t ~]# cat /etc/dbus-1/system.d/allow_monitord_stats.conf
 &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
 &lt;!DOCTYPE busconfig PUBLIC
