@@ -7,8 +7,6 @@ use struct_field_names_as_array::FieldNamesAsArray;
 use thiserror::Error;
 use tracing::error;
 
-use crate::units::SystemdUnitStats;
-
 #[derive(Error, Debug)]
 pub enum MonitordTimerError {
     #[error("Timer D-Bus error: {0}")]
@@ -48,9 +46,9 @@ pub struct TimerStats {
 
 pub const TIMER_STATS_FIELD_NAMES: &[&str] = &TimerStats::FIELD_NAMES_AS_ARRAY;
 
+#[tracing::instrument(level = "debug", skip(connection))]
 pub async fn collect_timer_stats(
     connection: &zbus::Connection,
-    stats: &mut SystemdUnitStats,
     unit: &crate::units::ListedUnit,
 ) -> Result<TimerStats, MonitordTimerError> {
     let mut timer_stats = TimerStats::default();
@@ -127,14 +125,6 @@ pub async fn collect_timer_stats(
     timer_stats.randomized_delay_usec = randomized_delay_usec?;
     timer_stats.remain_after_elapse = remain_after_elapse?;
 
-    if timer_stats.persistent {
-        stats.timer_persistent_units += 1;
-    }
-
-    if timer_stats.remain_after_elapse {
-        stats.timer_remain_after_elapse += 1;
-    }
-
     Ok(timer_stats)
 }
 
@@ -175,8 +165,14 @@ pub async fn collect_all_timers_dbus(
         if !config.timers.allowlist.is_empty() && !config.timers.allowlist.contains(&unit.name) {
             continue;
         }
-        match collect_timer_stats(connection, &mut stats, &unit).await {
+        match collect_timer_stats(connection, &unit).await {
             Ok(ts) => {
+                if ts.persistent {
+                    stats.timer_persistent_units += 1;
+                }
+                if ts.remain_after_elapse {
+                    stats.timer_remain_after_elapse += 1;
+                }
                 timer_stats_map.insert(unit.name.clone(), ts);
             }
             Err(err) => {

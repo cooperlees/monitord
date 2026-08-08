@@ -13,9 +13,12 @@ use std::time::UNIX_EPOCH;
 use struct_field_names_as_array::FieldNamesAsArray;
 use thiserror::Error;
 use tokio::sync::RwLock;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 use tracing::debug;
 use tracing::error;
 use tracing::warn;
+use tracing::Instrument;
 use zbus::zvariant::ObjectPath;
 use zbus::zvariant::OwnedObjectPath;
 
@@ -58,6 +61,9 @@ pub struct UnitsCollectionTimings {
     pub state_dbus_fetches: u64,
     /// Number of per-service D-Bus property fetches this run.
     pub service_dbus_fetches: u64,
+    /// Slowest units (by per-unit collection duration, descending) this run,
+    /// truncated to `units.slowest_units_count`. Empty when disabled (count 0).
+    pub slowest_units: Vec<(String, f64)>,
 }
 
 /// Unit file counts for a scope (root or user), broken down by unit type.
@@ -262,6 +268,7 @@ pub const UNIT_FIELD_NAMES: &[&str] = &SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_STATES_FIELD_NAMES: &[&str] = &UnitStates::FIELD_NAMES_AS_ARRAY;
 
 /// Pull out selected systemd service statistics
+#[tracing::instrument(level = "debug", skip(connection, object_path))]
 async fn parse_service(
     connection: &zbus::Connection,
     name: &str,
@@ -338,6 +345,7 @@ async fn parse_service(
     })
 }
 
+#[tracing::instrument(level = "debug", skip(connection))]
 async fn get_time_in_state(
     connection: Option<&zbus::Connection>,
     unit: &ListedUnit,
@@ -369,25 +377,26 @@ async fn get_time_in_state(
     }
 }
 
-/// Parse state of a unit into our unit_states hash.
+/// Parse state of a unit into a `UnitStates` entry for the caller to merge.
 ///
-/// Returns true when an actual time-in-state D-Bus fetch was performed,
-/// so callers can keep `state_dbus_fetches` honest. Allowlist/blocklist
-/// short-circuits and `state_stats_time_in_state = false` both return false.
+/// Returns `(did_dbus_fetch, entry)`: `did_dbus_fetch` is true when an actual
+/// time-in-state D-Bus fetch was performed, so callers can keep
+/// `state_dbus_fetches` honest. Allowlist/blocklist short-circuits return
+/// `(false, None)` — the unit is simply not tracked in `unit_states`.
+#[tracing::instrument(level = "debug", skip(config, connection))]
 pub async fn parse_state(
-    stats: &mut SystemdUnitStats,
     unit: &ListedUnit,
     config: &crate::config::UnitsConfig,
     connection: Option<&zbus::Connection>,
-) -> Result<bool, MonitordUnitsError> {
+) -> Result<(bool, Option<UnitStates>), MonitordUnitsError> {
     if config.state_stats_blocklist.contains(&unit.name) {
         debug!("Skipping state stats for {} due to blocklist", &unit.name);
-        return Ok(false);
+        return Ok((false, None));
     }
     if !config.state_stats_allowlist.is_empty()
         && !config.state_stats_allowlist.contains(&unit.name)
     {
-        return Ok(false);
+        return Ok((false, None));
     }
     let active_state = SystemdUnitActiveState::from_str(&unit.active_state)
         .unwrap_or(SystemdUnitActiveState::unknown);
@@ -420,23 +429,21 @@ pub async fn parse_state(
         did_dbus_fetch = connection.is_some();
     }
 
-    stats.unit_states.insert(
-        unit.name.clone(),
-        UnitStates {
+    let entry = UnitStates {
+        active_state,
+        load_state,
+        unhealthy: is_unit_unhealthy_for_service(
             active_state,
             load_state,
-            unhealthy: is_unit_unhealthy_for_service(
-                active_state,
-                load_state,
-                is_oneshot_service,
-                config.ignore_inactive_oneshot_services,
-            ),
-            time_in_state_usecs,
-        },
-    );
-    Ok(did_dbus_fetch)
+            is_oneshot_service,
+            config.ignore_inactive_oneshot_services,
+        ),
+        time_in_state_usecs,
+    };
+    Ok((did_dbus_fetch, Some(entry)))
 }
 
+#[tracing::instrument(level = "debug", skip(connection))]
 async fn is_oneshot_service_unit(
     connection: &zbus::Connection,
     unit: &ListedUnit,
@@ -606,9 +613,24 @@ pub async fn collect_unit_files_stats(fs_root: &str) -> UnitFilesStats {
     }
 }
 
+/// Owned result of one unit's concurrent D-Bus work, merged into `SystemdUnitStats`
+/// by the caller once the spawned task completes. Keeping this owned (rather than
+/// mutating `SystemdUnitStats` from multiple concurrent tasks) avoids needing a
+/// `Mutex`/`RwLock` around it.
+#[derive(Default)]
+struct PerUnitOutcome {
+    unit_name: String,
+    unit_states_entry: Option<UnitStates>,
+    state_dbus_fetch: bool,
+    service_stats_entry: Option<ServiceStats>,
+    timer_stats_entry: Option<TimerStats>,
+    duration_ms: f64,
+}
+
 /// Pull all units from dbus and count how system is setup and behaving
+#[tracing::instrument(level = "debug", skip(config, connection))]
 pub async fn parse_unit_state(
-    config: &crate::config::Config,
+    config: &Arc<crate::config::Config>,
     connection: &zbus::Connection,
     fs_root: &str,
 ) -> Result<SystemdUnitStats, MonitordUnitsError> {
@@ -664,62 +686,133 @@ pub async fn parse_unit_state(
     let mut service_dbus_fetches: u64 = 0;
     let mut timer_dbus_fetches: u64 = 0;
 
-    for unit_raw in units {
-        let unit: ListedUnit = unit_raw.into();
-        // Collect unit types + states counts
-        parse_unit(&mut stats, &unit);
+    // Cheap synchronous unit-type/state counting first, separate from the
+    // concurrent D-Bus work below — no .await, so no reason to involve the
+    // per-unit tasks in it.
+    let listed_units: Vec<ListedUnit> = units.into_iter().map(ListedUnit::from).collect();
+    for unit in &listed_units {
+        parse_unit(&mut stats, unit);
+    }
 
-        // Collect per unit state stats - ActiveState + LoadState
-        // Not collecting SubState (yet)
-        if config.units.state_stats {
-            let did_dbus_fetch =
-                parse_state(&mut stats, &unit, &config.units, Some(connection)).await?;
-            if did_dbus_fetch {
-                state_dbus_fetches += 1;
-            }
-        }
-
-        // Collect service stats
-        if config.services.contains(&unit.name) {
-            debug!("Collecting service stats for {:?}", &unit);
-            match parse_service(connection, &unit.name, &unit.unit_object_path).await {
-                Ok(service_stats) => {
-                    stats.service_stats.insert(unit.name.clone(), service_stats);
-                    service_dbus_fetches += 1;
-                }
-                Err(err) => error!(
-                    "Unable to get service stats for {} {}: {:#?}",
-                    &unit.name, &unit.unit_object_path, err
-                ),
-            }
-        }
-
-        // Collect timer stats
-        if config.timers.enabled && unit.name.contains(".timer") {
-            if config.timers.blocklist.contains(&unit.name) {
-                debug!("Skipping timer stats for {} due to blocklist", &unit.name);
-                continue;
-            }
-            if !config.timers.allowlist.is_empty() && !config.timers.allowlist.contains(&unit.name)
-            {
-                continue;
-            }
-            let timer_stats: Option<TimerStats> =
-                match crate::timer::collect_timer_stats(connection, &mut stats, &unit).await {
-                    Ok(ts) => {
-                        timer_dbus_fetches += 1;
-                        Some(ts)
-                    }
-                    Err(err) => {
-                        error!("Failed to get {} stats: {:#?}", &unit.name, err);
-                        None
-                    }
+    // Bounded-concurrency D-Bus work per unit. A semaphore (rather than an
+    // unbounded join) caps how many units are in flight at once: a burst of
+    // simultaneous D-Bus calls could itself worsen host-level IPC contention
+    // on hosts where per-call latency is already elevated, which is exactly
+    // the failure mode this loop exists to avoid.
+    let semaphore = Arc::new(Semaphore::new(
+        config.units.per_unit_concurrency.max(1) as usize
+    ));
+    let mut join_set: JoinSet<PerUnitOutcome> = JoinSet::new();
+    for unit in listed_units {
+        let semaphore = Arc::clone(&semaphore);
+        let config = Arc::clone(config);
+        let connection = connection.clone();
+        join_set.spawn(async move {
+            let _permit = semaphore
+                .acquire()
+                .await
+                .expect("semaphore closed unexpectedly");
+            let unit_collect_start = Instant::now();
+            let span = tracing::debug_span!("unit_collect", unit = %unit.name);
+            let mut outcome = async {
+                let mut outcome = PerUnitOutcome {
+                    unit_name: unit.name.clone(),
+                    ..Default::default()
                 };
-            if let Some(ts) = timer_stats {
-                stats.timer_stats.insert(unit.name.clone(), ts);
+
+                // Collect per unit state stats - ActiveState + LoadState.
+                // Not collecting SubState (yet). A D-Bus error on one unit
+                // is logged and skipped rather than aborting the whole
+                // collection cycle for every other unit.
+                if config.units.state_stats {
+                    match parse_state(&unit, &config.units, Some(&connection)).await {
+                        Ok((did_fetch, entry)) => {
+                            outcome.state_dbus_fetch = did_fetch;
+                            outcome.unit_states_entry = entry;
+                        }
+                        Err(err) => {
+                            error!("Unable to get state for {}: {:?}", unit.name, err);
+                        }
+                    }
+                }
+
+                // Collect service stats
+                if config.services.contains(&unit.name) {
+                    debug!("Collecting service stats for {:?}", &unit);
+                    match parse_service(&connection, &unit.name, &unit.unit_object_path).await {
+                        Ok(service_stats) => outcome.service_stats_entry = Some(service_stats),
+                        Err(err) => error!(
+                            "Unable to get service stats for {} {}: {:#?}",
+                            &unit.name, &unit.unit_object_path, err
+                        ),
+                    }
+                }
+
+                // Collect timer stats
+                if config.timers.enabled
+                    && unit.name.contains(".timer")
+                    && !config.timers.blocklist.contains(&unit.name)
+                    && (config.timers.allowlist.is_empty()
+                        || config.timers.allowlist.contains(&unit.name))
+                {
+                    match crate::timer::collect_timer_stats(&connection, &unit).await {
+                        Ok(ts) => outcome.timer_stats_entry = Some(ts),
+                        Err(err) => error!("Failed to get {} stats: {:#?}", &unit.name, err),
+                    }
+                }
+
+                outcome
             }
+            .instrument(span)
+            .await;
+
+            outcome.duration_ms = unit_collect_start.elapsed().as_secs_f64() * 1000.0;
+            outcome
+        });
+    }
+
+    let mut slowest_units: Vec<(String, f64)> = Vec::new();
+    while let Some(res) = join_set.join_next().await {
+        let outcome = match res {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                error!("Per-unit collection task failed to join: {:?}", err);
+                continue;
+            }
+        };
+        if let Some(entry) = outcome.unit_states_entry {
+            stats.unit_states.insert(outcome.unit_name.clone(), entry);
+        }
+        if outcome.state_dbus_fetch {
+            state_dbus_fetches += 1;
+        }
+        if let Some(service_stats) = outcome.service_stats_entry {
+            stats
+                .service_stats
+                .insert(outcome.unit_name.clone(), service_stats);
+            service_dbus_fetches += 1;
+        }
+        if let Some(ts) = outcome.timer_stats_entry {
+            if ts.persistent {
+                stats.timer_persistent_units += 1;
+            }
+            if ts.remain_after_elapse {
+                stats.timer_remain_after_elapse += 1;
+            }
+            stats.timer_stats.insert(outcome.unit_name.clone(), ts);
+            timer_dbus_fetches += 1;
+        }
+        if config.units.slowest_units_count > 0 {
+            slowest_units.push((outcome.unit_name, outcome.duration_ms));
         }
     }
+
+    if config.units.slowest_units_count > 0 {
+        slowest_units.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        slowest_units.truncate(config.units.slowest_units_count as usize);
+        stats.collection_timings.slowest_units = slowest_units;
+    }
+
     let per_unit_loop_elapsed = per_unit_loop_start.elapsed();
     stats.collection_timings.per_unit_loop_ms = per_unit_loop_elapsed.as_secs_f64() * 1000.0;
     stats.collection_timings.state_dbus_fetches = state_dbus_fetches;
@@ -819,7 +912,10 @@ mod tests {
 
         // Test no allow list or blocklist; with connection: None, parse_state
         // takes the no-op path inside get_time_in_state and returns false.
-        let did_fetch = parse_state(&mut stats, &systemd_unit, &config, None).await?;
+        let (did_fetch, entry) = parse_state(&systemd_unit, &config, None).await?;
+        if let Some(entry) = entry {
+            stats.unit_states.insert(systemd_unit.name.clone(), entry);
+        }
         assert_eq!(expected_stats, stats);
         assert!(!did_fetch);
 
@@ -828,7 +924,12 @@ mod tests {
 
         // test no blocklist and only allow list - Should equal the same as no lists above
         let mut allowlist_stats = SystemdUnitStats::default();
-        let did_fetch = parse_state(&mut allowlist_stats, &systemd_unit, &config, None).await?;
+        let (did_fetch, entry) = parse_state(&systemd_unit, &config, None).await?;
+        if let Some(entry) = entry {
+            allowlist_stats
+                .unit_states
+                .insert(systemd_unit.name.clone(), entry);
+        }
         assert_eq!(expected_stats, allowlist_stats);
         assert!(!did_fetch);
 
@@ -838,7 +939,12 @@ mod tests {
         // test blocklist with allow list (show it's preferred)
         let mut blocklist_stats = SystemdUnitStats::default();
         let expected_blocklist_stats = SystemdUnitStats::default();
-        let did_fetch = parse_state(&mut blocklist_stats, &systemd_unit, &config, None).await?;
+        let (did_fetch, entry) = parse_state(&systemd_unit, &config, None).await?;
+        if let Some(entry) = entry {
+            blocklist_stats
+                .unit_states
+                .insert(systemd_unit.name.clone(), entry);
+        }
         assert_eq!(expected_blocklist_stats, blocklist_stats);
         // Blocklist short-circuit must NOT count as a D-Bus fetch.
         assert!(!did_fetch);
