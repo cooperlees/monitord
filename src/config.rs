@@ -122,6 +122,14 @@ pub struct UnitsConfig {
     pub state_stats_time_in_state: bool,
     pub ignore_inactive_oneshot_services: bool,
     pub unit_files: bool,
+    /// Max number of units whose D-Bus work runs concurrently in the per-unit
+    /// collection loop. Bounded (rather than unbounded) so a burst of
+    /// simultaneous D-Bus calls doesn't itself worsen host-level IPC
+    /// contention on hosts where per-call latency is already elevated.
+    pub per_unit_concurrency: u64,
+    /// Number of slowest units (by per-unit collection duration) to record in
+    /// `UnitsCollectionTimings::slowest_units`. Set to 0 to disable.
+    pub slowest_units_count: u64,
 }
 impl Default for UnitsConfig {
     fn default() -> Self {
@@ -133,6 +141,8 @@ impl Default for UnitsConfig {
             state_stats_time_in_state: true,
             ignore_inactive_oneshot_services: true,
             unit_files: true,
+            per_unit_concurrency: 8,
+            slowest_units_count: 5,
         }
     }
 }
@@ -332,6 +342,13 @@ impl TryFrom<Ini> for Config {
         if let Some(unit_files) = read_config_optional_bool(&ini_config, "units", "unit_files")? {
             config.units.unit_files = unit_files;
         }
+        if let Ok(Some(per_unit_concurrency)) = ini_config.getuint("units", "per_unit_concurrency")
+        {
+            config.units.per_unit_concurrency = per_unit_concurrency;
+        }
+        if let Ok(Some(slowest_units_count)) = ini_config.getuint("units", "slowest_units_count") {
+            config.units.slowest_units_count = slowest_units_count;
+        }
 
         // [machines] section
         config.machines.enabled = read_config_bool(&ini_config, "machines", "enabled")?;
@@ -501,6 +518,8 @@ state_stats = true
 state_stats_time_in_state = true
 ignore_inactive_oneshot_services = true
 unit_files = true
+per_unit_concurrency = 16
+slowest_units_count = 3
 
 [units.state_stats.allowlist]
 foo.service
@@ -623,6 +642,31 @@ ignore_inactive_oneshot_services = false
     }
 
     #[test]
+    fn test_units_per_unit_concurrency_override() {
+        let units_override_config = r###"
+[monitord]
+output_format = json
+
+[units]
+per_unit_concurrency = 32
+slowest_units_count = 0
+"###;
+        let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
+        monitord_config
+            .write_all(units_override_config.as_bytes())
+            .expect("Unable to write out temp config file");
+
+        let mut ini_config = Ini::new();
+        let _config_map = ini_config
+            .load(monitord_config.path())
+            .expect("Unable to load ini config");
+
+        let parsed_config: Config = ini_config.try_into().expect("Failed to parse config");
+        assert_eq!(parsed_config.units.per_unit_concurrency, 32);
+        assert_eq!(parsed_config.units.slowest_units_count, 0);
+    }
+
+    #[test]
     fn test_full_config() {
         let expected_config = Config {
             monitord: MonitordConfig {
@@ -653,6 +697,8 @@ ignore_inactive_oneshot_services = false
                 state_stats_time_in_state: true,
                 ignore_inactive_oneshot_services: true,
                 unit_files: true,
+                per_unit_concurrency: 16,
+                slowest_units_count: 3,
             },
             machines: MachinesConfig {
                 enabled: true,

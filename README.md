@@ -451,6 +451,7 @@ plus an inner phase breakdown for the units collector
 | `collection_timings.timer_dbus_fetches` | Count of timer D-Bus property fetches this run. |
 | `collection_timings.state_dbus_fetches` | Count of unit-state D-Bus fetches (only when `state_stats_time_in_state` is enabled). |
 | `collection_timings.service_dbus_fetches` | Count of per-service D-Bus property fetches. |
+| `collection_timings.slowest_units` | The `units.slowest_units_count` slowest units this run (unit name, duration ms), descending. Empty when `slowest_units_count = 0`. D-Bus path only (see parity note below). |
 
 Comparing `sum(collector_timings.*.elapsed_ms)` against
 `stat_collection_run_time_ms` gives an effective parallelism ratio

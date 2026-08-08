@@ -382,6 +382,7 @@ mod tests {
             state_stats_time_in_state: false,
             ignore_inactive_oneshot_services: true,
             unit_files: true,
+            ..Default::default()
         }
     }
 
@@ -637,6 +638,7 @@ mod tests {
             state_stats_time_in_state: true,
             ignore_inactive_oneshot_services: true,
             unit_files: true,
+            ..Default::default()
         };
         let mut stats = SystemdUnitStats::default();
 
@@ -936,6 +938,7 @@ mod tests {
             state_stats_time_in_state: false,
             ignore_inactive_oneshot_services: true,
             unit_files: true,
+            ..Default::default()
         };
 
         // Allowed unit should be tracked
@@ -970,6 +973,7 @@ mod tests {
             state_stats_time_in_state: false,
             ignore_inactive_oneshot_services: true,
             unit_files: true,
+            ..Default::default()
         };
 
         // Blocked unit should be skipped
@@ -1004,6 +1008,7 @@ mod tests {
             state_stats_time_in_state: false,
             ignore_inactive_oneshot_services: true,
             unit_files: true,
+            ..Default::default()
         };
 
         // Unit in both lists should be blocked (blocklist takes priority)
@@ -1030,6 +1035,7 @@ mod tests {
             state_stats_time_in_state: false,
             ignore_inactive_oneshot_services: true,
             unit_files: true,
+            ..Default::default()
         };
         let mut stats = SystemdUnitStats::default();
 
@@ -1085,6 +1091,7 @@ mod tests {
             state_stats_time_in_state: false,
             ignore_inactive_oneshot_services: true,
             unit_files: true,
+            ..Default::default()
         };
         let mut stats = SystemdUnitStats::default();
 

@@ -562,6 +562,14 @@ fn flatten_units_collection_timings(
         format!("{base_metric_name}.service_dbus_fetches"),
         timings.service_dbus_fetches.into(),
     );
+    // Rank is encoded in the key (not just the unit name) so ordering survives
+    // flattening; the leaf value stays a plain number like every other key here.
+    for (idx, (unit_name, duration_ms)) in timings.slowest_units.iter().enumerate() {
+        flat_stats.insert(
+            format!("{base_metric_name}.slowest_units.{idx}.{unit_name}"),
+            (*duration_ms).into(),
+        );
+    }
     flat_stats
 }
 
@@ -636,6 +644,8 @@ mod tests {
   "collection_timings.list_units_ms": 5.0,
   "collection_timings.per_unit_loop_ms": 37.0,
   "collection_timings.service_dbus_fetches": 1,
+  "collection_timings.slowest_units.0.unittest.service": 12.5,
+  "collection_timings.slowest_units.1.unittest.timer": 8.25,
   "collection_timings.state_dbus_fetches": 0,
   "collection_timings.timer_dbus_fetches": 4,
   "collector_timings.boot_blame.elapsed_ms": 12.5,
@@ -817,6 +827,10 @@ mod tests {
             timer_dbus_fetches: 4,
             state_dbus_fetches: 0,
             service_dbus_fetches: 1,
+            slowest_units: vec![
+                ("unittest.service".to_string(), 12.5),
+                ("unittest.timer".to_string(), 8.25),
+            ],
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
@@ -885,7 +899,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(127, json_flat_map.len());
+        assert_eq!(129, json_flat_map.len());
     }
 
     #[test]
