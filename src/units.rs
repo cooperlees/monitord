@@ -833,14 +833,21 @@ pub async fn parse_unit_state(
 /// Async wrapper that can update unit stats when passed a locked struct.
 /// `fs_root` is prepended to filesystem paths for unit file stats —
 /// empty string for the host, `/proc/<pid>/root` for containers.
+///
+/// The whole (potentially hundreds-of-D-Bus-calls) collection runs before the
+/// write lock is taken, not while holding it: `locked_machine_stats` is
+/// shared by every collector, so holding it across the entire per-unit loop
+/// would block every other collector's own (often much quicker) write until
+/// this collection finished.
 pub async fn update_unit_stats(
     config: Arc<crate::config::Config>,
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
     fs_root: String,
 ) -> anyhow::Result<()> {
+    let units_stats = parse_unit_state(&config, &connection, &fs_root).await;
     let mut machine_stats = locked_machine_stats.write().await;
-    match parse_unit_state(&config, &connection, &fs_root).await {
+    match units_stats {
         Ok(units_stats) => machine_stats.units = units_stats,
         Err(err) => error!("units stats failed: {:?}", err),
     }
