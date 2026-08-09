@@ -11,6 +11,7 @@ use procfs::process::Process;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::error;
+use tracing::Instrument;
 
 use crate::MachineStats;
 
@@ -72,16 +73,26 @@ pub fn get_pid_stats(_pid: i32) -> Result<Pid1Stats, MonitordPid1Error> {
 }
 
 /// Async wrapper than can update PID1 stats when passed a locked struct
+///
+/// Split into two spans (blocking procfs read vs. write-lock acquisition) so a
+/// slow run can be attributed to actual work vs. contention on the
+/// `MachineStats` lock shared with every other collector.
 pub async fn update_pid1_stats(
     pid: i32,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    let pid1_stats = match tokio::task::spawn_blocking(move || get_pid_stats(pid)).await {
+    let pid1_stats = match tokio::task::spawn_blocking(move || get_pid_stats(pid))
+        .instrument(tracing::debug_span!("pid1_blocking_read"))
+        .await
+    {
         Ok(p1s) => p1s,
         Err(err) => return Err(err.into()),
     };
 
-    let mut machine_stats = locked_machine_stats.write().await;
+    let mut machine_stats = locked_machine_stats
+        .write()
+        .instrument(tracing::debug_span!("pid1_acquire_write_lock"))
+        .await;
     machine_stats.pid1 = match pid1_stats {
         Ok(s) => Some(s),
         Err(err) => {
