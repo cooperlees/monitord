@@ -176,6 +176,11 @@ pub struct DBusStatsConfig {
     pub peer_well_known_names_only: bool,
     pub peer_allowlist: HashSet<String>,
     pub peer_blocklist: HashSet<String>,
+    /// Max number of well-known bus names whose owner lookup runs concurrently
+    /// when resolving peer names. Bounded (rather than unbounded) for the same
+    /// reason as `UnitsConfig::per_unit_concurrency`: a burst of simultaneous
+    /// D-Bus calls can itself worsen host-level IPC contention.
+    pub peer_name_concurrency: u64,
 
     pub cgroup_stats: bool,
     pub cgroup_allowlist: HashSet<String>,
@@ -195,6 +200,7 @@ impl Default for DBusStatsConfig {
             peer_well_known_names_only: false,
             peer_allowlist: HashSet::new(),
             peer_blocklist: HashSet::new(),
+            peer_name_concurrency: 8,
 
             cgroup_stats: false,
             cgroup_allowlist: HashSet::new(),
@@ -388,6 +394,10 @@ impl TryFrom<Ini> for Config {
             config.dbus_stats.peer_blocklist =
                 peer_blocklist.keys().map(|s| s.to_string()).collect();
         }
+        if let Ok(Some(peer_name_concurrency)) = ini_config.getuint("dbus", "peer_name_concurrency")
+        {
+            config.dbus_stats.peer_name_concurrency = peer_name_concurrency;
+        }
 
         config.dbus_stats.cgroup_stats = read_config_bool(&ini_config, "dbus", "cgroup_stats")?;
         if let Some(cgroup_allowlist) = config_map.get("dbus.cgroup.allowlist") {
@@ -543,6 +553,7 @@ stale_fd_stats = true
 user_stats = true
 peer_stats = true
 peer_well_known_names_only = true
+peer_name_concurrency = 12
 cgroup_stats = true
 
 [dbus.user.allowlist]
@@ -715,6 +726,7 @@ slowest_units_count = 0
                 peer_well_known_names_only: true,
                 peer_allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
                 peer_blocklist: HashSet::from([String::from("foo2")]),
+                peer_name_concurrency: 12,
                 cgroup_stats: true,
                 cgroup_allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
                 cgroup_blocklist: HashSet::from([String::from("foo2")]),

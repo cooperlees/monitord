@@ -702,18 +702,25 @@ pub async fn parse_unit_state(
     let semaphore = Arc::new(Semaphore::new(
         config.units.per_unit_concurrency.max(1) as usize
     ));
+    // Captured once, outside the loop: `JoinSet::spawn` runs each unit on a new
+    // task, and tracing spans do not cross task boundaries automatically. Without
+    // attaching this as the explicit parent below, every `unit_collect` span
+    // becomes its own unrelated root trace instead of a child of this collector.
+    let parent_span = tracing::Span::current();
     let mut join_set: JoinSet<PerUnitOutcome> = JoinSet::new();
     for unit in listed_units {
         let semaphore = Arc::clone(&semaphore);
         let config = Arc::clone(config);
         let connection = connection.clone();
+        let parent_span = parent_span.clone();
         join_set.spawn(async move {
             let _permit = semaphore
                 .acquire()
                 .await
                 .expect("semaphore closed unexpectedly");
             let unit_collect_start = Instant::now();
-            let span = tracing::debug_span!("unit_collect", unit = %unit.name);
+            let span =
+                tracing::debug_span!(parent: &parent_span, "unit_collect", unit = %unit.name);
             let mut outcome = async {
                 let mut outcome = PerUnitOutcome {
                     unit_name: unit.name.clone(),

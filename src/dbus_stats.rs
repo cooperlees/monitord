@@ -10,6 +10,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use thiserror::Error;
 use tokio::sync::RwLock;
+use tokio::sync::Semaphore;
+use tracing::Instrument;
 use tracing::{debug, error};
 use uzers::get_user_by_uid;
 use zbus::fdo::{DBusProxy, StatsProxy};
@@ -566,7 +568,7 @@ async fn parse_peer_accounting(
         _ => return Ok(None),
     };
 
-    let well_known_to_peer_names = get_well_known_to_peer_names(connection).await?;
+    let well_known_to_peer_names = get_well_known_to_peer_names(connection, config).await?;
 
     let result = peers_value
         .iter()
@@ -767,6 +769,7 @@ fn parse_user_accounting(
 
 async fn get_well_known_to_peer_names(
     connection: &zbus::Connection,
+    config: &crate::config::Config,
 ) -> Result<HashMap<String, String>, MonitordDbusStatsError> {
     let dbus_proxy: DBusProxy<'static> = DBusProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
@@ -775,16 +778,37 @@ async fn get_well_known_to_peer_names(
 
     let dbus_names = dbus_proxy.list_names().await?;
 
-    // Each well-known name's owner is an independent D-Bus round-trip, so fan the
-    // lookups out across the tokio runtime and collect them as they complete
-    // rather than issuing one blocking call after another.
+    // Each well-known name's owner is an independent D-Bus round-trip. A
+    // semaphore (rather than an unbounded join) caps how many lookups are in
+    // flight at once: a burst of simultaneous D-Bus calls could itself worsen
+    // host-level IPC contention on hosts where per-call latency is already
+    // elevated — the same failure mode units.rs's per-unit loop guards against.
+    let semaphore = Arc::new(Semaphore::new(
+        config.dbus_stats.peer_name_concurrency.max(1) as usize,
+    ));
+    let parent_span = tracing::Span::current();
     let mut join_set = tokio::task::JoinSet::new();
     for owned_busname in dbus_names {
         if let BusName::WellKnown(_) = &*owned_busname {
             let dbus_proxy = dbus_proxy.clone();
+            let semaphore = Arc::clone(&semaphore);
+            let parent_span = parent_span.clone();
             join_set.spawn(async move {
-                let owner = dbus_proxy.get_name_owner((&owned_busname).into()).await?;
-                Ok::<_, MonitordDbusStatsError>((owner.to_string(), owned_busname.to_string()))
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .expect("semaphore closed unexpectedly");
+                let span = tracing::debug_span!(
+                    parent: &parent_span,
+                    "peer_name_lookup",
+                    name = %owned_busname
+                );
+                async {
+                    let owner = dbus_proxy.get_name_owner((&owned_busname).into()).await?;
+                    Ok::<_, MonitordDbusStatsError>((owner.to_string(), owned_busname.to_string()))
+                }
+                .instrument(span)
+                .await
             });
         }
     }

@@ -14,6 +14,7 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
+use tracing::Instrument;
 
 #[derive(Error, Debug)]
 pub enum MonitordError {
@@ -149,6 +150,12 @@ type TimedCollectorOutput = (String, anyhow::Result<()>, Duration, Duration);
 /// The wrapping closure records the moment the future is first polled (relative
 /// to `collect_start`) and the elapsed wall time until it completes. Both
 /// durations and the collector name are returned alongside the original result.
+///
+/// `tokio::task::JoinSet::spawn` runs the future on a new task, and tracing
+/// spans do not cross task boundaries automatically — without explicitly
+/// capturing and re-attaching the caller's span here, every collector (and
+/// anything it spawns in turn, e.g. units.rs's per-unit tasks) would show up
+/// as an unrelated root trace instead of a child of the current collection run.
 fn spawn_timed<F>(
     join_set: &mut tokio::task::JoinSet<TimedCollectorOutput>,
     name: &'static str,
@@ -157,13 +164,27 @@ fn spawn_timed<F>(
 ) where
     F: std::future::Future<Output = anyhow::Result<()>> + Send + 'static,
 {
-    join_set.spawn(async move {
-        let task_first_poll = Instant::now();
-        let start_offset = task_first_poll.duration_since(collect_start);
-        let result = fut.await;
-        let elapsed = task_first_poll.elapsed();
-        (name.to_string(), result, start_offset, elapsed)
-    });
+    let parent_span = tracing::Span::current();
+    let span = tracing::debug_span!(
+        parent: &parent_span,
+        "collector",
+        name,
+        elapsed_ms = tracing::field::Empty,
+        success = tracing::field::Empty,
+    );
+    let recording_span = span.clone();
+    join_set.spawn(
+        async move {
+            let task_first_poll = Instant::now();
+            let start_offset = task_first_poll.duration_since(collect_start);
+            let result = fut.await;
+            let elapsed = task_first_poll.elapsed();
+            recording_span.record("elapsed_ms", elapsed.as_secs_f64() * 1000.0);
+            recording_span.record("success", result.is_ok());
+            (name.to_string(), result, start_offset, elapsed)
+        }
+        .instrument(span),
+    );
 }
 
 /// Reuse an existing D-Bus connection or create a new system bus connection.
@@ -210,6 +231,11 @@ pub async fn stat_collector(
 
     loop {
         let collect_start_time = Instant::now();
+        // Kept alive for the whole iteration so its reported duration covers
+        // the full run (spawn + drain), not just the synchronous spawn phase
+        // below where `run_guard` is held.
+        let run_span = tracing::info_span!("stat_collector_run");
+        let run_guard = run_span.enter();
         info!("Starting stat collection run");
 
         // Always collect systemd version
@@ -382,6 +408,11 @@ pub async fn stat_collector(
         if join_set.len() == 1 {
             warn!("No collectors except systemd version scheduled to run. Exiting");
         }
+
+        // All collectors above were spawned with `run_span` captured as their
+        // parent; the guard must be dropped before the first `.await` below
+        // since span guards are not valid to hold across an await point.
+        drop(run_guard);
 
         // Drain join_set, collect per-collector timings + log per-collector failures
         had_error = false;
