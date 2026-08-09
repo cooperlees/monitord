@@ -15,6 +15,7 @@ use strum_macros::EnumString;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::error;
+use tracing::Instrument;
 
 use crate::MachineStats;
 
@@ -174,14 +175,24 @@ pub async fn get_system_state(
 }
 
 /// Async wrapper than can update system stats when passed a locked struct
+///
+/// The D-Bus call runs before the write lock is taken (not while holding it):
+/// `locked_machine_stats` is shared by every collector, so holding it across an
+/// awaited D-Bus round trip would block every other collector's own (already
+/// finished) write until this one's D-Bus call completes.
 pub async fn update_system_stats(
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    let mut machine_stats = locked_machine_stats.write().await;
-    machine_stats.system_state = crate::system::get_system_state(&connection)
+    let system_state = crate::system::get_system_state(&connection)
+        .instrument(tracing::debug_span!("system_state_dbus_call"))
         .await
         .map_err(|e| anyhow::anyhow!("Error getting system state: {:?}", e))?;
+    let mut machine_stats = locked_machine_stats
+        .write()
+        .instrument(tracing::debug_span!("system_state_acquire_write_lock"))
+        .await;
+    machine_stats.system_state = system_state;
     Ok(())
 }
 
@@ -198,14 +209,22 @@ pub async fn get_version(
 }
 
 /// Async wrapper than can update system stats when passed a locked struct
+///
+/// See `update_system_stats` above: the D-Bus call runs before the write lock
+/// is taken so it doesn't hold the shared lock for the round trip's duration.
 pub async fn update_version(
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    let mut machine_stats = locked_machine_stats.write().await;
-    machine_stats.version = crate::system::get_version(&connection)
+    let version = crate::system::get_version(&connection)
+        .instrument(tracing::debug_span!("version_dbus_call"))
         .await
         .map_err(|e| anyhow::anyhow!("Error getting systemd version: {:?}", e))?;
+    let mut machine_stats = locked_machine_stats
+        .write()
+        .instrument(tracing::debug_span!("version_acquire_write_lock"))
+        .await;
+    machine_stats.version = version;
     Ok(())
 }
 
