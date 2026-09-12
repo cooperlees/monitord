@@ -23,6 +23,7 @@
 #![allow(clippy)]
 use zbus::proxy;
 #[proxy(
+    gen_blocking = false,
     interface = "org.freedesktop.systemd1.Service",
     default_service = "org.freedesktop.systemd1",
     default_path = "/org/freedesktop/systemd1/unit/chronyd_2eservice"

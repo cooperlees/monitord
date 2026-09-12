@@ -34,6 +34,7 @@ pub struct ListedMachine {
 }
 
 #[proxy(
+    gen_blocking = false,
     interface = "org.freedesktop.machine1.Manager",
     default_service = "org.freedesktop.machine1",
     default_path = "/org/freedesktop/machine1"
