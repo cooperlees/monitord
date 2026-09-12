@@ -23,6 +23,7 @@
 use zbus::proxy;
 
 #[proxy(
+    gen_blocking = false,
     interface = "org.freedesktop.machine1.Machine",
     default_service = "org.freedesktop.machine1"
 )]

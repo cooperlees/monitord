@@ -28,6 +28,12 @@ jobs:
         with:
           command: test
 
+      - name: Check with zbus blocking support enabled
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-targets --features zbus/blocking-api
+
       - name: Cargo release + all feature build
         uses: actions-rs/cargo@v1
         with:

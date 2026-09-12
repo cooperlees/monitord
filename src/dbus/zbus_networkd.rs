@@ -23,6 +23,7 @@
 #![allow(clippy)]
 use zbus::proxy;
 #[proxy(
+    gen_blocking = false,
     interface = "org.freedesktop.network1.Manager",
     default_service = "org.freedesktop.network1",
     default_path = "/org/freedesktop/network1"

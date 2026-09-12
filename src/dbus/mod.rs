@@ -1,3 +1,5 @@
+// Keep these proxies async-only when regenerating zbus-xmlgen output: another
+// dependency may enable zbus/blocking-api, so preserve gen_blocking = false.
 pub mod zbus_machine;
 pub mod zbus_machines;
 pub mod zbus_networkd;
