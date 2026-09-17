@@ -877,8 +877,11 @@ mod tests {
             .expect("metric should parse successfully");
         assert!(stats.unit_states.get("test.service").is_none());
 
-        // Negative and non-integer values are skipped, not stored.
-        let config = default_units_config();
+        // Negative and non-integer values are skipped, not stored. Tracking
+        // must be enabled here so these calls reach validation instead of
+        // returning at the gating checks above.
+        let mut config = default_units_config();
+        config.state_stats_time_in_state = true;
         let mut stats = SystemdUnitStats::default();
         let negative = ListOutput {
             name: "io.systemd.Manager.StateChangeTimestamp".to_string(),

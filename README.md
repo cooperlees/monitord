@@ -485,9 +485,9 @@ varlink case, `list_units_ms` is the bulk varlink `List` call on
 `io.systemd.Manager` and `per_unit_loop_ms` covers the local parse loop plus
 the oneshot `Service.Type` lookup phase; `service_dbus_fetches` counts the
 successful lookups. `state_dbus_fetches` and `timer_dbus_fetches` stay at zero
-on the varlink path (no time-in-state fetch; the timer backfill is not
-counted). This makes `varlink.enabled = true` vs `false` directly comparable
-on the same host.
+on the varlink path (time-in-state comes from the `StateChangeTimestamp`
+metric rather than a D-Bus fetch; the timer backfill is not counted). This
+makes `varlink.enabled = true` vs `false` directly comparable on the same host.
 
 **Convention for new collectors moved to varlink:** when porting a collector
 from D-Bus to varlink, add the equivalent inner timings so the two
