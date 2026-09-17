@@ -220,6 +220,40 @@ pub fn parse_one_metric(
                 }
             }
         }
+        "JobsQueued" => {
+            if !metric.value().is_i64() {
+                warn!(
+                    "Metric {} has non-integer value: {:?}",
+                    metric.name(),
+                    metric.value()
+                );
+                return Ok(());
+            }
+            let value = metric.value_as_int();
+            match value.try_into() {
+                Ok(value) => stats.jobs_queued = value,
+                Err(_) => {
+                    warn!("Metric {} has negative value: {}", metric.name(), value);
+                }
+            }
+        }
+        "UnitsTotal" => {
+            if !metric.value().is_i64() {
+                warn!(
+                    "Metric {} has non-integer value: {:?}",
+                    metric.name(),
+                    metric.value()
+                );
+                return Ok(());
+            }
+            let value = metric.value_as_int();
+            match value.try_into() {
+                Ok(value) => stats.total_units = value,
+                Err(_) => {
+                    warn!("Metric {} has negative value: {}", metric.name(), value);
+                }
+            }
+        }
         _ => debug!("Found unhandled metric: {:?}", metric.name()),
     }
 
@@ -442,6 +476,22 @@ pub async fn apply_oneshot_dbus_override(
     );
 }
 
+/// Sum per-type counts as a fallback total for systemd versions whose metrics
+/// lack `UnitsTotal`. Mirrors what the D-Bus path computes as `units.len()`,
+/// except unmapped types (e.g. swap) are missed.
+fn sum_units_by_type(stats: &SystemdUnitStats) -> u64 {
+    stats.automount_units
+        + stats.device_units
+        + stats.mount_units
+        + stats.path_units
+        + stats.scope_units
+        + stats.service_units
+        + stats.slice_units
+        + stats.socket_units
+        + stats.target_units
+        + stats.timer_units
+}
+
 pub async fn get_unit_stats(
     config: &crate::config::Config,
     socket_path: &str,
@@ -466,18 +516,12 @@ pub async fn get_unit_stats(
     // as well as per-unit state data when config.units.state_stats is enabled.
     parse_metrics(&mut stats, socket_path, &config.units, &config.services).await?;
 
-    // Derive total_units from the sum of all per-type counts, mirroring what the D-Bus
-    // path computes as `units.len()` from list_units().
-    stats.total_units = stats.automount_units
-        + stats.device_units
-        + stats.mount_units
-        + stats.path_units
-        + stats.scope_units
-        + stats.service_units
-        + stats.slice_units
-        + stats.socket_units
-        + stats.target_units
-        + stats.timer_units;
+    // Prefer the UnitsTotal metric when present: it is exact, including unit
+    // types we do not map (e.g. swap). Fall back to summing per-type counts
+    // on systemd versions whose metrics lack it.
+    if stats.total_units == 0 {
+        stats.total_units = sum_units_by_type(&stats);
+    }
 
     debug!("unit stats: {:?}", stats);
     Ok(stats)
@@ -661,6 +705,41 @@ mod tests {
         parse_one_metric(&mut stats, &activating_metric, &config, &HashSet::new())
             .expect("activating_metric should parse successfully");
         assert_eq!(stats.activating_units, 1);
+
+        // Test JobsQueued
+        let jobs_metric = ListOutput {
+            name: "io.systemd.Manager.JobsQueued".to_string(),
+            value: int_value(3),
+            object: None,
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &jobs_metric, &config, &HashSet::new())
+            .expect("jobs_metric should parse successfully");
+        assert_eq!(stats.jobs_queued, 3);
+
+        // Test UnitsTotal
+        let total_metric = ListOutput {
+            name: "io.systemd.Manager.UnitsTotal".to_string(),
+            value: int_value(196),
+            object: None,
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &total_metric, &config, &HashSet::new())
+            .expect("total_metric should parse successfully");
+        assert_eq!(stats.total_units, 196);
+    }
+
+    #[test]
+    fn test_sum_units_by_type_fallback() {
+        // The fallback sums mapped per-type counts; unmapped types like swap
+        // are missed, which is why the UnitsTotal metric is preferred.
+        let stats = SystemdUnitStats {
+            service_units: 86,
+            timer_units: 2,
+            ..Default::default()
+        };
+        assert_eq!(sum_units_by_type(&stats), 88);
+        assert_eq!(sum_units_by_type(&SystemdUnitStats::default()), 0);
     }
 
     #[tokio::test]
