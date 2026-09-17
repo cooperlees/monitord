@@ -16,9 +16,10 @@ monitord ... know how happy your systemd is! 😊
   systemd versions per endpoint (audited while digging into what is left to
   move off D-Bus for [#37](https://github.com/cooperlees/monitord/issues/37)):
   - Metrics (`io.systemd.Metrics` on `/run/systemd/report/io.systemd.Manager`,
-    used today for unit counts/state): v260+; v261+ for `JobsQueued` and the
-    exact `UnitsTotal` (on v260, `total_units` is approximated by summing
-    mapped per-type counts and `jobs_queued` is unavailable)
+    used today for unit counts/state): v260+; v261+ for `JobsQueued`, the
+    exact `UnitsTotal`, and per-unit `StateChangeTimestamp` (on v260,
+    `total_units` is approximated by summing mapped per-type counts while
+    `jobs_queued` and `time_in_state_usecs` are unavailable)
   - networkd (`io.systemd.Network.Describe`, used today for interface states):
     v257+
   - PID 1 manager (`io.systemd.Manager`/`io.systemd.Unit` on
@@ -761,12 +762,13 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 
 ### Metrics collected via Varlink
 
-**Units** (`io.systemd.Metrics` — systemd v260+, v261+ for jobs queued and exact totals):
+**Units** (`io.systemd.Metrics` — systemd v260+, v261+ for jobs queued, exact totals, and time-in-state):
 - Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)
 - Unit counts by state (activating, active, failed, inactive)
 - Exact total unit count (`UnitsTotal`, v261+; approximated from mapped per-type counts on v260)
 - Queued job count (`JobsQueued`, v261+; unavailable (0) on v260)
 - Per-unit active state and load state (with allowlist/blocklist filtering)
+- Per-unit time in state (`StateChangeTimestamp`, v261+; unavailable on v260)
 - Per-unit health status (computed from active + load state)
 - Per-service restart counts (`nrestarts`)
 - Falls back to D-Bus collection if the socket is unavailable
