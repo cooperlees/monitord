@@ -3,12 +3,15 @@
 //! All main systemd unit statistics. Counts of types of units, unit states and
 //! queued jobs. We also house service specific statistics and system unit states.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::RwLock;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 use tracing::debug;
 
 use tracing::warn;
@@ -67,10 +70,14 @@ fn should_skip_unit(object_name: &str, config: &crate::config::UnitsConfig) -> b
 }
 
 /// Parse state of a unit into our unit_states hash
+///
+/// `services` is the `[services]` config list: per-service stats are tracked
+/// only for those units, mirroring the D-Bus path.
 pub fn parse_one_metric(
     stats: &mut SystemdUnitStats,
     metric: &ListOutput,
     config: &crate::config::UnitsConfig,
+    services: &HashSet<String>,
 ) -> anyhow::Result<()> {
     let metric_name_suffix = metric.name_suffix();
     let object_name = metric.object_name();
@@ -118,7 +125,9 @@ pub fn parse_one_metric(
                 is_unit_unhealthy(unit_state.active_state, unit_state.load_state);
         }
         "NRestarts" => {
-            if !config.state_stats || should_skip_unit(&object_name, config) {
+            // Service stats follow the [services] list (like the D-Bus path),
+            // independent of the state_stats gating used for unit_states.
+            if !services.contains(&object_name) {
                 return Ok(());
             }
             if !metric.value().is_i64() {
@@ -199,9 +208,13 @@ pub fn parse_one_metric(
                     }
                 };
                 match state_str {
+                    "activating" => stats.activating_units = value,
                     "active" => stats.active_units = value,
                     "failed" => stats.failed_units = value,
                     "inactive" => stats.inactive_units = value,
+                    // Other states (reloading, deactivating, maintenance,
+                    // refreshing) have no counter, matching the D-Bus path
+                    // which also only counts the four states above.
                     _ => debug!("Found unhandled unit state: {:?}", state_str),
                 }
             }
@@ -251,6 +264,7 @@ pub async fn parse_metrics(
     stats: &mut SystemdUnitStats,
     socket_path: &str,
     config: &crate::config::UnitsConfig,
+    services: &HashSet<String>,
 ) -> anyhow::Result<()> {
     // Parity with the D-Bus path's UnitsCollectionTimings: list_units_ms is the
     // bulk fetch (varlink List on io.systemd.Manager), per_unit_loop_ms is the
@@ -263,44 +277,137 @@ pub async fn parse_metrics(
 
     let parse_loop_start = Instant::now();
     for metric in &metrics {
-        parse_one_metric(stats, metric, config)?;
+        parse_one_metric(stats, metric, config, services)?;
     }
-    apply_oneshot_service_health_override(stats, &metrics, config);
     let parse_loop_elapsed = parse_loop_start.elapsed();
     stats.collection_timings.per_unit_loop_ms = parse_loop_elapsed.as_secs_f64() * 1000.0;
 
     Ok(())
 }
 
-fn apply_oneshot_service_health_override(
+/// Select unit names whose health needs a service-type check.
+///
+/// Mirrors the condition in `units::parse_state`: only inactive, loaded
+/// `.service` units can be rescued by the oneshot override, so only those
+/// need the `Service.Type` lookup. Pure function over already collected
+/// stats, so it runs under a read lock without any I/O.
+pub fn select_oneshot_candidates(
+    stats: &SystemdUnitStats,
+    config: &crate::config::UnitsConfig,
+) -> Vec<String> {
+    if !config.ignore_inactive_oneshot_services {
+        return Vec::new();
+    }
+    stats
+        .unit_states
+        .iter()
+        .filter(|(name, state)| {
+            name.ends_with(SYSTEMD_SERVICE_SUFFIX)
+                && matches!(state.active_state, SystemdUnitActiveState::inactive)
+                && matches!(state.load_state, SystemdUnitLoadState::loaded)
+        })
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
+/// Look up `Service.Type` for each candidate over D-Bus.
+///
+/// Service type is not exposed via the varlink metrics API, so the varlink
+/// path resolves it here to keep `unhealthy` in parity with the D-Bus path.
+/// (`io.systemd.Unit.List` does expose it as `context.Service.Type`, so this
+/// lookup can go away once monitord adopts that API — see #37.)
+/// Concurrency is bounded by `per_unit_concurrency`, like the D-Bus per-unit
+/// loop. A lookup failure for one unit is logged and treated as "not
+/// oneshot" rather than failing the whole collection, mirroring
+/// `units::parse_state`.
+pub async fn fetch_oneshot_types(
+    connection: &zbus::Connection,
+    candidates: Vec<String>,
+    per_unit_concurrency: u64,
+) -> HashMap<String, bool> {
+    let semaphore = Arc::new(Semaphore::new(per_unit_concurrency.max(1) as usize));
+    let mut join_set: JoinSet<(String, bool)> = JoinSet::new();
+    for name in candidates {
+        let semaphore = Arc::clone(&semaphore);
+        let connection = connection.clone();
+        join_set.spawn(async move {
+            let _permit = semaphore
+                .acquire()
+                .await
+                .expect("semaphore closed unexpectedly");
+            let is_oneshot =
+                match crate::units::is_oneshot_service_by_name(&connection, &name).await {
+                    Ok(is_oneshot) => is_oneshot,
+                    Err(err) => {
+                        warn!(
+                            "Unable to get Service.Type for {} (assuming not oneshot): {:?}",
+                            name, err
+                        );
+                        false
+                    }
+                };
+            (name, is_oneshot)
+        });
+    }
+    let mut types = HashMap::new();
+    while let Some(res) = join_set.join_next().await {
+        match res {
+            Ok((name, is_oneshot)) => {
+                types.insert(name, is_oneshot);
+            }
+            Err(err) => {
+                warn!("Oneshot type lookup task failed to join: {:?}", err);
+            }
+        }
+    }
+    types
+}
+
+/// Recompute `unhealthy` for tracked units given resolved service types.
+///
+/// Units missing from `oneshot_types` (lookup failed or never a candidate)
+/// are treated as "not oneshot", matching the D-Bus path's assumption.
+pub fn apply_oneshot_types(
     stats: &mut SystemdUnitStats,
-    metrics: &[ListOutput],
+    oneshot_types: &HashMap<String, bool>,
     config: &crate::config::UnitsConfig,
 ) {
     if !config.ignore_inactive_oneshot_services {
         return;
     }
-    let mut oneshot_service_names = HashSet::new();
-    for metric in metrics {
-        if metric.name_suffix() != "Type" || !metric.value().is_string() {
-            continue;
-        }
-        let object_name = metric.object_name();
-        if !object_name.ends_with(SYSTEMD_SERVICE_SUFFIX) {
-            continue;
-        }
-        if metric.value_as_string() == "oneshot" {
-            oneshot_service_names.insert(object_name);
-        }
-    }
     for (unit_name, unit_state) in stats.unit_states.iter_mut() {
+        let is_oneshot = oneshot_types.get(unit_name).copied().unwrap_or(false);
         unit_state.unhealthy = is_unit_unhealthy_for_service(
             unit_state.active_state,
             unit_state.load_state,
-            oneshot_service_names.contains(unit_name),
+            is_oneshot,
             config.ignore_inactive_oneshot_services,
         );
     }
+}
+
+/// Apply the oneshot health override to varlink-collected unit stats.
+///
+/// Runs candidate selection under a read lock, resolves service types over
+/// D-Bus without holding any lock, then applies the results under a write
+/// lock — so D-Bus round trips never block other collectors on the shared
+/// `MachineStats` lock.
+pub async fn apply_oneshot_dbus_override(
+    connection: &zbus::Connection,
+    locked_machine_stats: &Arc<RwLock<MachineStats>>,
+    config: &crate::config::UnitsConfig,
+) {
+    let candidates = {
+        let machine_stats = locked_machine_stats.read().await;
+        select_oneshot_candidates(&machine_stats.units, config)
+    };
+    if candidates.is_empty() {
+        return;
+    }
+    let oneshot_types =
+        fetch_oneshot_types(connection, candidates, config.per_unit_concurrency).await;
+    let mut machine_stats = locked_machine_stats.write().await;
+    apply_oneshot_types(&mut machine_stats.units, &oneshot_types, config);
 }
 
 pub async fn get_unit_stats(
@@ -325,7 +432,7 @@ pub async fn get_unit_stats(
 
     // Always collect metrics to get aggregate counts (UnitsByTypeTotal, UnitsByStateTotal)
     // as well as per-unit state data when config.units.state_stats is enabled.
-    parse_metrics(&mut stats, socket_path, &config.units).await?;
+    parse_metrics(&mut stats, socket_path, &config.units, &config.services).await?;
 
     // Derive total_units from the sum of all per-type counts, mirroring what the D-Bus
     // path computes as `units.len()` from list_units().
@@ -398,13 +505,14 @@ mod tests {
             fields: None,
         };
 
-        parse_one_metric(&mut stats, &metric, &config).unwrap();
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+            .expect("metric should parse successfully");
 
         assert_eq!(
             stats
                 .unit_states
                 .get("my-service.service")
-                .unwrap()
+                .expect("my-service.service should have a unit_states entry")
                 .active_state,
             SystemdUnitActiveState::active
         );
@@ -424,18 +532,25 @@ mod tests {
             fields: None,
         };
 
-        parse_one_metric(&mut stats, &metric, &config).unwrap();
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+            .expect("metric should parse successfully");
 
         assert_eq!(
-            stats.unit_states.get("missing.service").unwrap().load_state,
+            stats
+                .unit_states
+                .get("missing.service")
+                .expect("missing.service should have a unit_states entry")
+                .load_state,
             SystemdUnitLoadState::not_found
         );
     }
 
-    #[tokio::test]
-    async fn test_parse_one_metric_nrestarts() {
+    #[test]
+    fn test_parse_one_metric_nrestarts() {
         let mut stats = SystemdUnitStats::default();
         let config = default_units_config();
+        // NRestarts is tracked per the [services] list, mirroring the D-Bus path.
+        let services = HashSet::from(["my-service.service".to_string()]);
 
         let metric = ListOutput {
             name: "io.systemd.Manager.NRestarts".to_string(),
@@ -444,16 +559,28 @@ mod tests {
             fields: None,
         };
 
-        parse_one_metric(&mut stats, &metric, &config).unwrap();
+        parse_one_metric(&mut stats, &metric, &config, &services)
+            .expect("metric should parse successfully");
 
         assert_eq!(
             stats
                 .service_stats
                 .get("my-service.service")
-                .unwrap()
+                .expect("my-service.service should have a service_stats entry")
                 .nrestarts,
             5
         );
+
+        // Units outside [services] get no service_stats entry even with data present.
+        let other_metric = ListOutput {
+            name: "io.systemd.Manager.NRestarts".to_string(),
+            value: int_value(7),
+            object: Some("other.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &other_metric, &config, &services)
+            .expect("other_metric should parse successfully");
+        assert!(!stats.service_stats.contains_key("other.service"));
     }
 
     #[tokio::test]
@@ -471,7 +598,8 @@ mod tests {
                 serde_json::json!("service"),
             )])),
         };
-        parse_one_metric(&mut stats, &type_metric, &config).unwrap();
+        parse_one_metric(&mut stats, &type_metric, &config, &HashSet::new())
+            .expect("type_metric should parse successfully");
         assert_eq!(stats.service_units, 42);
 
         // Test UnitsByStateTotal
@@ -484,8 +612,23 @@ mod tests {
                 serde_json::json!("active"),
             )])),
         };
-        parse_one_metric(&mut stats, &state_metric, &config).unwrap();
+        parse_one_metric(&mut stats, &state_metric, &config, &HashSet::new())
+            .expect("state_metric should parse successfully");
         assert_eq!(stats.active_units, 10);
+
+        // Test UnitsByStateTotal with activating state
+        let activating_metric = ListOutput {
+            name: "io.systemd.Manager.UnitsByStateTotal".to_string(),
+            value: int_value(1),
+            object: None,
+            fields: Some(std::collections::HashMap::from([(
+                "state".to_string(),
+                serde_json::json!("activating"),
+            )])),
+        };
+        parse_one_metric(&mut stats, &activating_metric, &config, &HashSet::new())
+            .expect("activating_metric should parse successfully");
+        assert_eq!(stats.activating_units, 1);
     }
 
     #[tokio::test]
@@ -515,7 +658,8 @@ mod tests {
         ];
 
         for metric in metrics {
-            parse_one_metric(&mut stats, &metric, &config).unwrap();
+            parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+                .expect("metric should parse successfully");
         }
 
         assert_eq!(stats.unit_states.len(), 2);
@@ -523,7 +667,7 @@ mod tests {
             stats
                 .unit_states
                 .get("service1.service")
-                .unwrap()
+                .expect("service1.service should have a unit_states entry")
                 .active_state,
             SystemdUnitActiveState::active
         );
@@ -531,7 +675,7 @@ mod tests {
             stats
                 .unit_states
                 .get("service1.service")
-                .unwrap()
+                .expect("service1.service should have a unit_states entry")
                 .load_state,
             SystemdUnitLoadState::loaded
         );
@@ -539,14 +683,14 @@ mod tests {
             stats
                 .unit_states
                 .get("service-2.service")
-                .unwrap()
+                .expect("service-2.service should have a unit_states entry")
                 .active_state,
             SystemdUnitActiveState::failed
         );
     }
 
-    #[tokio::test]
-    async fn test_parse_unknown_and_missing_values() {
+    #[test]
+    fn test_parse_unknown_and_missing_values() {
         let mut stats = SystemdUnitStats::default();
         let config = default_units_config();
 
@@ -557,20 +701,24 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config).unwrap();
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+            .expect("metric1 should parse successfully");
         assert!(
             !stats.unit_states.contains_key("test.service"),
             "invalid state should be skipped"
         );
 
-        // Missing nrestarts value (null) is skipped
+        // Missing nrestarts value (null) is skipped. The service must be in
+        // [services] so the null-value path (not the gating) is what skips it.
         let metric2 = ListOutput {
             name: "io.systemd.Manager.NRestarts".to_string(),
             value: empty_value(),
             object: Some("test2.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config).unwrap();
+        let services = HashSet::from(["test2.service".to_string()]);
+        parse_one_metric(&mut stats, &metric2, &config, &services)
+            .expect("metric2 should parse successfully");
         assert!(
             !stats.service_stats.contains_key("test2.service"),
             "null value should be skipped"
@@ -592,7 +740,8 @@ mod tests {
                 serde_json::json!("unknown_type"),
             )])),
         };
-        parse_one_metric(&mut stats, &metric1, &config).unwrap();
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+            .expect("metric1 should parse successfully");
         assert_eq!(stats.service_units, 0);
 
         // Metric with no fields is handled gracefully
@@ -602,7 +751,8 @@ mod tests {
             object: None,
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config).unwrap();
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+            .expect("metric2 should parse successfully");
 
         // Non-string field value is ignored
         let metric3 = ListOutput {
@@ -614,7 +764,8 @@ mod tests {
                 serde_json::json!(123),
             )])),
         };
-        parse_one_metric(&mut stats, &metric3, &config).unwrap();
+        parse_one_metric(&mut stats, &metric3, &config, &HashSet::new())
+            .expect("metric3 should parse successfully");
 
         // Unhandled metric name is ignored
         let metric4 = ListOutput {
@@ -623,13 +774,15 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric4, &config).unwrap();
+        parse_one_metric(&mut stats, &metric4, &config, &HashSet::new())
+            .expect("metric4 should parse successfully");
     }
 
     #[test]
-    fn test_state_stats_disabled_skips_per_unit_data() {
-        // When state_stats=false, UnitActiveState / UnitLoadState / NRestarts should be
-        // skipped by parse_one_metric so that unit_states and service_stats remain empty.
+    fn test_state_stats_disabled_skips_unit_states_only() {
+        // When state_stats=false, UnitActiveState / UnitLoadState are skipped so
+        // unit_states remains empty. NRestarts follows the [services] list
+        // instead (like the D-Bus path) and is unaffected by state_stats.
         let config = crate::config::UnitsConfig {
             enabled: true,
             state_stats: false,
@@ -640,6 +793,7 @@ mod tests {
             unit_files: true,
             ..Default::default()
         };
+        let services = HashSet::from(["test.service".to_string()]);
         let mut stats = SystemdUnitStats::default();
 
         let active_state_metric = ListOutput {
@@ -648,7 +802,8 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &active_state_metric, &config).unwrap();
+        parse_one_metric(&mut stats, &active_state_metric, &config, &services)
+            .expect("active_state_metric should parse successfully");
 
         let load_state_metric = ListOutput {
             name: "io.systemd.Manager.UnitLoadState".to_string(),
@@ -656,7 +811,8 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &load_state_metric, &config).unwrap();
+        parse_one_metric(&mut stats, &load_state_metric, &config, &services)
+            .expect("load_state_metric should parse successfully");
 
         let nrestarts_metric = ListOutput {
             name: "io.systemd.Manager.NRestarts".to_string(),
@@ -664,11 +820,20 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &nrestarts_metric, &config).unwrap();
+        parse_one_metric(&mut stats, &nrestarts_metric, &config, &services)
+            .expect("nrestarts_metric should parse successfully");
 
-        // Per-unit state data must be absent when state_stats=false
+        // Per-unit state data must be absent when state_stats=false, but the
+        // [services]-listed unit still gets its restart count.
         assert_eq!(stats.unit_states.len(), 0);
-        assert_eq!(stats.service_stats.len(), 0);
+        assert_eq!(
+            stats
+                .service_stats
+                .get("test.service")
+                .expect("test.service should have a service_stats entry")
+                .nrestarts,
+            3
+        );
 
         // But aggregate type/state counts must still be processed (they are not gated on state_stats)
         let type_metric = ListOutput {
@@ -680,7 +845,8 @@ mod tests {
                 serde_json::json!("service"),
             )])),
         };
-        parse_one_metric(&mut stats, &type_metric, &config).unwrap();
+        parse_one_metric(&mut stats, &type_metric, &config, &HashSet::new())
+            .expect("type_metric should parse successfully");
         assert_eq!(stats.service_units, 10);
     }
 
@@ -792,9 +958,14 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config).unwrap();
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+            .expect("metric1 should parse successfully");
         assert_eq!(
-            stats.unit_states.get("test.service").unwrap().active_state,
+            stats
+                .unit_states
+                .get("test.service")
+                .expect("test.service should have a unit_states entry")
+                .active_state,
             SystemdUnitActiveState::inactive
         );
 
@@ -805,9 +976,14 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config).unwrap();
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+            .expect("metric2 should parse successfully");
         assert_eq!(
-            stats.unit_states.get("test.service").unwrap().active_state,
+            stats
+                .unit_states
+                .get("test.service")
+                .expect("test.service should have a unit_states entry")
+                .active_state,
             SystemdUnitActiveState::active
         );
     }
@@ -824,7 +1000,8 @@ mod tests {
             object: Some("broken.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config).unwrap();
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+            .expect("metric1 should parse successfully");
 
         // Set load state to loaded
         let metric2 = ListOutput {
@@ -833,10 +1010,17 @@ mod tests {
             object: Some("broken.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config).unwrap();
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+            .expect("metric2 should parse successfully");
 
         // Should be unhealthy: loaded + failed
-        assert!(stats.unit_states.get("broken.service").unwrap().unhealthy);
+        assert!(
+            stats
+                .unit_states
+                .get("broken.service")
+                .expect("broken.service should have a unit_states entry")
+                .unhealthy
+        );
 
         // Set active state to active
         let metric3 = ListOutput {
@@ -845,7 +1029,8 @@ mod tests {
             object: Some("healthy.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric3, &config).unwrap();
+        parse_one_metric(&mut stats, &metric3, &config, &HashSet::new())
+            .expect("metric3 should parse successfully");
 
         // Set load state to loaded
         let metric4 = ListOutput {
@@ -854,14 +1039,21 @@ mod tests {
             object: Some("healthy.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric4, &config).unwrap();
+        parse_one_metric(&mut stats, &metric4, &config, &HashSet::new())
+            .expect("metric4 should parse successfully");
 
         // Should be healthy: loaded + active
-        assert!(!stats.unit_states.get("healthy.service").unwrap().unhealthy);
+        assert!(
+            !stats
+                .unit_states
+                .get("healthy.service")
+                .expect("healthy.service should have a unit_states entry")
+                .unhealthy
+        );
     }
 
-    #[tokio::test]
-    async fn test_parse_metrics_oneshot_inactive_not_unhealthy() {
+    #[test]
+    fn test_oneshot_inactive_service_is_candidate() {
         let mut stats = SystemdUnitStats::default();
         let config = default_units_config();
         let metrics = vec![
@@ -877,54 +1069,159 @@ mod tests {
                 object: Some("done.service".to_string()),
                 fields: None,
             },
-            ListOutput {
-                name: "io.systemd.Service.Type".to_string(),
-                value: string_value("oneshot"),
-                object: Some("done.service".to_string()),
-                fields: None,
-            },
         ];
 
         for metric in &metrics {
-            parse_one_metric(&mut stats, metric, &config).unwrap();
+            parse_one_metric(&mut stats, metric, &config, &HashSet::new())
+                .expect("metric should parse successfully");
         }
-        apply_oneshot_service_health_override(&mut stats, &metrics, &config);
 
-        assert!(!stats.unit_states.get("done.service").unwrap().unhealthy);
+        assert_eq!(
+            select_oneshot_candidates(&stats, &config),
+            vec!["done.service".to_string()]
+        );
     }
 
-    #[tokio::test]
-    async fn test_parse_metrics_oneshot_override_can_be_disabled() {
+    #[test]
+    fn test_oneshot_candidate_selection_skips_non_candidates() {
+        let mut stats = SystemdUnitStats::default();
+        let config = default_units_config();
+        // Active service: healthy already, no type lookup needed.
+        stats.unit_states.insert(
+            "running.service".to_string(),
+            crate::units::UnitStates {
+                active_state: SystemdUnitActiveState::active,
+                load_state: SystemdUnitLoadState::loaded,
+                unhealthy: false,
+                time_in_state_usecs: None,
+            },
+        );
+        // Non-service unit: service type does not apply.
+        stats.unit_states.insert(
+            "waiting.timer".to_string(),
+            crate::units::UnitStates {
+                active_state: SystemdUnitActiveState::inactive,
+                load_state: SystemdUnitLoadState::loaded,
+                unhealthy: true,
+                time_in_state_usecs: None,
+            },
+        );
+        // Masked service: never unhealthy, no type lookup needed.
+        stats.unit_states.insert(
+            "masked.service".to_string(),
+            crate::units::UnitStates {
+                active_state: SystemdUnitActiveState::inactive,
+                load_state: SystemdUnitLoadState::masked,
+                unhealthy: false,
+                time_in_state_usecs: None,
+            },
+        );
+        // The only real candidate.
+        stats.unit_states.insert(
+            "done.service".to_string(),
+            crate::units::UnitStates {
+                active_state: SystemdUnitActiveState::inactive,
+                load_state: SystemdUnitLoadState::loaded,
+                unhealthy: true,
+                time_in_state_usecs: None,
+            },
+        );
+
+        assert_eq!(
+            select_oneshot_candidates(&stats, &config),
+            vec!["done.service".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_oneshot_override_marks_oneshot_healthy() {
+        let mut stats = SystemdUnitStats::default();
+        let config = default_units_config();
+        stats.unit_states.insert(
+            "done.service".to_string(),
+            crate::units::UnitStates {
+                active_state: SystemdUnitActiveState::inactive,
+                load_state: SystemdUnitLoadState::loaded,
+                unhealthy: true,
+                time_in_state_usecs: None,
+            },
+        );
+        stats.unit_states.insert(
+            "simple.service".to_string(),
+            crate::units::UnitStates {
+                active_state: SystemdUnitActiveState::inactive,
+                load_state: SystemdUnitLoadState::loaded,
+                unhealthy: true,
+                time_in_state_usecs: None,
+            },
+        );
+        // failed.service has no type entry (lookup failed): stays unhealthy.
+        stats.unit_states.insert(
+            "failed.service".to_string(),
+            crate::units::UnitStates {
+                active_state: SystemdUnitActiveState::inactive,
+                load_state: SystemdUnitLoadState::loaded,
+                unhealthy: true,
+                time_in_state_usecs: None,
+            },
+        );
+        let types = std::collections::HashMap::from([
+            ("done.service".to_string(), true),
+            ("simple.service".to_string(), false),
+        ]);
+
+        apply_oneshot_types(&mut stats, &types, &config);
+
+        assert!(
+            !stats
+                .unit_states
+                .get("done.service")
+                .expect("done.service should have a unit_states entry")
+                .unhealthy
+        );
+        assert!(
+            stats
+                .unit_states
+                .get("simple.service")
+                .expect("simple.service should have a unit_states entry")
+                .unhealthy
+        );
+        assert!(
+            stats
+                .unit_states
+                .get("failed.service")
+                .expect("failed.service should have a unit_states entry")
+                .unhealthy
+        );
+    }
+
+    #[test]
+    fn test_oneshot_override_can_be_disabled() {
         let mut stats = SystemdUnitStats::default();
         let mut config = default_units_config();
         config.ignore_inactive_oneshot_services = false;
-        let metrics = vec![
-            ListOutput {
-                name: "io.systemd.Manager.UnitActiveState".to_string(),
-                value: string_value("inactive"),
-                object: Some("done.service".to_string()),
-                fields: None,
+        stats.unit_states.insert(
+            "done.service".to_string(),
+            crate::units::UnitStates {
+                active_state: SystemdUnitActiveState::inactive,
+                load_state: SystemdUnitLoadState::loaded,
+                unhealthy: true,
+                time_in_state_usecs: None,
             },
-            ListOutput {
-                name: "io.systemd.Manager.UnitLoadState".to_string(),
-                value: string_value("loaded"),
-                object: Some("done.service".to_string()),
-                fields: None,
-            },
-            ListOutput {
-                name: "io.systemd.Service.Type".to_string(),
-                value: string_value("oneshot"),
-                object: Some("done.service".to_string()),
-                fields: None,
-            },
-        ];
+        );
 
-        for metric in &metrics {
-            parse_one_metric(&mut stats, metric, &config).unwrap();
-        }
-        apply_oneshot_service_health_override(&mut stats, &metrics, &config);
+        assert!(select_oneshot_candidates(&stats, &config).is_empty());
 
-        assert!(stats.unit_states.get("done.service").unwrap().unhealthy);
+        let types = std::collections::HashMap::from([("done.service".to_string(), true)]);
+        apply_oneshot_types(&mut stats, &types, &config);
+
+        assert!(
+            stats
+                .unit_states
+                .get("done.service")
+                .expect("done.service should have a unit_states entry")
+                .unhealthy
+        );
     }
 
     #[tokio::test]
@@ -948,7 +1245,8 @@ mod tests {
             object: Some("allowed.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config).unwrap();
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+            .expect("metric1 should parse successfully");
         assert!(stats.unit_states.contains_key("allowed.service"));
 
         // Non-allowed unit should be skipped
@@ -958,7 +1256,8 @@ mod tests {
             object: Some("not-allowed.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config).unwrap();
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+            .expect("metric2 should parse successfully");
         assert!(!stats.unit_states.contains_key("not-allowed.service"));
     }
 
@@ -983,7 +1282,8 @@ mod tests {
             object: Some("blocked.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config).unwrap();
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+            .expect("metric1 should parse successfully");
         assert!(!stats.unit_states.contains_key("blocked.service"));
 
         // Non-blocked unit should be tracked
@@ -993,7 +1293,8 @@ mod tests {
             object: Some("ok.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config).unwrap();
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+            .expect("metric2 should parse successfully");
         assert!(stats.unit_states.contains_key("ok.service"));
     }
 
@@ -1018,7 +1319,8 @@ mod tests {
             object: Some("both.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric, &config).unwrap();
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+            .expect("metric should parse successfully");
         assert!(!stats.unit_states.contains_key("both.service"));
     }
 
@@ -1068,7 +1370,8 @@ mod tests {
             },
         ];
         for m in metrics {
-            parse_one_metric(&mut stats, &m, &config).unwrap();
+            parse_one_metric(&mut stats, &m, &config, &HashSet::new())
+                .expect("m should parse successfully");
         }
 
         // Aggregate counts include ALL units regardless of allowlist
@@ -1110,7 +1413,8 @@ mod tests {
             },
         ];
         for m in metrics {
-            parse_one_metric(&mut stats, &m, &config).unwrap();
+            parse_one_metric(&mut stats, &m, &config, &HashSet::new())
+                .expect("m should parse successfully");
         }
 
         assert_eq!(stats.loaded_units, 1);
