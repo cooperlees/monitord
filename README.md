@@ -12,7 +12,20 @@ monitord ... know how happy your systemd is! 😊
 - systemd-networkd installed (for networkd metrics; the collector can be disabled in config)
 - PID 1 stats require procfs (`/proc`) — available on all standard Linux systems
 - D-Bus system bus accessible (default: `unix:path=/run/dbus/system_bus_socket`)
-- Varlink metrics require systemd v260+ (optional; falls back to D-Bus automatically)
+- Varlink support is optional and falls back to D-Bus automatically. Minimum
+  systemd versions per endpoint (audited while digging into what is left to
+  move off D-Bus for [#37](https://github.com/cooperlees/monitord/issues/37)):
+  - Metrics (`io.systemd.Metrics` on `/run/systemd/report/io.systemd.Manager`,
+    used today for unit counts/state): v260+
+  - networkd (`io.systemd.Network.Describe`, used today for interface states):
+    v257+
+  - PID 1 manager (`io.systemd.Manager`/`io.systemd.Unit` on
+    `/run/systemd/io.systemd.Manager`; planned future use for
+    version/state/units/timers/services — see #37): v258+,
+    v259+ for full service detail, v261+ for job listing
+  - machined (`io.systemd.Machine.List` on
+    `/run/systemd/machine/io.systemd.Machine`; planned future use for machine
+    enumeration — see #37): v257+
 
 ## What does monitord monitor?
 
