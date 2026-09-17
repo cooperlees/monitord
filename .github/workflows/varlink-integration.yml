@@ -106,6 +106,20 @@ jobs:
             -c /workspace/monitord-ci.conf \
             | tee /tmp/monitord-dbus-output.json
 
+      - name: Assert time-in-state is populated on both paths
+        run: |
+          # time_in_state_usecs is excluded from the diff below (now-relative),
+          # so assert presence separately: dbus-broker.service has a real state
+          # change timestamp and must report a positive value on both paths.
+          python3 -c "
+          import json
+          for path in ['/tmp/monitord-varlink-output.json', '/tmp/monitord-dbus-output.json']:
+              d = json.load(open(path))
+              v = d.get('monitord.unit_states.dbus-broker.service.time_in_state_usecs')
+              assert isinstance(v, int) and v > 0, f'{path}: time_in_state_usecs missing or zero: {v!r}'
+              print(f'PASS: {path} time_in_state_usecs={v}')
+          "
+
       - name: Compare D-Bus and varlink JSON outputs
         run: |
           # Exclude:
