@@ -236,6 +236,7 @@ pub async fn update_machines_stats(
                 let config_clone = Arc::clone(&config);
                 let sdc_clone = sdc.clone();
                 let stats_clone = locked_machine_stats.clone();
+                let machine_name = machine.clone();
                 let container_socket_path = format!(
                     "/proc/{}/root{}",
                     leader_pid,
@@ -250,6 +251,26 @@ pub async fn update_machines_stats(
                     .await
                     {
                         Ok(()) => {
+                            // Timer properties are not exposed via varlink; collect
+                            // via the container's D-Bus connection (same backfill
+                            // as the host path).
+                            match crate::timer::collect_all_timers_dbus(
+                                &sdc_clone,
+                                &config_clone,
+                            )
+                            .await
+                            {
+                                Ok(timer_stats) => {
+                                    let mut ms = stats_clone.write().await;
+                                    crate::timer::merge_timer_stats(&mut ms.units, timer_stats);
+                                }
+                                Err(err) => {
+                                    warn!(
+                                        "Varlink timer stats (D-Bus fallback) failed for container {}: {:?}",
+                                        machine_name, err
+                                    );
+                                }
+                            }
                             // Service type is not exposed via varlink metrics; resolve
                             // it over the container's D-Bus connection (same as host).
                             crate::varlink_units::apply_oneshot_dbus_override(
