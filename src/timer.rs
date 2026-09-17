@@ -128,6 +128,20 @@ pub async fn collect_timer_stats(
     Ok(timer_stats)
 }
 
+/// Merge D-Bus-collected timer stats into varlink-collected unit stats.
+///
+/// The varlink metrics API does not expose timer properties, so both the host
+/// (lib.rs) and container (machines.rs) varlink paths backfill them via
+/// `collect_all_timers_dbus` and merge the result here.
+pub fn merge_timer_stats(
+    target: &mut crate::units::SystemdUnitStats,
+    collected: crate::units::SystemdUnitStats,
+) {
+    target.timer_stats = collected.timer_stats;
+    target.timer_persistent_units = collected.timer_persistent_units;
+    target.timer_remain_after_elapse = collected.timer_remain_after_elapse;
+}
+
 /// Collect all timer stats via D-Bus and return them ready to merge into unit stats.
 ///
 /// Used when unit stats were collected via varlink (which doesn't yet expose timer
@@ -183,4 +197,39 @@ pub async fn collect_all_timers_dbus(
 
     stats.timer_stats = timer_stats_map;
     Ok(stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_timer_stats() {
+        let mut target = crate::units::SystemdUnitStats::default();
+        let mut collected = crate::units::SystemdUnitStats::default();
+        collected.timer_stats.insert(
+            "foo.timer".to_string(),
+            TimerStats {
+                persistent: true,
+                ..Default::default()
+            },
+        );
+        collected.timer_persistent_units = 1;
+        collected.timer_remain_after_elapse = 2;
+
+        merge_timer_stats(&mut target, collected);
+
+        assert_eq!(target.timer_stats.len(), 1);
+        assert!(
+            target
+                .timer_stats
+                .get("foo.timer")
+                .expect("foo.timer should be merged")
+                .persistent
+        );
+        assert_eq!(target.timer_persistent_units, 1);
+        assert_eq!(target.timer_remain_after_elapse, 2);
+        // Untouched aggregates stay zero.
+        assert_eq!(target.total_units, 0);
+    }
 }

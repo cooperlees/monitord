@@ -321,11 +321,7 @@ pub async fn stat_collector(
                             {
                                 Ok(timer_stats) => {
                                     let mut ms = stats_clone.write().await;
-                                    ms.units.timer_stats = timer_stats.timer_stats;
-                                    ms.units.timer_persistent_units =
-                                        timer_stats.timer_persistent_units;
-                                    ms.units.timer_remain_after_elapse =
-                                        timer_stats.timer_remain_after_elapse;
+                                    crate::timer::merge_timer_stats(&mut ms.units, timer_stats);
                                 }
                                 Err(err) => {
                                     warn!("Varlink timer stats (D-Bus fallback) failed: {:?}", err);

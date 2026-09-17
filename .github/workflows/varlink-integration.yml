@@ -63,8 +63,12 @@ jobs:
           # dbus-broker is active (guards the other direction). [services] is
           # left pointing at nonexistent units: full ServiceStats has no
           # varlink parity yet, so both paths must produce empty service_stats.
+          # The timers allowlist is emptied so per-timer stats (also backfilled
+          # via D-Bus on the varlink path) are compared too; timer timestamps
+          # are absolute and stable across the seconds-apart runs.
           sed \
             -e '/^\[units\.state_stats\.allowlist\]/,/^\[/{s/^chrony\.service$/kmod-static-nodes.service/; s/^sshd\.service$/dbus-broker.service/}' \
+            -e '/^\[timers\.allowlist\]/,/^\[/{/^fstrim\.timer$/d}' \
             monitord.conf > "$GITHUB_WORKSPACE/monitord-ci.conf"
           grep -q '^kmod-static-nodes\.service$' "$GITHUB_WORKSPACE/monitord-ci.conf" \
             || { echo "FAIL: allowlist substitution did not apply"; exit 1; }
