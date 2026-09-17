@@ -201,7 +201,8 @@ pub struct UnitStates {
     /// Optional config can ignore inactive oneshot services.
     pub unhealthy: bool,
     /// Microseconds elapsed since the unit's most recent state change.
-    /// None when time-in-state tracking is disabled in config (expensive D-Bus lookup per unit).
+    /// None when time-in-state tracking is disabled in config (expensive D-Bus
+    /// lookup per unit), or when no state change timestamp is known.
     pub time_in_state_usecs: Option<u64>,
 }
 
@@ -347,6 +348,19 @@ async fn parse_service(
     })
 }
 
+/// Compute microseconds in the current state from a state-change timestamp.
+///
+/// A zero timestamp means no state change was ever recorded (or the lookup
+/// failed and was zeroed by the caller): time in state is unknown, so this
+/// returns `None` rather than a bogus huge elapsed time. Shared by the D-Bus
+/// path (`get_time_in_state`) and the varlink path so both agree.
+pub(crate) fn compute_time_in_state(now_usec: u64, state_change_timestamp: u64) -> Option<u64> {
+    if state_change_timestamp == 0 {
+        return None;
+    }
+    Some(now_usec.saturating_sub(state_change_timestamp))
+}
+
 #[tracing::instrument(level = "debug", skip(connection))]
 async fn get_time_in_state(
     connection: Option<&zbus::Connection>,
@@ -370,7 +384,7 @@ async fn get_time_in_state(
                     0
                 }
             };
-            Ok(Some(now - state_change_timestamp))
+            Ok(compute_time_in_state(now, state_change_timestamp))
         }
         None => {
             error!("No zbus connection passed, but time_in_state_usecs enabled");
@@ -990,6 +1004,20 @@ mod tests {
         // Blocklist short-circuit must NOT count as a D-Bus fetch.
         assert!(!did_fetch);
         Ok(())
+    }
+
+    #[test]
+    fn test_compute_time_in_state() {
+        // Normal case: elapsed since the recorded change.
+        assert_eq!(
+            compute_time_in_state(1_700_000_010_000_000, 1_700_000_000_000_000),
+            Some(10_000_000)
+        );
+        // Zero timestamp (never changed, or failed lookup zeroed by the
+        // caller): unknown rather than a bogus huge elapsed time.
+        assert_eq!(compute_time_in_state(1_700_000_010_000_000, 0), None);
+        // Future timestamp (clock skew): saturates to 0 instead of underflowing.
+        assert_eq!(compute_time_in_state(100, 200), Some(0));
     }
 
     #[test]

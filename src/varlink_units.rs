@@ -8,6 +8,8 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use tokio::sync::RwLock;
 use tokio::sync::Semaphore;
@@ -253,6 +255,51 @@ pub fn parse_one_metric(
                     warn!("Metric {} has negative value: {}", metric.name(), value);
                 }
             }
+        }
+        "StateChangeTimestamp" => {
+            if !config.state_stats
+                || !config.state_stats_time_in_state
+                || should_skip_unit(&object_name, config)
+            {
+                return Ok(());
+            }
+            if !metric.value().is_i64() {
+                warn!(
+                    "Metric {} has non-integer value: {:?}",
+                    metric.name(),
+                    metric.value()
+                );
+                return Ok(());
+            }
+            let state_change_usec: u64 = match metric.value_as_int().try_into() {
+                Ok(value) => value,
+                Err(_) => {
+                    warn!(
+                        "Metric {} has out-of-range value: {}",
+                        metric.name(),
+                        metric.value_as_int()
+                    );
+                    return Ok(());
+                }
+            };
+            let now_usec = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                Ok(elapsed) => elapsed.as_secs() * 1_000_000 + u64::from(elapsed.subsec_micros()),
+                Err(err) => {
+                    warn!("System clock error computing time in state: {:?}", err);
+                    return Ok(());
+                }
+            };
+            // A zero/unknown timestamp leaves the entry untouched: the shared
+            // helper returns None instead of a bogus huge elapsed time.
+            let Some(elapsed) = crate::units::compute_time_in_state(now_usec, state_change_usec)
+            else {
+                return Ok(());
+            };
+            stats
+                .unit_states
+                .entry(object_name.to_string())
+                .or_default()
+                .time_in_state_usecs = Some(elapsed);
         }
         _ => debug!("Found unhandled metric: {:?}", metric.name()),
     }
@@ -740,6 +787,119 @@ mod tests {
         };
         assert_eq!(sum_units_by_type(&stats), 88);
         assert_eq!(sum_units_by_type(&SystemdUnitStats::default()), 0);
+    }
+
+    #[test]
+    fn test_state_change_timestamp_sets_time_in_state() {
+        let mut stats = SystemdUnitStats::default();
+        let mut config = default_units_config();
+        config.state_stats_time_in_state = true;
+        let now_usec = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("test clock should work")
+            .as_secs()
+            * 1_000_000;
+        let metric = ListOutput {
+            name: "io.systemd.Manager.StateChangeTimestamp".to_string(),
+            value: int_value((now_usec - 5_000_000) as i64),
+            object: Some("test.service".to_string()),
+            fields: None,
+        };
+
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+            .expect("timestamp metric should parse successfully");
+
+        let elapsed = stats
+            .unit_states
+            .get("test.service")
+            .expect("test.service should have a unit_states entry")
+            .time_in_state_usecs
+            .expect("time in state should be set");
+        assert!(
+            (5_000_000..6_000_000).contains(&elapsed),
+            "expected ~5s in state, got {}us",
+            elapsed
+        );
+    }
+
+    #[test]
+    fn test_state_change_timestamp_zero_stays_unknown() {
+        // 0 means no state change has occurred: no entry is created for the
+        // timestamp alone, so no bogus huge elapsed time is ever reported.
+        // (In practice the Active/LoadState arms create the entry with
+        // time_in_state_usecs left as None.)
+        let mut stats = SystemdUnitStats::default();
+        let mut config = default_units_config();
+        config.state_stats_time_in_state = true;
+        let metric = ListOutput {
+            name: "io.systemd.Manager.StateChangeTimestamp".to_string(),
+            value: int_value(0),
+            object: Some("test.service".to_string()),
+            fields: None,
+        };
+
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+            .expect("zero timestamp should parse successfully");
+
+        assert!(stats.unit_states.get("test.service").is_none());
+    }
+
+    #[test]
+    fn test_state_change_timestamp_respects_gating() {
+        let metric = ListOutput {
+            name: "io.systemd.Manager.StateChangeTimestamp".to_string(),
+            value: int_value(1_700_000_000_000_000),
+            object: Some("test.service".to_string()),
+            fields: None,
+        };
+
+        // Disabled via state_stats_time_in_state.
+        let mut config = default_units_config();
+        config.state_stats_time_in_state = false;
+        let mut stats = SystemdUnitStats::default();
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+            .expect("metric should parse successfully");
+        assert!(stats.unit_states.get("test.service").is_none());
+
+        // Disabled via state_stats.
+        let mut config = default_units_config();
+        config.state_stats = false;
+        let mut stats = SystemdUnitStats::default();
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+            .expect("metric should parse successfully");
+        assert!(stats.unit_states.get("test.service").is_none());
+
+        // Excluded via blocklist.
+        let mut config = default_units_config();
+        config.state_stats_blocklist = HashSet::from(["test.service".to_string()]);
+        let mut stats = SystemdUnitStats::default();
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+            .expect("metric should parse successfully");
+        assert!(stats.unit_states.get("test.service").is_none());
+
+        // Negative and non-integer values are skipped, not stored. Tracking
+        // must be enabled here so these calls reach validation instead of
+        // returning at the gating checks above.
+        let mut config = default_units_config();
+        config.state_stats_time_in_state = true;
+        let mut stats = SystemdUnitStats::default();
+        let negative = ListOutput {
+            name: "io.systemd.Manager.StateChangeTimestamp".to_string(),
+            value: int_value(-1),
+            object: Some("test.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &negative, &config, &HashSet::new())
+            .expect("negative timestamp should parse successfully");
+        let null_value = ListOutput {
+            name: "io.systemd.Manager.StateChangeTimestamp".to_string(),
+            value: empty_value(),
+            object: Some("test.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &null_value, &config, &HashSet::new())
+            .expect("null timestamp should parse successfully");
+        assert!(stats.unit_states.get("test.service").is_none());
     }
 
     #[tokio::test]
