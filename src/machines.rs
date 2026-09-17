@@ -250,6 +250,14 @@ pub async fn update_machines_stats(
                     .await
                     {
                         Ok(()) => {
+                            // Service type is not exposed via varlink metrics; resolve
+                            // it over the container's D-Bus connection (same as host).
+                            crate::varlink_units::apply_oneshot_dbus_override(
+                                &sdc_clone,
+                                &stats_clone,
+                                &config_clone.units,
+                            )
+                            .await;
                             let container_root = format!("/proc/{}/root", leader_pid);
                             if config_clone.units.unit_files {
                                 let unit_files =

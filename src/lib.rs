@@ -331,6 +331,15 @@ pub async fn stat_collector(
                                     warn!("Varlink timer stats (D-Bus fallback) failed: {:?}", err);
                                 }
                             }
+                            // Service type is not exposed via varlink metrics; resolve
+                            // it over D-Bus so inactive oneshot services are not
+                            // marked unhealthy.
+                            crate::varlink_units::apply_oneshot_dbus_override(
+                                &sdc_clone,
+                                &stats_clone,
+                                &config_clone.units,
+                            )
+                            .await;
                             if config_clone.units.unit_files {
                                 let unit_files = crate::units::collect_unit_files_stats("").await;
                                 let mut ms = stats_clone.write().await;

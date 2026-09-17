@@ -55,13 +55,38 @@ jobs:
             && echo "PASS: io.systemd.Network socket exists" \
             || echo "WARN: io.systemd.Network socket not found (networkd not managing interfaces)"
 
-      - name: Generate varlink-enabled config from monitord.conf
+      - name: Generate CI configs tracking real container units
         run: |
+          # Track real units present in the Rawhide container so the D-Bus vs
+          # varlink diff actually compares per-unit state. kmod-static-nodes
+          # is inactive + oneshot (exercises the oneshot health override);
+          # dbus-broker is active (guards the other direction). [services] is
+          # left pointing at nonexistent units: full ServiceStats has no
+          # varlink parity yet, so both paths must produce empty service_stats.
+          sed \
+            -e '/^\[units\.state_stats\.allowlist\]/,/^\[/{s/^chrony\.service$/kmod-static-nodes.service/; s/^sshd\.service$/dbus-broker.service/}' \
+            monitord.conf > "$GITHUB_WORKSPACE/monitord-ci.conf"
+          grep -q '^kmod-static-nodes\.service$' "$GITHUB_WORKSPACE/monitord-ci.conf" \
+            || { echo "FAIL: allowlist substitution did not apply"; exit 1; }
           sed \
             -e '/^\[varlink\]/,/^\[/{s/enabled = false/enabled = true/}' \
-            monitord.conf > "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
-          echo "--- Generated varlink config ---"
-          cat "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
+            "$GITHUB_WORKSPACE/monitord-ci.conf" > "$GITHUB_WORKSPACE/monitord-varlink-ci.conf"
+          echo "--- Generated CI config ---"
+          cat "$GITHUB_WORKSPACE/monitord-ci.conf"
+
+      - name: Assert CI fixture units have expected states
+        run: |
+          # The comparison below only exercises per-unit state (incl. the oneshot
+          # health override) if these rolling-Rawhide fixtures still exist with
+          # the assumed states. Fail fast otherwise instead of passing vacuously.
+          docker exec monitord-test sh -c '
+            [ "$(systemctl show kmod-static-nodes.service -p LoadState --value)" = "loaded" ] &&
+            [ "$(systemctl show kmod-static-nodes.service -p ActiveState --value)" = "inactive" ] &&
+            [ "$(systemctl show kmod-static-nodes.service -p Type --value)" = "oneshot" ] &&
+            [ "$(systemctl show dbus-broker.service -p LoadState --value)" = "loaded" ] &&
+            [ "$(systemctl show dbus-broker.service -p ActiveState --value)" = "active" ]' \
+            && echo "PASS: fixture units have expected states" \
+            || { echo "FAIL: CI fixture units changed state, type, or disappeared"; exit 1; }
 
       - name: Run monitord with varlink enabled and save output
         run: |
@@ -74,7 +99,7 @@ jobs:
         run: |
           docker exec monitord-test \
             /workspace/target/release/monitord \
-            -c /workspace/monitord.conf \
+            -c /workspace/monitord-ci.conf \
             | tee /tmp/monitord-dbus-output.json
 
       - name: Compare D-Bus and varlink JSON outputs
@@ -84,11 +109,13 @@ jobs:
           #   - stat_collection_run_time_ms: end-to-end wall time, also varies
           #   - collector_timings.*: per-collector wall times, vary between runs
           #   - collection_timings.*: inner units phase timings vary between runs;
-          #     *_dbus_fetches counters legitimately differ (varlink path stays
-          #     at 0 because it does no per-unit D-Bus fetches), so they must
-          #     not be expected to match D-Bus output by design.
-          grep -v '"monitord\.pid1\.\|stat_collection_run_time_ms\|collector_timings\.\|collection_timings\.' /tmp/monitord-dbus-output.json    > /tmp/dbus-filtered.txt
-          grep -v '"monitord\.pid1\.\|stat_collection_run_time_ms\|collector_timings\.\|collection_timings\.' /tmp/monitord-varlink-output.json > /tmp/varlink-filtered.txt
+          #     *_dbus_fetches counters legitimately differ (varlink oneshot
+          #     type lookups count toward service_dbus_fetches, but the timer
+          #     backfill is not counted), so they must not be expected to
+          #     match D-Bus output by design.
+          #   - time_in_state_usecs: now-relative per-unit value, varies between runs
+          grep -v '"monitord\.pid1\.\|stat_collection_run_time_ms\|collector_timings\.\|collection_timings\.\|time_in_state_usecs' /tmp/monitord-dbus-output.json    > /tmp/dbus-filtered.txt
+          grep -v '"monitord\.pid1\.\|stat_collection_run_time_ms\|collector_timings\.\|collection_timings\.\|time_in_state_usecs' /tmp/monitord-varlink-output.json > /tmp/varlink-filtered.txt
           if diff -u --label dbus --label varlink \
               /tmp/dbus-filtered.txt /tmp/varlink-filtered.txt; then
             echo "PASS: D-Bus and varlink outputs are identical"

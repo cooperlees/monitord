@@ -140,7 +140,9 @@ pub struct SystemdUnitStats {
     /// Per-unit active/load state tracking keyed by unit name
     pub unit_states: HashMap<String, UnitStates>,
     /// Inner timing breakdown for this collector. Zero-valued before the first
-    /// run completes or when the varlink path is taken.
+    /// run completes. On the varlink path, `list_units_ms`/`per_unit_loop_ms`
+    /// cover the varlink fetch, local parse, and oneshot D-Bus fallback, and
+    /// only `service_dbus_fetches` may be nonzero (oneshot type lookups).
     pub collection_timings: UnitsCollectionTimings,
 }
 
@@ -448,12 +450,37 @@ async fn is_oneshot_service_unit(
     connection: &zbus::Connection,
     unit: &ListedUnit,
 ) -> Result<bool, MonitordUnitsError> {
+    is_oneshot_service_at_path(connection, &unit.unit_object_path).await
+}
+
+/// Check whether a service unit is `Type=oneshot` via its D-Bus object path.
+async fn is_oneshot_service_at_path(
+    connection: &zbus::Connection,
+    object_path: &OwnedObjectPath,
+) -> Result<bool, MonitordUnitsError> {
     let sp = crate::dbus::zbus_service::ServiceProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
-        .path(ObjectPath::from(unit.unit_object_path.clone()))?
+        .path(ObjectPath::from(object_path.clone()))?
         .build()
         .await?;
     Ok(sp.type_().await? == "oneshot")
+}
+
+/// Check whether a service unit is `Type=oneshot`, resolving the unit name to
+/// a D-Bus object path first.
+///
+/// Used by the varlink units path, which knows unit names (from metric
+/// objects) but never sees D-Bus object paths.
+pub(crate) async fn is_oneshot_service_by_name(
+    connection: &zbus::Connection,
+    unit_name: &str,
+) -> Result<bool, MonitordUnitsError> {
+    let mp = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
+    let object_path = mp.get_unit(unit_name).await?;
+    is_oneshot_service_at_path(connection, &object_path).await
 }
 
 /// Parse a unit and add to overall counts of state, type etc.
