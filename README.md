@@ -784,19 +784,26 @@ as there isn't really documentation outside `man` pages.
 
 - varlinkctl is your friend - https://man7.org/linux/man-pages/man1/varlinkctl.1.html
 
-Here is an example with networkd's interfaces:
+Here is an example with networkd's interfaces. monitord uses `Describe`, which
+returns per-interface states (`GetStates` returns the manager-level aggregate
+instead):
 
 ```
 varlinkctl info unix:/run/systemd/netif/io.systemd.Network
 varlinkctl introspect unix:/run/systemd/netif/io.systemd.Network io.systemd.Network
 
-cooper@au:~$ varlinkctl call unix:/run/systemd/netif/io.systemd.Network io.systemd.Network.GetStates '{}' -j | jq
+cooper@au:~$ varlinkctl call unix:/run/systemd/netif/io.systemd.Network io.systemd.Network.Describe '{}' | jq '.Interfaces[0]'
 {
+  "Index": 2,
+  "Name": "eth0",
+  "AdministrativeState": "configured",
+  "OperationalState": "routable",
+  "CarrierState": "carrier",
   "AddressState": "routable",
   "IPv4AddressState": "routable",
   "IPv6AddressState": "routable",
-  "CarrierState": "carrier",
   "OnlineState": "online",
-  "OperationalState": "routable"
+  "NetworkFile": "/etc/systemd/network/69-eno4.network",
+  "RequiredForOnline": true
 }
 ```
