@@ -269,8 +269,10 @@ pub async fn parse_metrics(
 ) -> anyhow::Result<()> {
     // Parity with the D-Bus path's UnitsCollectionTimings: list_units_ms is the
     // bulk fetch (varlink List on io.systemd.Manager), per_unit_loop_ms is the
-    // local parse loop. The *_dbus_fetches counters stay 0 here -- itself a
-    // useful signal that the varlink path doesn't pay per-unit D-Bus cost.
+    // local parse loop. The oneshot D-Bus fallback later adds its own phase
+    // duration to per_unit_loop_ms and its successful lookups to
+    // service_dbus_fetches (see record_oneshot_lookup_timings); the remaining
+    // *_dbus_fetches counters stay 0 on the varlink path.
     let bulk_fetch_start = Instant::now();
     let metrics = collect_metrics(socket_path.to_string()).await?;
     let bulk_fetch_elapsed = bulk_fetch_start.elapsed();

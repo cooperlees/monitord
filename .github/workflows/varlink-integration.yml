@@ -74,6 +74,20 @@ jobs:
           echo "--- Generated CI config ---"
           cat "$GITHUB_WORKSPACE/monitord-ci.conf"
 
+      - name: Assert CI fixture units have expected states
+        run: |
+          # The comparison below only exercises per-unit state (incl. the oneshot
+          # health override) if these rolling-Rawhide fixtures still exist with
+          # the assumed states. Fail fast otherwise instead of passing vacuously.
+          docker exec monitord-test sh -c '
+            [ "$(systemctl show kmod-static-nodes.service -p LoadState --value)" = "loaded" ] &&
+            [ "$(systemctl show kmod-static-nodes.service -p ActiveState --value)" = "inactive" ] &&
+            [ "$(systemctl show kmod-static-nodes.service -p Type --value)" = "oneshot" ] &&
+            [ "$(systemctl show dbus-broker.service -p LoadState --value)" = "loaded" ] &&
+            [ "$(systemctl show dbus-broker.service -p ActiveState --value)" = "active" ]' \
+            && echo "PASS: fixture units have expected states" \
+            || { echo "FAIL: CI fixture units changed state, type, or disappeared"; exit 1; }
+
       - name: Run monitord with varlink enabled and save output
         run: |
           docker exec monitord-test \

@@ -140,7 +140,9 @@ pub struct SystemdUnitStats {
     /// Per-unit active/load state tracking keyed by unit name
     pub unit_states: HashMap<String, UnitStates>,
     /// Inner timing breakdown for this collector. Zero-valued before the first
-    /// run completes or when the varlink path is taken.
+    /// run completes. On the varlink path, `list_units_ms`/`per_unit_loop_ms`
+    /// cover the varlink fetch, local parse, and oneshot D-Bus fallback, and
+    /// only `service_dbus_fetches` may be nonzero (oneshot type lookups).
     pub collection_timings: UnitsCollectionTimings,
 }
 
