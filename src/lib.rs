@@ -67,6 +67,66 @@ pub struct CollectorTiming {
     pub success: bool,
 }
 
+/// Which API transport served a collector on the last run.
+///
+/// Recorded per enabled collector so operators can watch varlink adoption
+/// climb as the fleet's systemd upgrades past each endpoint's minimum
+/// version: a collector reports `Varlink` when its varlink attempt succeeded
+/// and `Dbus` when it collected the legacy way — either because varlink is
+/// disabled in config or because the varlink attempt failed and fell back.
+/// `Dbus` also covers the file-based networkd fallback: the value answers
+/// "did this collector use varlink", not "which fallback served it".
+/// Collectors with no varlink path (`pid1`, `dbus_stats`) and disabled
+/// collectors stay `None` and emit no gauge, so the present gauges are
+/// exactly the enabled set — no separate enabled-collectors counter needed.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CollectorTransport {
+    #[default]
+    Dbus,
+    Varlink,
+}
+
+impl CollectorTransport {
+    /// Gauge value for flat JSON and metric exporters: 1 when varlink served
+    /// the collector, 0 for the D-Bus/file fallback.
+    pub fn as_u64(self) -> u64 {
+        match self {
+            CollectorTransport::Varlink => 1,
+            CollectorTransport::Dbus => 0,
+        }
+    }
+}
+
+/// Per-collector transport record for the last collection run.
+///
+/// Every field is `Some` when its collector ran and `None` when it did not
+/// (disabled in config — or, for boot blame, served from disk cache without
+/// touching any API on a cold start). Absent-when-disabled is what makes the
+/// Grafana adoption ratio work: `count()` over the gauges is the enabled set.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct VarlinkUsage {
+    /// Always collected; follows `[system-state] varlink` via the shared
+    /// `Manager.Describe` call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<CollectorTransport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_state: Option<CollectorTransport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub units: Option<CollectorTransport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub networkd: Option<CollectorTransport>,
+    /// Host-side machine enumeration, still D-Bus-only until machined grows
+    /// a varlink List API (see #37). Per-container transports land on each
+    /// machine's own `MachineStats` instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub machines: Option<CollectorTransport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boot_blame: Option<CollectorTransport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verify: Option<CollectorTransport>,
+}
+
 /// Stats collected for a single systemd-nspawn container or VM managed by systemd-machined
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct MachineStats {
@@ -87,6 +147,8 @@ pub struct MachineStats {
     pub boot_blame: Option<boot::BootBlameStats>,
     /// Unit verification error statistics
     pub verify_stats: Option<verify::VerifyStats>,
+    /// Which transport served each collector on the last run.
+    pub varlink_usage: VarlinkUsage,
 }
 
 /// Root struct containing all enabled monitord metrics for the host system and containers
@@ -118,6 +180,8 @@ pub struct MonitordStats {
     /// (sum of `elapsed_ms` / `stat_collection_run_time_ms`) and identify the
     /// gating collector (first entry) directly from this vector.
     pub collector_timings: Vec<CollectorTiming>,
+    /// Which transport served each collector on the last run.
+    pub varlink_usage: VarlinkUsage,
 }
 
 /// Print statistics in the format set in configuration
@@ -267,13 +331,18 @@ pub async fn stat_collector(
                 if let Some(describe) = describe {
                     match crate::varlink_system::update_version(describe, stats_clone.clone()).await
                     {
-                        Ok(()) => return Ok(()),
+                        Ok(()) => {
+                            stats_clone.write().await.varlink_usage.version =
+                                Some(CollectorTransport::Varlink);
+                            return Ok(());
+                        }
                         Err(err) => {
                             warn!("Varlink version failed, falling back to D-Bus: {:?}", err);
                         }
                     }
                 }
-                crate::system::update_version(sdc_clone, stats_clone).await
+                stats_clone.write().await.varlink_usage.version = Some(CollectorTransport::Dbus);
+                crate::system::update_version(sdc_clone, stats_clone.clone()).await
             });
         }
 
@@ -299,6 +368,8 @@ pub async fn stat_collector(
                         Ok(networkd_stats) => {
                             let mut machine_stats = stats_clone.write().await;
                             machine_stats.networkd = networkd_stats;
+                            machine_stats.varlink_usage.networkd =
+                                Some(CollectorTransport::Varlink);
                             return Ok(());
                         }
                         Err(err) => {
@@ -309,6 +380,7 @@ pub async fn stat_collector(
                         }
                     }
                 }
+                stats_clone.write().await.varlink_usage.networkd = Some(CollectorTransport::Dbus);
                 crate::networkd::update_networkd_stats(
                     config_clone.networkd.link_state_dir.clone(),
                     None,
@@ -336,7 +408,11 @@ pub async fn stat_collector(
                         )
                         .await
                         {
-                            Ok(()) => return Ok(()),
+                            Ok(()) => {
+                                stats_clone.write().await.varlink_usage.system_state =
+                                    Some(CollectorTransport::Varlink);
+                                return Ok(());
+                            }
                             Err(err) => {
                                 warn!(
                                     "Varlink system state failed, falling back to D-Bus: {:?}",
@@ -345,7 +421,9 @@ pub async fn stat_collector(
                             }
                         }
                     }
-                    crate::system::update_system_stats(sdc_clone, stats_clone).await
+                    stats_clone.write().await.varlink_usage.system_state =
+                        Some(CollectorTransport::Dbus);
+                    crate::system::update_system_stats(sdc_clone, stats_clone.clone()).await
                 },
             );
         }
@@ -385,6 +463,8 @@ pub async fn stat_collector(
                                     "Varlink unit details failed, falling back to D-Bus: {:?}",
                                     err
                                 );
+                                stats_clone.write().await.varlink_usage.units =
+                                    Some(CollectorTransport::Dbus);
                                 return crate::units::update_unit_stats(
                                     config_clone,
                                     sdc_clone,
@@ -398,6 +478,8 @@ pub async fn stat_collector(
                                 let mut ms = stats_clone.write().await;
                                 ms.units.unit_files = unit_files;
                             }
+                            stats_clone.write().await.varlink_usage.units =
+                                Some(CollectorTransport::Varlink);
                             return Ok(());
                         }
                         Err(err) => {
@@ -408,23 +490,31 @@ pub async fn stat_collector(
                         }
                     }
                 }
+                stats_clone.write().await.varlink_usage.units = Some(CollectorTransport::Dbus);
                 crate::units::update_unit_stats(config_clone, sdc_clone, stats_clone, String::new())
                     .await
             });
         }
 
         if config.machines.enabled {
-            spawn_timed(
-                &mut join_set,
-                "machines",
-                collect_start_time,
+            let stats_clone = locked_machine_stats.clone();
+            let config_clone = Arc::clone(&config);
+            let sdc_clone = sdc.clone();
+            let monitord_stats_clone = locked_monitord_stats.clone();
+            let connections_clone = cached_machine_connections.clone();
+            spawn_timed(&mut join_set, "machines", collect_start_time, async move {
+                // Enumeration is D-Bus-only: machined has no varlink
+                // List API yet (see #37). Per-container collection
+                // records its own transports on the machine stats.
+                stats_clone.write().await.varlink_usage.machines = Some(CollectorTransport::Dbus);
                 crate::machines::update_machines_stats(
-                    Arc::clone(&config),
-                    sdc.clone(),
-                    locked_monitord_stats.clone(),
-                    cached_machine_connections.clone(),
-                ),
-            );
+                    config_clone,
+                    sdc_clone,
+                    monitord_stats_clone,
+                    connections_clone,
+                )
+                .await
+            });
         }
 
         if config.dbus_stats.enabled {
@@ -536,6 +626,7 @@ pub async fn stat_collector(
             monitord_stats.dbus_stats = machine_stats.dbus_stats.clone();
             monitord_stats.boot_blame = machine_stats.boot_blame.clone();
             monitord_stats.verify_stats = machine_stats.verify_stats.clone();
+            monitord_stats.varlink_usage = machine_stats.varlink_usage.clone();
             set_stat_collection_run_time(&mut monitord_stats, elapsed_runtime);
             monitord_stats.collector_timings = timings;
         }

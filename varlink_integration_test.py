@@ -67,6 +67,10 @@ FIXTURE_UNITS: dict[str, dict[str, str]] = {
 #                               (varlink oneshot type lookups count toward
 #                               service_dbus_fetches) so they must not be
 #                               expected to match by design
+#   varlink_usage.*             asserted separately (see
+#                               assert_varlink_usage): the D-Bus run reports all
+#                               zeros and the varlink run all ones, so they must
+#                               not be expected to match by design
 #   time_in_state_usecs         now-relative per-unit value, varies between runs
 #   services.*.cpuusage_nsec    live cgroup accounting, sampled seconds apart:
 #   services.*.memory_current   CPU time only ever grows and memory moves under
@@ -78,11 +82,39 @@ EXCLUDED_KEY_PARTS: tuple[str, ...] = (
     "stat_collection_run_time_ms",
     "collector_timings.",
     "collection_timings.",
+    "varlink_usage.",
     "time_in_state_usecs",
     "cpuusage_nsec",
     "memory_current",
     "memory_available",
 )
+
+# Every varlink-capable collector the CI configs enable, and the gauge value
+# each run is expected to report: 1 when the varlink attempt served the
+# collector, 0 when it fell back to D-Bus. The Rawhide container runs systemd
+# 262+, past every endpoint's minimum version, so the varlink run must use
+# varlink everywhere — an older-system regression that silently falls back
+# (e.g. a renamed socket or a stricter version gate) fails here instead of
+# passing vacuously. The D-Bus run must report all zeros: anything else means
+# varlink leaked in with [varlink] disabled, and the comparison would no
+# longer be D-Bus vs varlink.
+EXPECTED_VARLINK_COLLECTORS: tuple[str, ...] = (
+    "version",
+    "system_state",
+    "units",
+    "networkd",
+    "machines",  # enumeration is D-Bus-only, so always 0 (see #37)
+    "boot_blame",
+    "verify",
+)
+
+EXPECTED_VARLINK_USAGE: dict[str, dict[str, int]] = {
+    "dbus": {collector: 0 for collector in EXPECTED_VARLINK_COLLECTORS},
+    "varlink": {
+        collector: 0 if collector == "machines" else 1
+        for collector in EXPECTED_VARLINK_COLLECTORS
+    },
+}
 
 
 def step(message: str) -> None:
@@ -408,6 +440,49 @@ def assert_time_in_state(outputs: dict[str, Stats]) -> None:
         print(f"PASS: {path_name} time_in_state_usecs={value}")
 
 
+def varlink_usage(stats: Stats) -> dict[str, int]:
+    """Return the {collector: 0/1} varlink usage gauges from a run's stats."""
+    return {
+        key.removeprefix("monitord.varlink_usage."): value
+        for key, value in stats.items()
+        if key.startswith("monitord.varlink_usage.")
+    }
+
+
+def assert_varlink_usage(outputs: dict[str, Stats]) -> None:
+    step("Asserting varlink usage gauges")
+    # Besides proving which transport served each collector, this is the
+    # adoption-ratio input Grafana charts (sum/count over these gauges), so
+    # both runs assert the exact expected set: a missing gauge would silently
+    # shrink the denominator there, and an unexpected one would inflate it.
+    for path_name, stats in outputs.items():
+        usage = varlink_usage(stats)
+        expected = EXPECTED_VARLINK_USAGE[path_name]
+        missing = sorted(set(expected) - set(usage))
+        extra = sorted(set(usage) - set(expected))
+        if missing or extra:
+            raise SystemExit(
+                f"FAIL: {path_name}: varlink usage gauges wrong "
+                f"(missing: {missing}, unexpected: {extra})"
+            )
+        wrong = sorted(
+            collector
+            for collector, want in expected.items()
+            if usage[collector] != want
+        )
+        if wrong:
+            detail = ", ".join(
+                f"{collector}={usage[collector]} (want {expected[collector]})"
+                for collector in wrong
+            )
+            raise SystemExit(f"FAIL: {path_name}: {detail}")
+        adopted = sum(usage.values())
+        print(
+            f"PASS: {path_name}: {adopted}/{len(usage)} collectors on varlink "
+            f"({', '.join(f'{c}={usage[c]}' for c in sorted(usage))})"
+        )
+
+
 def comparable(stats: Stats) -> Stats:
     return {
         key: value
@@ -510,6 +585,7 @@ def main() -> None:
     dbus_stats, dbus_log = run_monitord(args.container, DBUS_CONF)
 
     assert_no_varlink_fallback(varlink_log)
+    assert_varlink_usage({"varlink": varlink_stats, "dbus": dbus_stats})
     assert_verify_enumeration_parity(dbus_log, varlink_log)
     assert_time_in_state({"varlink": varlink_stats, "dbus": dbus_stats})
     compare_outputs(dbus_stats, varlink_stats)

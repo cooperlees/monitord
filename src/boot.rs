@@ -267,23 +267,32 @@ pub async fn update_boot_blame_stats(
         }
     }
 
-    let boot_blame_stats = if config.use_varlink(&[config.boot_blame.varlink]) {
+    let use_varlink = config.use_varlink(&[config.boot_blame.varlink]);
+    let boot_blame_stats = if use_varlink {
         match crate::varlink_boot::get_boot_blame_stats(
             crate::varlink_boot::METRICS_SOCKET_PATH,
             &config.boot_blame,
         )
         .await
         {
-            Ok(stats) => stats,
+            Ok(stats) => {
+                machine_stats.write().await.varlink_usage.boot_blame =
+                    Some(crate::CollectorTransport::Varlink);
+                stats
+            }
             Err(err) => {
                 tracing::warn!(
                     "Varlink boot blame failed, falling back to D-Bus: {:?}",
                     err
                 );
+                machine_stats.write().await.varlink_usage.boot_blame =
+                    Some(crate::CollectorTransport::Dbus);
                 collect_boot_blame_dbus(&config, &connection).await?
             }
         }
     } else {
+        machine_stats.write().await.varlink_usage.boot_blame =
+            Some(crate::CollectorTransport::Dbus);
         collect_boot_blame_dbus(&config, &connection).await?
     };
 
