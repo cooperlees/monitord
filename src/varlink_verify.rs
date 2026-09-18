@@ -21,49 +21,58 @@ pub use crate::varlink_units::METRICS_SOCKET_PATH;
 /// Every object is kept, whatever its load state: the metric objects are the
 /// same set D-Bus `ListUnits` returns (verified live: 199 == 199, including
 /// `not-found` units such as `syslog.service` that exist only because something
-/// references them). Dropping any would make `systemd-analyze verify` check a
-/// smaller set than the D-Bus path. Metrics without an object are skipped.
-fn collect_unit_names(metrics: &[ListOutput]) -> Vec<String> {
-    let mut names: Vec<String> = metrics
-        .iter()
-        .filter(|metric| metric.name_suffix() == "UnitLoadState")
-        .filter_map(|metric| {
-            let unit_name = metric.object()?;
-            if !metric.value().is_string() {
+/// references them).
+///
+/// One pass doubles as the trust check, since this enumeration must match the
+/// D-Bus set exactly for the two verify paths to check the same units: a
+/// missing family, any skipped family member (no object or a non-string
+/// state), or an empty result each bail so the caller falls back to D-Bus
+/// instead of verifying a silently smaller set and reporting success. A
+/// running systemd always has units, so none of these mean "idle system".
+fn collect_unit_names(metrics: &[ListOutput]) -> anyhow::Result<Vec<String>> {
+    let mut names: Vec<String> = Vec::new();
+    let mut saw_family = false;
+    let mut skipped = 0u64;
+    for metric in metrics {
+        if metric.name_suffix() != "UnitLoadState" {
+            continue;
+        }
+        saw_family = true;
+        match (metric.object(), metric.value().is_string()) {
+            (Some(unit_name), true) => names.push(unit_name.to_string()),
+            (object, is_string) => {
+                skipped += 1;
                 debug!(
-                    "Skipping {} for {unit_name}: non-string load state {:?}",
+                    "Skipping {} for {object:?}: non-string load state or missing object (is_string={is_string}, value={:?})",
                     metric.name(),
                     metric.value()
                 );
-                return None;
             }
-            Some(unit_name.to_string())
-        })
-        .collect();
+        }
+    }
+    if !saw_family {
+        anyhow::bail!("metrics carry no UnitLoadState family, cannot enumerate units");
+    }
+    if skipped > 0 {
+        anyhow::bail!(
+            "{skipped} UnitLoadState metrics skipped (missing object or non-string state), cannot trust enumeration"
+        );
+    }
     names.sort();
     names.dedup();
-    names
-}
-
-/// Whether the stream carries the per-unit load-state family at all.
-///
-/// A running systemd always has units, so seeing no `UnitLoadState` metrics
-/// means the family is missing (or the socket answered with something
-/// unexpected) rather than the system being idle. Without this guard the
-/// verify run would check nothing and report success.
-fn has_load_state_metrics(metrics: &[ListOutput]) -> bool {
-    metrics
-        .iter()
-        .any(|metric| metric.name_suffix() == "UnitLoadState")
+    if names.is_empty() {
+        // Unreachable unless the loop above changes: a seen family with no
+        // skips always yields names. Kept so a future refactor can't turn
+        // this into a silent verify-nothing-and-report-success.
+        anyhow::bail!("UnitLoadState family present but no unit names enumerated");
+    }
+    Ok(names)
 }
 
 /// Enumerate all units over varlink.
 pub async fn list_unit_names(socket_path: &str) -> anyhow::Result<Vec<String>> {
     let metrics = crate::varlink_units::collect_metrics(socket_path.to_string()).await?;
-    if !has_load_state_metrics(&metrics) {
-        anyhow::bail!("metrics carry no UnitLoadState family, cannot enumerate units");
-    }
-    Ok(collect_unit_names(&metrics))
+    collect_unit_names(&metrics)
 }
 
 #[cfg(test)]
@@ -88,7 +97,7 @@ mod tests {
         // The metric objects are the same set ListUnits returns — including
         // not-found units, which analyze then reports on exactly as the D-Bus
         // path sees. Verified live: identical 199-unit sets on both sides.
-        let metrics = vec![
+        let mut metrics = vec![
             loaded("b.service"),
             loaded("a.service"),
             metric(Some("masked.service"), serde_json::json!("masked")),
@@ -97,8 +106,16 @@ mod tests {
             loaded("a.service"),
         ];
 
+        // A different family sharing the stream must not leak names in.
+        metrics.push(ListOutput {
+            name: "io.systemd.Manager.UnitActiveState".to_string(),
+            value: serde_json::json!("active"),
+            object: Some("active-only.service".to_string()),
+            fields: None,
+        });
+
         assert_eq!(
-            collect_unit_names(&metrics),
+            collect_unit_names(&metrics).expect("valid family collects"),
             vec![
                 "a.service".to_string(),
                 "b.service".to_string(),
@@ -109,21 +126,29 @@ mod tests {
     }
 
     #[test]
-    fn test_skips_metrics_without_object_or_string_state() {
-        let metrics = vec![
-            metric(None, serde_json::json!("loaded")),
-            metric(Some("odd.service"), serde_json::json!(3)),
-            metric(Some("other.service"), serde_json::json!(null)),
-            // A different family sharing the stream must not leak names in.
-            ListOutput {
-                name: "io.systemd.Manager.UnitActiveState".to_string(),
-                value: serde_json::json!("active"),
-                object: Some("active-only.service".to_string()),
-                fields: None,
-            },
-        ];
-
-        assert!(collect_unit_names(&metrics).is_empty());
+    fn test_skipped_family_members_reject_enumeration() {
+        // Any skipped family member makes the set untrustworthy: bail so the
+        // caller falls back to D-Bus rather than verifying a silent subset.
+        for metrics in [
+            vec![
+                loaded("good.service"),
+                metric(None, serde_json::json!("loaded")),
+            ],
+            vec![
+                loaded("good.service"),
+                metric(Some("odd.service"), serde_json::json!(3)),
+            ],
+            vec![
+                loaded("good.service"),
+                metric(Some("other.service"), serde_json::json!(null)),
+            ],
+        ] {
+            let err = collect_unit_names(&metrics).expect_err("skips must bail");
+            assert!(
+                err.to_string().contains("skipped"),
+                "unexpected error: {err}"
+            );
+        }
     }
 
     #[test]
@@ -136,9 +161,12 @@ mod tests {
             object: None,
             fields: None,
         }];
-        assert!(!has_load_state_metrics(&without_family));
-        assert!(collect_unit_names(&without_family).is_empty());
+        let err = collect_unit_names(&without_family).expect_err("missing family must bail");
+        assert!(
+            err.to_string().contains("no UnitLoadState family"),
+            "unexpected error: {err}"
+        );
 
-        assert!(has_load_state_metrics(&[loaded("foo.service")]));
+        assert!(collect_unit_names(&[loaded("foo.service")]).is_ok());
     }
 }

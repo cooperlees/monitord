@@ -189,10 +189,11 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
     the state_stats allowlist and [services] at real fixture units instead. The
     timers allowlist is emptied so per-timer stats are compared too, boot blame
     is switched on with its cache off, and verify is switched on restricted to
-    the fixture units so enumeration parity is compared without analyze running
-    over every unit. All of those values are absolute boot-time measurements or
-    deterministic analyze output, so they are stable across the seconds-apart
-    runs.
+    the fixture units so analyze stays fast. Full enumeration parity is checked
+    separately from the `verify enumerated ...` debug lines, so the comparison
+    still covers enumeration without analyze running over every unit. All of
+    those values are absolute boot-time measurements or deterministic analyze
+    output, so they are stable across the seconds-apart runs.
     """
     dbus_lines: list[str] = []
     renamed: set[str] = set()
@@ -201,14 +202,18 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
         if line.startswith("["):
             section = line.strip()
             if section == "[verify.allowlist]":
-                # Restrict verify to the fixture units: full verify runs
+                # Restrict analyze to the fixture units: full verify runs
                 # analyze over every unit and would dominate the test's
-                # runtime, while two units still exercise enumeration,
-                # analyze, and parse on both paths.
+                # runtime. Enumeration parity over the full set is checked
+                # separately from the debug log.
                 dbus_lines.append(line)
                 dbus_lines.append("dbus-broker.service")
                 dbus_lines.append("kmod-static-nodes.service")
                 continue
+        elif section == "[verify.allowlist]":
+            # Drop the stock body: the fixture allowlist above replaces it,
+            # and an uncommented entry must not silently widen the run.
+            continue
         elif section == "[services]":
             line = SERVICE_RENAMES.get(line.strip(), line)
         elif section == "[units.state_stats.allowlist]":
@@ -293,7 +298,11 @@ def assert_fixture_units(container: str) -> None:
 
 
 def run_monitord(container: str, config_path: str) -> tuple[Stats, str]:
-    """Run monitord in the container, returning its parsed stats and its log."""
+    """Run monitord in the container, returning its parsed stats and its log.
+
+    Debug logging is on so the log carries the `verify enumerated ...` line
+    the enumeration parity check scrapes.
+    """
     result = subprocess.run(
         [
             "docker",
@@ -302,6 +311,8 @@ def run_monitord(container: str, config_path: str) -> tuple[Stats, str]:
             f"{CONTAINER_TARGET_DIR}/release/monitord",
             "-c",
             config_path,
+            "-l",
+            "debug",
         ],
         capture_output=True,
         text=True,
@@ -326,6 +337,60 @@ def assert_no_varlink_fallback(log: str) -> None:
         print("\n".join(fallbacks))
         raise SystemExit("FAIL: varlink run fell back to D-Bus (see above)")
     print("PASS: no collector fell back to D-Bus")
+
+
+def enumerated_verify_units(log: str) -> set[str]:
+    """Return the unit set from the run's `verify enumerated ...` debug line.
+
+    Fails loudly unless the log carries exactly one such line with a
+    self-consistent, non-empty set: anything else would make the parity
+    comparison below pass vacuously.
+    """
+    matches = [line for line in log.splitlines() if "verify enumerated " in line]
+    if len(matches) != 1:
+        raise SystemExit(
+            "FAIL: expected one verify enumeration line in the log, "
+            f"found {len(matches)}"
+        )
+    rest = matches[0].split("verify enumerated ", 1)[1]
+    count_text, sep, names = rest.partition(" units: ")
+    if not sep:
+        raise SystemExit(f"FAIL: malformed verify enumeration line: {matches[0]!r}")
+    try:
+        count = int(count_text)
+    except ValueError:
+        raise SystemExit(
+            f"FAIL: malformed verify enumeration count: {count_text!r}"
+        ) from None
+    units = set(filter(None, names.split(",")))
+    if len(units) != count:
+        raise SystemExit(
+            f"FAIL: verify enumerated {count} units but {len(units)} unique names"
+        )
+    if not units:
+        raise SystemExit(
+            "FAIL: verify enumerated no units — a running systemd always has some"
+        )
+    return units
+
+
+def assert_verify_enumeration_parity(dbus_log: str, varlink_log: str) -> None:
+    step("Asserting verify enumeration parity")
+    # Both paths enumerate every unit before the fixture allowlist narrows
+    # analyze down, so diffing the logged sets proves full enumeration parity
+    # without paying for analyze over every unit twice. Runs after the
+    # fallback check: a varlink run that fell back would log the D-Bus set and
+    # match trivially.
+    dbus_units = enumerated_verify_units(dbus_log)
+    varlink_units = enumerated_verify_units(varlink_log)
+    if dbus_units != varlink_units:
+        only_dbus = sorted(dbus_units - varlink_units)
+        only_varlink = sorted(varlink_units - dbus_units)
+        raise SystemExit(
+            "FAIL: verify enumerated sets differ "
+            f"(only D-Bus: {only_dbus}, only varlink: {only_varlink})"
+        )
+    print(f"PASS: both paths enumerated the same {len(dbus_units)} units")
 
 
 def assert_time_in_state(outputs: dict[str, Stats]) -> None:
@@ -442,9 +507,10 @@ def main() -> None:
 
     step("Running monitord on both paths")
     varlink_stats, varlink_log = run_monitord(args.container, VARLINK_CONF)
-    dbus_stats, _ = run_monitord(args.container, DBUS_CONF)
+    dbus_stats, dbus_log = run_monitord(args.container, DBUS_CONF)
 
     assert_no_varlink_fallback(varlink_log)
+    assert_verify_enumeration_parity(dbus_log, varlink_log)
     assert_time_in_state({"varlink": varlink_stats, "dbus": dbus_stats})
     compare_outputs(dbus_stats, varlink_stats)
     print(f"\nContainer {args.container} left running; --fresh recreates it.")

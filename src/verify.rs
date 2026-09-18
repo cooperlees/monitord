@@ -101,6 +101,22 @@ fn parse_verify_output(stderr: &str) -> HashSet<String> {
     failing_units
 }
 
+/// Log the pre-filter enumerated unit set at debug level.
+///
+/// Both enumeration paths (D-Bus `ListUnits` and the varlink metrics stream)
+/// call this with their full list so the integration test can diff the
+/// enumerated sets without paying for a full `systemd-analyze verify` run.
+/// Sorted so the line is deterministic regardless of enumeration order.
+fn log_enumerated_units(all_units: &[String]) {
+    let mut names: Vec<&str> = all_units.iter().map(String::as_str).collect();
+    names.sort_unstable();
+    tracing::debug!(
+        "verify enumerated {} units: {}",
+        names.len(),
+        names.join(",")
+    );
+}
+
 /// Filter unit names by the verify allowlist/blocklist.
 ///
 /// Shared by the D-Bus and varlink enumeration paths so both check the same
@@ -188,11 +204,9 @@ pub async fn get_verify_stats(
         .await?;
     let all_units = manager_proxy.list_units().await?;
 
-    let units_to_check = filter_unit_names(
-        all_units.into_iter().map(|unit| unit.0).collect(),
-        allowlist,
-        blocklist,
-    );
+    let all_units: Vec<String> = all_units.into_iter().map(|unit| unit.0).collect();
+    log_enumerated_units(&all_units);
+    let units_to_check = filter_unit_names(all_units, allowlist, blocklist);
     verify_units(units_to_check).await
 }
 
@@ -208,9 +222,12 @@ pub async fn update_verify_stats(
         match crate::varlink_verify::list_unit_names(crate::varlink_verify::METRICS_SOCKET_PATH)
             .await
         {
-            Ok(all_units) => verify_units(filter_unit_names(all_units, &allowlist, &blocklist))
-                .await
-                .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?,
+            Ok(all_units) => {
+                log_enumerated_units(&all_units);
+                verify_units(filter_unit_names(all_units, &allowlist, &blocklist))
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?
+            }
             Err(err) => {
                 tracing::warn!(
                     "Varlink verify enumeration failed, falling back to D-Bus: {:?}",

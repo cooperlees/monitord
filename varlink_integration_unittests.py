@@ -86,6 +86,18 @@ class BuildCiConfigsTest(unittest.TestCase):
         self.assertIn("dbus-broker.service", allowlist)
         self.assertIn("kmod-static-nodes.service", allowlist)
 
+    def test_verify_allowlist_drops_stock_body(self) -> None:
+        # The fixture allowlist replaces the stock body: neither the commented
+        # examples nor any uncommented entry may leak into the test run.
+        conf = STOCK_CONF.replace(
+            "[verify.allowlist]\n# example.service",
+            "[verify.allowlist]\n# example.service\nintruder.service",
+        )
+        dbus_conf, _ = vit.build_ci_configs(conf)
+        allowlist = section_body(dbus_conf, "[verify.allowlist]")
+        self.assertNotIn("example.service", allowlist)
+        self.assertNotIn("intruder.service", allowlist)
+
     def test_only_varlink_config_enables_varlink(self) -> None:
         self.assertIn("[varlink]\nenabled = false", self.dbus_conf)
         self.assertIn("[varlink]\nenabled = true", self.varlink_conf)
@@ -189,6 +201,37 @@ class DiffOutputsTest(unittest.TestCase):
             self.assertEqual(
                 len(vit.diff_outputs({key: 1}, {key: 2})), 1, f"{field} not compared"
             )
+
+
+class EnumeratedVerifyUnitsTest(unittest.TestCase):
+    LOG_LINE = (
+        "D0918 12:00:00.000000 1 verify.rs:123] "
+        "verify enumerated 3 units: a.service,b.service,c.service\n"
+    )
+
+    def test_extracts_unit_set(self) -> None:
+        log = "I0918 monitord: starting\n" + self.LOG_LINE
+        self.assertEqual(
+            vit.enumerated_verify_units(log),
+            {"a.service", "b.service", "c.service"},
+        )
+
+    def test_missing_line_fails_loudly(self) -> None:
+        with self.assertRaises(SystemExit):
+            vit.enumerated_verify_units("I0918 monitord: starting\n")
+
+    def test_duplicate_lines_fail_loudly(self) -> None:
+        with self.assertRaises(SystemExit):
+            vit.enumerated_verify_units(self.LOG_LINE + self.LOG_LINE)
+
+    def test_count_mismatch_fails_loudly(self) -> None:
+        log = self.LOG_LINE.replace("3 units", "4 units")
+        with self.assertRaises(SystemExit):
+            vit.enumerated_verify_units(log)
+
+    def test_empty_set_fails_loudly(self) -> None:
+        with self.assertRaises(SystemExit):
+            vit.enumerated_verify_units("verify enumerated 0 units: \n")
 
 
 class FindFallbacksTest(unittest.TestCase):
