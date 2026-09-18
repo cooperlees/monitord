@@ -296,11 +296,12 @@ pub async fn update_machines_stats(
                     {
                         Ok(_timer_names) => {
                             // Containers keep the D-Bus backfill rather than the
-                            // host's io.systemd.Unit.List path: systemd refuses
-                            // varlink peers from another PID namespace, so a
-                            // container's unit socket is unreachable from here
-                            // (see #211). The timer names collected above go
-                            // unused for the same reason.
+                            // host's io.systemd.Unit.List path: a container's
+                            // varlink sockets are unreachable from here, with
+                            // the connection accepted and then reset unless the
+                            // caller is inside the container's PID namespace
+                            // (observed, see #211). The timer names collected
+                            // above go unused for the same reason.
                             let timer_start = std::time::Instant::now();
                             let timer_result = crate::timer::collect_all_timers_dbus(
                                 &sdc_clone,

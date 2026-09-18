@@ -428,12 +428,11 @@ pub async fn parse_metrics(
 ) -> anyhow::Result<Vec<String>> {
     // Parity with the D-Bus path's UnitsCollectionTimings: list_units_ms is the
     // bulk fetch (varlink List on io.systemd.Manager), per_unit_loop_ms is the
-    // local parse loop. Two later D-Bus phases add their own duration to
-    // per_unit_loop_ms and their own fetch counts: the oneshot type lookups
-    // (service_dbus_fetches, see record_oneshot_lookup_timings) and the timer
-    // backfill (timer_dbus_fetches, see timer::merge_timer_stats). Only
-    // state_dbus_fetches stays 0 on the varlink path, since time-in-state comes
-    // from the StateChangeTimestamp metric rather than a D-Bus fetch.
+    // local parse loop plus the io.systemd.Unit.List detail pass that follows
+    // it. All three *_dbus_fetches counters stay 0 on the host varlink path,
+    // which no longer touches D-Bus at all; they only move for containers,
+    // which cannot reach their own varlink sockets (#211), or when the unit
+    // socket is unusable and the whole collection is redone over D-Bus.
     let bulk_fetch_start = Instant::now();
     let metrics = collect_metrics(socket_path.to_string()).await?;
     let bulk_fetch_elapsed = bulk_fetch_start.elapsed();
@@ -617,31 +616,43 @@ pub async fn apply_oneshot_dbus_override(
     );
 }
 
-/// Refuse a `Unit.List` reply that carries no `context.Service` for a service.
+/// Refuse a `Unit.List` reply that carries no per-type context section.
 ///
 /// systemd v258 through v260 answer `Unit.List` successfully but without the
-/// per-type context sections — `src/core/varlink-service.c` only lands in v261.
-/// Without this check every field would map to its default on those versions,
-/// the call would look like a success, and the D-Bus fallback would never run:
-/// silently wrong numbers rather than a visible failure. Only `.service` names
-/// are checked, so a non-service listed in `[services]` does not trip it.
-fn require_service_context(
+/// per-type context sections: `src/core/varlink-service.c` and
+/// `src/core/varlink-timer.c` both land in v261. Without this check every field
+/// would map to its default on those versions, the call would look like a
+/// success, and the D-Bus fallback would never run — silently wrong numbers
+/// rather than a visible failure.
+///
+/// Only the unit types monitord maps are checked, so an unexpected type listed
+/// in `[services]` is treated as a config mistake rather than an old systemd.
+fn require_unit_context(
     name: &str,
     output: &crate::varlink::unit::ListOutput,
 ) -> anyhow::Result<()> {
-    if !name.ends_with(SYSTEMD_SERVICE_SUFFIX) {
+    let context = output.context.as_ref();
+    let (section, present) = if name.ends_with(SYSTEMD_SERVICE_SUFFIX) {
+        (
+            "Service",
+            context
+                .and_then(|context| context.service.as_ref())
+                .is_some(),
+        )
+    } else if name.ends_with(SYSTEMD_TIMER_SUFFIX) {
+        (
+            "Timer",
+            context.and_then(|context| context.timer.as_ref()).is_some(),
+        )
+    } else {
         return Ok(());
-    }
-    if output
-        .context
-        .as_ref()
-        .and_then(|context| context.service.as_ref())
-        .is_none()
-    {
+    };
+    if !present {
         anyhow::bail!(
-            "{} came back with no context.Service: this systemd is older than v261, \
+            "{} came back with no context.{}: this systemd is older than v261, \
              where io.systemd.Unit gained the per-type context sections",
-            name
+            name,
+            section
         );
     }
     Ok(())
@@ -702,7 +713,7 @@ pub async fn apply_unit_details(
         };
         // Cloned so the cache entry stays available to the oneshot pass below.
         let output = output.clone();
-        require_service_context(name, &output)?;
+        require_unit_context(name, &output)?;
         let processes = crate::varlink_unit::count_cgroup_processes(fs_root, &output).await;
         service_stats.insert(
             name.clone(),
@@ -714,7 +725,7 @@ pub async fn apply_unit_details(
     for name in candidates {
         if let Some(output) = lookup.get(&name).await? {
             let output = output.clone();
-            require_service_context(&name, &output)?;
+            require_unit_context(&name, &output)?;
             oneshot_types.insert(name, crate::varlink_unit::is_oneshot(&output));
         }
     }
@@ -728,6 +739,13 @@ pub async fn apply_unit_details(
             continue;
         };
         let output = output.clone();
+        require_unit_context(&name, &output)?;
+        // If the triggered unit cannot be resolved the timer is still reported,
+        // with its own fields intact and the two trigger timestamps at 0. The
+        // D-Bus path instead drops the timer entirely, because its GetUnit call
+        // errors and the whole per-timer fetch is abandoned. Keeping it is the
+        // more useful of the two: a timer whose target is unloaded still has a
+        // real accuracy, next elapse and last trigger worth reporting.
         let triggered = match crate::varlink_unit::timer_triggered_unit(&output) {
             Some(triggered) => lookup.get(triggered).await?.cloned(),
             None => {
@@ -1083,14 +1101,16 @@ mod tests {
     }
 
     #[test]
-    fn test_require_service_context_rejects_pre_v261_replies() {
-        use crate::varlink::unit::{ListOutput as UnitListOutput, ServiceContext, UnitContext};
+    fn test_require_unit_context_rejects_pre_v261_replies() {
+        use crate::varlink::unit::{
+            ListOutput as UnitListOutput, ServiceContext, TimerContext, UnitContext,
+        };
 
         // systemd v258-v260 answer Unit.List successfully but omit the
         // per-type context sections, so a reply that parses fine still carries
         // nothing we can map. CI only ever runs Rawhide, so this shape cannot
         // be reached there and has to be pinned here instead.
-        let without_service = UnitListOutput {
+        let bare = UnitListOutput {
             context: Some(UnitContext {
                 service: None,
                 exec: None,
@@ -1098,15 +1118,20 @@ mod tests {
             }),
             runtime: None,
         };
-        assert!(require_service_context("foo.service", &without_service).is_err());
+        assert!(require_unit_context("foo.service", &bare).is_err());
+        // Timers need the same guard: without it a v260 host with timers
+        // enabled and no [services] would report every timer as all zeroes
+        // and never fall back.
+        assert!(require_unit_context("foo.timer", &bare).is_err());
         // Nothing at all is equally unusable.
         let empty = UnitListOutput {
             context: None,
             runtime: None,
         };
-        assert!(require_service_context("foo.service", &empty).is_err());
+        assert!(require_unit_context("foo.service", &empty).is_err());
+        assert!(require_unit_context("foo.timer", &empty).is_err());
 
-        // A v261+ reply passes.
+        // v261+ replies pass.
         let with_service = UnitListOutput {
             context: Some(UnitContext {
                 service: Some(ServiceContext {
@@ -1119,11 +1144,27 @@ mod tests {
             }),
             runtime: None,
         };
-        assert!(require_service_context("foo.service", &with_service).is_ok());
+        assert!(require_unit_context("foo.service", &with_service).is_ok());
+        let with_timer = UnitListOutput {
+            context: Some(UnitContext {
+                service: None,
+                exec: None,
+                timer: Some(TimerContext {
+                    unit: Some("foo.service".to_string()),
+                    accuracy_usec: Some(60_000_000),
+                    randomized_delay_usec: None,
+                    fixed_random_delay: None,
+                    persistent: None,
+                    remain_after_elapse: None,
+                }),
+            }),
+            runtime: None,
+        };
+        assert!(require_unit_context("foo.timer", &with_timer).is_ok());
 
-        // A non-service in [services] is a config mistake, not an old systemd,
-        // so it must not trigger a version fallback.
-        assert!(require_service_context("foo.timer", &without_service).is_ok());
+        // A type monitord does not map is a config mistake, not an old
+        // systemd, so it must not trigger a version fallback.
+        assert!(require_unit_context("foo.socket", &bare).is_ok());
     }
 
     #[test]
