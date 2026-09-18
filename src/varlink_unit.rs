@@ -1,8 +1,10 @@
 //! # varlink_unit module
 //!
-//! Per-unit detail via the `io.systemd.Unit` varlink API on PID 1's socket
-//! (systemd v258+). This is what the varlink path uses instead of the per-unit
-//! D-Bus property fetches in `units.rs`.
+//! Per-unit detail via the `io.systemd.Unit` varlink API on PID 1's socket.
+//! `Unit.List` itself exists from systemd v258, but the per-type context
+//! sections read here (`varlink-service.c`, `varlink-timer.c`) first appear in
+//! **v261**, which is the real minimum. This is what the varlink path uses
+//! instead of the per-unit D-Bus property fetches in `units.rs`.
 //!
 //! `Unit.List` can either stream every unit or answer for one named unit.
 //! monitord asks per unit: measured on a test host with 305 units, streaming
@@ -17,9 +19,9 @@
 //! have returned. Those defaults are asserted in the tests.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use tracing::debug;
-use tracing::warn;
 
 use crate::units::ServiceStats;
 use crate::varlink::unit::{ListOutput, Unit};
@@ -49,26 +51,27 @@ impl UnitLookup {
         })
     }
 
-    /// Look a unit up, returning `None` if systemd does not know it.
+    /// Look a unit up, returning `Ok(None)` if systemd does not know it.
     ///
-    /// A unit that is absent is cached as absent: the answer will not change
-    /// within a cycle, and re-asking would cost another round trip.
-    pub async fn get(&mut self, name: &str) -> Option<&ListOutput> {
+    /// A transport or protocol failure is an error rather than `None`, so the
+    /// caller can fall back to D-Bus for the whole phase. Collapsing the two
+    /// would leave service stats silently empty on a broken socket while
+    /// reporting success.
+    ///
+    /// A unit that is genuinely absent is cached as absent: the answer will not
+    /// change within a cycle, and re-asking would cost another round trip.
+    pub async fn get(&mut self, name: &str) -> anyhow::Result<Option<&ListOutput>> {
         if !self.cache.contains_key(name) {
-            let fetched = match self.connection.list(Some(name)).await {
-                Ok(Ok(output)) => Some(output),
-                Ok(Err(err)) => {
-                    debug!("No unit {} over varlink: {}", name, err);
-                    None
-                }
+            let fetched = match self.connection.list(Some(name)).await? {
+                Ok(output) => Some(output),
                 Err(err) => {
-                    warn!("Unable to look up {} over varlink: {:?}", name, err);
+                    debug!("No unit {} over varlink: {}", name, err);
                     None
                 }
             };
             self.cache.insert(name.to_string(), fetched);
         }
-        self.cache.get(name).and_then(|entry| entry.as_ref())
+        Ok(self.cache.get(name).and_then(|entry| entry.as_ref()))
     }
 
     /// Number of units fetched from PID 1 so far, for collection timings.
@@ -114,13 +117,15 @@ pub fn map_service_stats(output: &ListOutput, processes: u32) -> ServiceStats {
 
     ServiceStats {
         active_enter_timestamp: realtime(|runtime| runtime.active_enter_timestamp),
-        // systemd declares ActiveExitTimestamp in the IDL but does not emit it,
-        // so this stays 0 where the D-Bus path reports a real value for a unit
-        // that has left the active state. Tracked in #37.
-        active_exit_timestamp: 0,
-        cpuusage_nsec: cgroup.and_then(|cgroup| cgroup.cpu_usage_nsec).unwrap_or(0),
+        active_exit_timestamp: realtime(|runtime| runtime.active_exit_timestamp),
+        // Every cgroup counter defaults to UNSET, not 0: systemd omits these
+        // when the matching accounting option is off, and the D-Bus properties
+        // then read `[not set]` (u64::MAX). Answering 0 would report a service
+        // as using no memory rather than as unmeasured.
+        cpuusage_nsec: cgroup
+            .and_then(|cgroup| cgroup.cpu_usage_nsec)
+            .unwrap_or(UNSET),
         inactive_exit_timestamp: realtime(|runtime| runtime.inactive_exit_timestamp),
-        // Absent unless IOAccounting is on, where D-Bus reports u64::MAX.
         ioread_bytes: cgroup
             .and_then(|cgroup| cgroup.io_read_bytes)
             .unwrap_or(UNSET),
@@ -129,8 +134,10 @@ pub fn map_service_stats(output: &ListOutput, processes: u32) -> ServiceStats {
             .unwrap_or(UNSET),
         memory_available: cgroup
             .and_then(|cgroup| cgroup.memory_available)
-            .unwrap_or(0),
-        memory_current: cgroup.and_then(|cgroup| cgroup.memory_current).unwrap_or(0),
+            .unwrap_or(UNSET),
+        memory_current: cgroup
+            .and_then(|cgroup| cgroup.memory_current)
+            .unwrap_or(UNSET),
         nrestarts: service_runtime
             .and_then(|service| service.n_restarts)
             .unwrap_or(0),
@@ -142,10 +149,16 @@ pub fn map_service_stats(output: &ListOutput, processes: u32) -> ServiceStats {
         status_errno: service_runtime
             .and_then(|service| service.status_errno)
             .unwrap_or(0),
-        tasks_current: cgroup.and_then(|cgroup| cgroup.tasks_current).unwrap_or(0),
-        // Defaults to infinity, which systemd reports as u64::MAX over D-Bus.
-        timeout_clean_usec: service_context
-            .and_then(|service| service.timeout_clean_usec)
+        tasks_current: cgroup
+            .and_then(|cgroup| cgroup.tasks_current)
+            .unwrap_or(UNSET),
+        // Under context.Exec, not context.Service as the D-Bus property name
+        // suggests. Defaults to infinity, which D-Bus reports as u64::MAX.
+        timeout_clean_usec: output
+            .context
+            .as_ref()
+            .and_then(|context| context.exec.as_ref())
+            .and_then(|exec| exec.timeout_clean_usec)
             .unwrap_or(UNSET),
         watchdog_usec: service_context
             .and_then(|service| service.watchdog_usec)
@@ -153,35 +166,58 @@ pub fn map_service_stats(output: &ListOutput, processes: u32) -> ServiceStats {
     }
 }
 
-/// Count the processes in a unit's cgroup.
+/// Count the processes in a unit's cgroup, including nested ones.
 ///
-/// The D-Bus path counts what `GetProcesses` returns; varlink has no
-/// equivalent, so read the same number out of the cgroup the reply points at.
-/// `fs_root` prefixes the cgroup mount for container collection.
+/// The D-Bus path counts what `GetProcesses` returns, and systemd walks the
+/// whole subtree there — a service that delegates its cgroup and puts workers
+/// in children would be undercounted by reading only its own `cgroup.procs`.
+/// The main PID is folded in the same way systemd does, since it can sit
+/// outside the cgroup. `fs_root` prefixes the cgroup mount for containers.
 pub async fn count_cgroup_processes(fs_root: &str, output: &ListOutput) -> u32 {
-    let Some(cgroup_path) = output
-        .runtime
-        .as_ref()
+    let runtime = output.runtime.as_ref();
+    let Some(cgroup_path) = runtime
         .and_then(|runtime| runtime.cgroup.as_ref())
         .and_then(|cgroup| cgroup.path.as_deref())
     else {
         return 0;
     };
-    let procs_path = format!("{}/sys/fs/cgroup{}/cgroup.procs", fs_root, cgroup_path);
-    match tokio::fs::read_to_string(&procs_path).await {
-        Ok(contents) => contents.lines().filter(|line| !line.is_empty()).count() as u32,
-        Err(err) => {
-            debug!("Unable to read {}: {:?}", procs_path, err);
-            0
+
+    let mut pids: HashSet<u32> = HashSet::new();
+    let mut directories = vec![format!("{}/sys/fs/cgroup{}", fs_root, cgroup_path)];
+    while let Some(directory) = directories.pop() {
+        match tokio::fs::read_to_string(format!("{directory}/cgroup.procs")).await {
+            Ok(contents) => {
+                pids.extend(contents.lines().filter_map(|line| line.parse::<u32>().ok()))
+            }
+            Err(err) => debug!("Unable to read {}/cgroup.procs: {:?}", directory, err),
+        }
+        let Ok(mut entries) = tokio::fs::read_dir(&directory).await else {
+            continue;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if entry.file_type().await.is_ok_and(|kind| kind.is_dir()) {
+                directories.push(entry.path().to_string_lossy().into_owned());
+            }
         }
     }
+
+    if let Some(main_pid) = runtime
+        .and_then(|runtime| runtime.service.as_ref())
+        .and_then(|service| service.main_pid.as_ref())
+        .and_then(|process| process.pid)
+    {
+        pids.insert(main_pid);
+    }
+
+    pids.len() as u32
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::varlink::unit::{
-        CGroupRuntime, ServiceContext, ServiceRuntime, Timestamp, UnitContext, UnitRuntime,
+        CGroupRuntime, ExecContext, ServiceContext, ServiceRuntime, Timestamp, UnitContext,
+        UnitRuntime,
     };
 
     fn output(context: Option<UnitContext>, runtime: Option<UnitRuntime>) -> ListOutput {
@@ -193,9 +229,9 @@ mod tests {
             service: Some(ServiceContext {
                 r#type: Some(r#type.to_string()),
                 restart_usec: None,
-                timeout_clean_usec: None,
                 watchdog_usec: None,
             }),
+            exec: None,
         }
     }
 
@@ -219,8 +255,11 @@ mod tests {
                     service: Some(ServiceContext {
                         r#type: Some("notify-reload".to_string()),
                         restart_usec: Some(100_000),
-                        timeout_clean_usec: None,
                         watchdog_usec: None,
+                    }),
+                    // TimeoutCleanUSec lives here, not under Service.
+                    exec: Some(ExecContext {
+                        timeout_clean_usec: Some(30_000_000),
                     }),
                 }),
                 Some(UnitRuntime {
@@ -236,6 +275,10 @@ mod tests {
                         realtime: Some(1_789_701_442_287_084),
                         monotonic: Some(3_774_334_729),
                     }),
+                    active_exit_timestamp: Some(Timestamp {
+                        realtime: Some(1_789_701_442_280_000),
+                        monotonic: Some(3_774_327_645),
+                    }),
                     cgroup: Some(CGroupRuntime {
                         path: Some("/system.slice/dbus-broker.service".to_string()),
                         cpu_usage_nsec: Some(86_690_000),
@@ -246,6 +289,7 @@ mod tests {
                         io_read_operations: None,
                     }),
                     service: Some(ServiceRuntime {
+                        main_pid: None,
                         status_errno: Some(0),
                         n_restarts: Some(0),
                     }),
@@ -260,25 +304,32 @@ mod tests {
         assert_eq!(stats.tasks_current, 2);
         assert_eq!(stats.processes, 2);
         assert_eq!(stats.restart_usec, 100_000);
+        // Real, and emitted once a unit has actually left the active state.
+        assert_eq!(stats.active_exit_timestamp, 1_789_701_442_280_000);
+        // Read from context.Exec rather than context.Service.
+        assert_eq!(stats.timeout_clean_usec, 30_000_000);
         // Omitted by systemd, so the D-Bus defaults have to be restated here:
-        // IO accounting off reads as u64::MAX, TimeoutCleanUSec defaults to
-        // infinity, and WatchdogUSec to 0.
+        // IO accounting off reads as u64::MAX, WatchdogUSec as 0.
         assert_eq!(stats.ioread_bytes, u64::MAX);
         assert_eq!(stats.ioread_operations, u64::MAX);
-        assert_eq!(stats.timeout_clean_usec, u64::MAX);
         assert_eq!(stats.watchdog_usec, 0);
     }
 
     #[test]
     fn test_map_service_stats_from_an_empty_reply() {
-        // Everything absent must still land on the D-Bus defaults rather than
-        // zeroing the unset sentinels.
+        // Everything absent must land on the D-Bus defaults rather than zeroing
+        // the unset sentinels. A service with accounting off reports [not set]
+        // over D-Bus, so reporting 0 bytes of memory would be a fabrication.
         let stats = map_service_stats(&output(None, None), 0);
         assert_eq!(stats.ioread_bytes, u64::MAX);
         assert_eq!(stats.ioread_operations, u64::MAX);
         assert_eq!(stats.timeout_clean_usec, u64::MAX);
+        assert_eq!(stats.cpuusage_nsec, u64::MAX);
+        assert_eq!(stats.memory_current, u64::MAX);
+        assert_eq!(stats.memory_available, u64::MAX);
+        assert_eq!(stats.tasks_current, u64::MAX);
+        // These two genuinely default to zero over D-Bus.
         assert_eq!(stats.watchdog_usec, 0);
-        assert_eq!(stats.cpuusage_nsec, 0);
         assert_eq!(stats.active_enter_timestamp, 0);
     }
 }

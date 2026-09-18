@@ -631,7 +631,7 @@ pub async fn apply_unit_details(
 
     let mut service_stats: HashMap<String, crate::units::ServiceStats> = HashMap::new();
     for name in &config.services {
-        let Some(output) = lookup.get(name).await else {
+        let Some(output) = lookup.get(name).await? else {
             continue;
         };
         // Cloned so the cache entry stays available to the oneshot pass below.
@@ -645,7 +645,7 @@ pub async fn apply_unit_details(
 
     let mut oneshot_types: HashMap<String, bool> = HashMap::new();
     for name in candidates {
-        if let Some(output) = lookup.get(&name).await {
+        if let Some(output) = lookup.get(&name).await? {
             oneshot_types.insert(name, crate::varlink_unit::is_oneshot(output));
         }
     }

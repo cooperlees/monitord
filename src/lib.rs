@@ -389,8 +389,11 @@ pub async fn stat_collector(
                                 }
                             }
                             // Per-service stats and service types come from
-                            // io.systemd.Unit.List; fall back to the D-Bus
-                            // oneshot lookup if that socket is unusable.
+                            // io.systemd.Unit.List. If that socket is unusable
+                            // the whole units collection is redone over D-Bus:
+                            // restoring only the oneshot override would leave
+                            // [services] entries partially filled from the
+                            // metrics, which is worse than either path alone.
                             if let Err(err) = crate::varlink_units::apply_unit_details(
                                 crate::varlink_unit::MANAGER_SOCKET_PATH,
                                 &stats_clone,
@@ -403,10 +406,11 @@ pub async fn stat_collector(
                                     "Varlink unit details failed, falling back to D-Bus: {:?}",
                                     err
                                 );
-                                crate::varlink_units::apply_oneshot_dbus_override(
-                                    &sdc_clone,
-                                    &stats_clone,
-                                    &config_clone.units,
+                                return crate::units::update_unit_stats(
+                                    config_clone,
+                                    sdc_clone,
+                                    stats_clone,
+                                    String::new(),
                                 )
                                 .await;
                             }

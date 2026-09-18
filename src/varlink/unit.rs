@@ -1,6 +1,9 @@
 //! Varlink proxy for the io.systemd.Unit interface on PID 1's socket.
 //! Adapted from the interface definition in systemd's
-//! `src/core/varlink-unit.c`. Available from systemd v258+.
+//! `src/core/varlink-unit.c`. The `List` method exists from v258, but the
+//! per-type context sections monitord reads land later: `src/core/varlink-service.c`
+//! and `src/core/varlink-timer.c` first appear in **v261**, so that is the real
+//! minimum for anything here.
 //!
 //! Only the fields monitord maps onto its own stats types are declared; serde
 //! drops the rest, which is most of a ~7KB per-unit reply.
@@ -39,6 +42,17 @@ pub struct ListOutput {
 pub struct UnitContext {
     #[serde(rename = "Service")]
     pub service: Option<ServiceContext>,
+    #[serde(rename = "Exec")]
+    pub exec: Option<ExecContext>,
+}
+
+/// Execution configuration shared by every unit type that runs processes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecContext {
+    /// Timeout for cleaning up resources after the unit exits. Lives here
+    /// rather than under `Service`, unlike the D-Bus property of the same name.
+    #[serde(rename = "TimeoutCleanUSec")]
+    pub timeout_clean_usec: Option<u64>,
 }
 
 /// Service-specific configuration.
@@ -50,10 +64,12 @@ pub struct ServiceContext {
     /// Configured restart delay in microseconds.
     #[serde(rename = "RestartUSec")]
     pub restart_usec: Option<u64>,
-    /// Timeout for cleaning up resources after the service exits.
-    #[serde(rename = "TimeoutCleanUSec")]
-    pub timeout_clean_usec: Option<u64>,
-    /// Watchdog timeout in microseconds.
+    /// Configured watchdog timeout in microseconds.
+    ///
+    /// This is the *configured* value; the D-Bus property of the same name is
+    /// the currently armed one, which reads `infinity` while a service is not
+    /// running. They agree for running services, which is the case monitord
+    /// collects, and systemd exposes no runtime equivalent over varlink.
     #[serde(rename = "WatchdogUSec")]
     pub watchdog_usec: Option<u64>,
 }
@@ -67,6 +83,10 @@ pub struct UnitRuntime {
     pub active_enter_timestamp: Option<Timestamp>,
     #[serde(rename = "InactiveExitTimestamp")]
     pub inactive_exit_timestamp: Option<Timestamp>,
+    /// Emitted once the unit has actually left the active state; absent (not
+    /// zero) before that.
+    #[serde(rename = "ActiveExitTimestamp")]
+    pub active_exit_timestamp: Option<Timestamp>,
     #[serde(rename = "CGroup")]
     pub cgroup: Option<CGroupRuntime>,
     #[serde(rename = "Service")]
@@ -104,12 +124,21 @@ pub struct CGroupRuntime {
 /// Service-specific runtime state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceRuntime {
+    /// Main process of the service, if it has one.
+    #[serde(rename = "MainPID")]
+    pub main_pid: Option<ProcessId>,
     /// errno-style status reported by the service via sd_notify.
     #[serde(rename = "StatusErrno")]
     pub status_errno: Option<i32>,
     /// Number of times systemd has restarted this service.
     #[serde(rename = "NRestarts")]
     pub n_restarts: Option<u32>,
+}
+
+/// A process reference, carrying the pid plus fields that disambiguate reuse.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessId {
+    pub pid: Option<u32>,
 }
 
 /// Errors that can occur in the io.systemd.Unit interface.
