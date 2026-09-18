@@ -267,7 +267,7 @@ pub async fn update_boot_blame_stats(
         }
     }
 
-    let boot_blame_stats = if config.varlink.enabled && config.boot_blame.varlink {
+    let boot_blame_stats = if config.use_varlink(&[config.boot_blame.varlink]) {
         match crate::varlink_boot::get_boot_blame_stats(
             crate::varlink_boot::METRICS_SOCKET_PATH,
             &config.boot_blame,

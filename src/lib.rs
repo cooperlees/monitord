@@ -252,7 +252,7 @@ pub async fn stat_collector(
         // Making it deterministic would mean holding the units collector until
         // this resolves, which would put the collector that gates the cycle
         // behind an unrelated socket.
-        let manager_describe = (config.varlink.enabled && config.system_state.varlink).then(|| {
+        let manager_describe = config.use_varlink(&[config.system_state.varlink]).then(|| {
             crate::varlink_system::shared_describe(
                 crate::varlink_system::MANAGER_SOCKET_PATH.to_string(),
             )
@@ -293,7 +293,7 @@ pub async fn stat_collector(
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             spawn_timed(&mut join_set, "networkd", collect_start_time, async move {
-                if config_clone.varlink.enabled && config_clone.networkd.varlink {
+                if config_clone.use_varlink(&[config_clone.networkd.varlink]) {
                     let socket_path = crate::varlink_networkd::NETWORK_SOCKET_PATH.to_string();
                     match crate::varlink_networkd::get_networkd_state(&socket_path).await {
                         Ok(networkd_stats) => {
@@ -356,7 +356,7 @@ pub async fn stat_collector(
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             spawn_timed(&mut join_set, "units", collect_start_time, async move {
-                if config_clone.varlink.enabled && config_clone.units.varlink {
+                if config_clone.use_varlink(&[config_clone.units.varlink]) {
                     let socket_path = crate::varlink_units::METRICS_SOCKET_PATH.to_string();
                     match crate::varlink_units::update_unit_stats(
                         Arc::clone(&config_clone),
