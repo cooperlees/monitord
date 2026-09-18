@@ -768,6 +768,13 @@ When varlink is enabled, monitord will attempt to collect stats via the varlink 
 automatically falling back to D-Bus or file-based collection when a varlink socket is unavailable
 (e.g., older systemd versions).
 
+Each varlink-capable collector (`[units]`, `[networkd]`, `[system-state]`, `[boot]`,
+`[machines]` for container collection) also has its own `varlink` toggle, defaulting to
+true. A collector uses varlink only when both the global switch and its section toggle are
+true, so collectors can be moved to varlink one at a time by setting a section toggle to
+false. `[system-state] varlink` also gates version collection, which shares the
+`Manager.Describe` call.
+
 ### Metrics collected via Varlink
 
 **Units** (`io.systemd.Metrics` — systemd v260+, v261+ for jobs queued, exact totals, load-state totals, time-in-state, service errno, and the `ActiveTimestamp`/`InactiveExitTimestamp` families boot blame reads):

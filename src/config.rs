@@ -66,12 +66,17 @@ impl Default for MonitordConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NetworkdConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus/files while the rest move to varlink.
+    pub varlink: bool,
     pub link_state_dir: PathBuf,
 }
 impl Default for NetworkdConfig {
     fn default() -> Self {
         NetworkdConfig {
             enabled: false,
+            varlink: true,
             link_state_dir: crate::networkd::NETWORKD_STATE_FILES.into(),
         }
     }
@@ -90,10 +95,18 @@ impl Default for Pid1Config {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SystemStateConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus while the rest move to varlink. Also gates the always-on
+    /// systemd version collection, which shares the `Manager.Describe` call.
+    pub varlink: bool,
 }
 impl Default for SystemStateConfig {
     fn default() -> Self {
-        SystemStateConfig { enabled: true }
+        SystemStateConfig {
+            enabled: true,
+            varlink: true,
+        }
     }
 }
 
@@ -116,6 +129,10 @@ impl Default for TimersConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnitsConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus while the rest move to varlink.
+    pub varlink: bool,
     pub state_stats: bool,
     pub state_stats_allowlist: HashSet<String>,
     pub state_stats_blocklist: HashSet<String>,
@@ -135,6 +152,7 @@ impl Default for UnitsConfig {
     fn default() -> Self {
         UnitsConfig {
             enabled: true,
+            varlink: true,
             state_stats: false,
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
@@ -150,6 +168,11 @@ impl Default for UnitsConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MachinesConfig {
     pub enabled: bool,
+    /// Use varlink APIs inside containers when the global `[varlink]`
+    /// switch is on. Default true: set false to keep all container
+    /// collection on D-Bus. Container paths additionally require the
+    /// matching collector section's own `varlink` toggle.
+    pub varlink: bool,
     pub allowlist: HashSet<String>,
     pub blocklist: HashSet<String>,
 }
@@ -157,6 +180,7 @@ impl Default for MachinesConfig {
     fn default() -> Self {
         MachinesConfig {
             enabled: true,
+            varlink: true,
             allowlist: HashSet::new(),
             blocklist: HashSet::new(),
         }
@@ -212,6 +236,10 @@ impl Default for DBusStatsConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BootBlameConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus while the rest move to varlink.
+    pub varlink: bool,
     pub cache_enabled: bool,
     pub cache_dir: String,
     pub num_slowest_units: u64,
@@ -222,6 +250,7 @@ impl Default for BootBlameConfig {
     fn default() -> Self {
         BootBlameConfig {
             enabled: false,
+            varlink: true,
             cache_enabled: true,
             cache_dir: "/run/monitord".to_string(),
             num_slowest_units: 5,
@@ -240,6 +269,9 @@ pub struct VerifyConfig {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct VarlinkConfig {
+    /// Global varlink master switch. Each varlink-capable collector section
+    /// has its own `varlink` opt-out; a collector uses varlink only when
+    /// both this and its section toggle are true.
     pub enabled: bool,
 }
 
@@ -298,6 +330,9 @@ impl TryFrom<Ini> for Config {
 
         // [networkd] section
         config.networkd.enabled = read_config_bool(&ini_config, "networkd", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "networkd", "varlink")? {
+            config.networkd.varlink = varlink;
+        }
         if let Some(link_state_dir) = ini_config.get("networkd", "link_state_dir") {
             config.networkd.link_state_dir = link_state_dir.into();
         }
@@ -313,6 +348,9 @@ impl TryFrom<Ini> for Config {
 
         // [system-state] section
         config.system_state.enabled = read_config_bool(&ini_config, "system-state", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "system-state", "varlink")? {
+            config.system_state.varlink = varlink;
+        }
 
         // [timers] section
         config.timers.enabled = read_config_bool(&ini_config, "timers", "enabled")?;
@@ -325,6 +363,9 @@ impl TryFrom<Ini> for Config {
 
         // [units] section
         config.units.enabled = read_config_bool(&ini_config, "units", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "units", "varlink")? {
+            config.units.varlink = varlink;
+        }
         config.units.state_stats = read_config_bool(&ini_config, "units", "state_stats")?;
         if let Some(state_stats_allowlist) = config_map.get("units.state_stats.allowlist") {
             config.units.state_stats_allowlist = state_stats_allowlist
@@ -358,6 +399,9 @@ impl TryFrom<Ini> for Config {
 
         // [machines] section
         config.machines.enabled = read_config_bool(&ini_config, "machines", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "machines", "varlink")? {
+            config.machines.varlink = varlink;
+        }
         if let Some(machines_allowlist) = config_map.get("machines.allowlist") {
             config.machines.allowlist = machines_allowlist.keys().map(|s| s.to_string()).collect();
         }
@@ -411,6 +455,9 @@ impl TryFrom<Ini> for Config {
 
         // [boot] section
         config.boot_blame.enabled = read_config_bool(&ini_config, "boot", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "boot", "varlink")? {
+            config.boot_blame.varlink = varlink;
+        }
         if let Some(cache_enabled) =
             read_config_optional_bool(&ini_config, "boot", "cache_enabled")?
         {
@@ -501,6 +548,7 @@ output_format = json-pretty
 
 [networkd]
 enabled = true
+varlink = false
 link_state_dir = /links
 
 [pid1]
@@ -512,6 +560,7 @@ bar.service
 
 [system-state]
 enabled = true
+varlink = false
 
 [timers]
 enabled = true
@@ -524,6 +573,7 @@ bar.timer
 
 [units]
 enabled = true
+varlink = false
 state_stats = true
 state_stats_time_in_state = true
 ignore_inactive_oneshot_services = true
@@ -539,6 +589,7 @@ bar.service
 
 [machines]
 enabled = true
+varlink = false
 
 [machines.allowlist]
 foo
@@ -579,6 +630,7 @@ foo2
 
 [boot]
 enabled = true
+varlink = false
 cache_enabled = false
 cache_dir = /tmp/monitord-test
 num_slowest_units = 10
@@ -600,7 +652,14 @@ output_format = json-flat
 
     #[test]
     fn test_default_config() {
-        assert!(Config::default().units.enabled)
+        assert!(Config::default().units.enabled);
+        // Per-section varlink toggles default to following the global switch
+        let default_config = Config::default();
+        assert!(default_config.units.varlink);
+        assert!(default_config.networkd.varlink);
+        assert!(default_config.system_state.varlink);
+        assert!(default_config.machines.varlink);
+        assert!(default_config.boot_blame.varlink);
     }
 
     #[test]
@@ -678,6 +737,39 @@ slowest_units_count = 0
     }
 
     #[test]
+    fn test_per_section_varlink_toggle_defaults_and_override() {
+        // Only [units] opts out; every other section keeps the default true,
+        // so collectors can move to varlink one at a time.
+        let varlink_override_config = r###"
+[monitord]
+output_format = json
+
+[varlink]
+enabled = true
+
+[units]
+varlink = false
+"###;
+        let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
+        monitord_config
+            .write_all(varlink_override_config.as_bytes())
+            .expect("Unable to write out temp config file");
+
+        let mut ini_config = Ini::new();
+        let _config_map = ini_config
+            .load(monitord_config.path())
+            .expect("Unable to load ini config");
+
+        let parsed_config: Config = ini_config.try_into().expect("Failed to parse config");
+        assert!(parsed_config.varlink.enabled);
+        assert!(!parsed_config.units.varlink);
+        assert!(parsed_config.networkd.varlink);
+        assert!(parsed_config.system_state.varlink);
+        assert!(parsed_config.machines.varlink);
+        assert!(parsed_config.boot_blame.varlink);
+    }
+
+    #[test]
     fn test_full_config() {
         let expected_config = Config {
             monitord: MonitordConfig {
@@ -690,11 +782,15 @@ slowest_units_count = 0
             },
             networkd: NetworkdConfig {
                 enabled: true,
+                varlink: false,
                 link_state_dir: "/links".into(),
             },
             pid1: Pid1Config { enabled: true },
             services: HashSet::from([String::from("foo.service"), String::from("bar.service")]),
-            system_state: SystemStateConfig { enabled: true },
+            system_state: SystemStateConfig {
+                enabled: true,
+                varlink: false,
+            },
             timers: TimersConfig {
                 enabled: true,
                 allowlist: HashSet::from([String::from("foo.timer")]),
@@ -702,6 +798,7 @@ slowest_units_count = 0
             },
             units: UnitsConfig {
                 enabled: true,
+                varlink: false,
                 state_stats: true,
                 state_stats_allowlist: HashSet::from([String::from("foo.service")]),
                 state_stats_blocklist: HashSet::from([String::from("bar.service")]),
@@ -713,6 +810,7 @@ slowest_units_count = 0
             },
             machines: MachinesConfig {
                 enabled: true,
+                varlink: false,
                 allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
                 blocklist: HashSet::from([String::from("foo2")]),
             },
@@ -733,6 +831,7 @@ slowest_units_count = 0
             },
             boot_blame: BootBlameConfig {
                 enabled: true,
+                varlink: false,
                 cache_enabled: false,
                 cache_dir: "/tmp/monitord-test".to_string(),
                 num_slowest_units: 10,
