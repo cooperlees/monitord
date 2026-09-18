@@ -298,6 +298,7 @@ pub async fn update_machines_stats(
                             // Timer properties are not exposed via varlink; collect
                             // via the container's D-Bus connection (same backfill
                             // as the host path).
+                            let timer_start = std::time::Instant::now();
                             match crate::timer::collect_all_timers_dbus(
                                 &sdc_clone,
                                 &config_clone,
@@ -305,8 +306,14 @@ pub async fn update_machines_stats(
                             .await
                             {
                                 Ok(timer_stats) => {
+                                    let elapsed_ms =
+                                        timer_start.elapsed().as_secs_f64() * 1000.0;
                                     let mut ms = stats_clone.write().await;
-                                    crate::timer::merge_timer_stats(&mut ms.units, timer_stats);
+                                    crate::timer::merge_timer_stats(
+                                        &mut ms.units,
+                                        timer_stats,
+                                        elapsed_ms,
+                                    );
                                 }
                                 Err(err) => {
                                     warn!(

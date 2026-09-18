@@ -133,10 +133,18 @@ pub async fn collect_timer_stats(
 /// The varlink metrics API does not expose timer properties, so both the host
 /// (lib.rs) and container (machines.rs) varlink paths backfill them via
 /// `collect_all_timers_dbus` and merge the result here.
+///
+/// `elapsed_ms` is the wall time of that backfill. It is accounted the same way
+/// the D-Bus path accounts its own timer work — duration into `per_unit_loop_ms`
+/// and one `timer_dbus_fetches` per timer resolved — so the inner timings stay
+/// comparable between the two paths instead of under-reporting the varlink one.
 pub fn merge_timer_stats(
     target: &mut crate::units::SystemdUnitStats,
     collected: crate::units::SystemdUnitStats,
+    elapsed_ms: f64,
 ) {
+    target.collection_timings.per_unit_loop_ms += elapsed_ms;
+    target.collection_timings.timer_dbus_fetches += collected.timer_stats.len() as u64;
     target.timer_stats = collected.timer_stats;
     target.timer_persistent_units = collected.timer_persistent_units;
     target.timer_remain_after_elapse = collected.timer_remain_after_elapse;
@@ -217,7 +225,7 @@ mod tests {
         collected.timer_persistent_units = 1;
         collected.timer_remain_after_elapse = 2;
 
-        merge_timer_stats(&mut target, collected);
+        merge_timer_stats(&mut target, collected, 12.5);
 
         assert_eq!(target.timer_stats.len(), 1);
         assert!(
@@ -231,5 +239,36 @@ mod tests {
         assert_eq!(target.timer_remain_after_elapse, 2);
         // Untouched aggregates stay zero.
         assert_eq!(target.total_units, 0);
+    }
+
+    #[test]
+    fn test_merge_timer_stats_accounts_the_backfill() {
+        // The varlink path has already recorded its own parse loop, so the
+        // backfill adds to per_unit_loop_ms rather than replacing it.
+        let mut target = crate::units::SystemdUnitStats::default();
+        target.collection_timings.per_unit_loop_ms = 2.5;
+        let mut collected = crate::units::SystemdUnitStats::default();
+        for name in ["foo.timer", "bar.timer"] {
+            collected
+                .timer_stats
+                .insert(name.to_string(), TimerStats::default());
+        }
+
+        merge_timer_stats(&mut target, collected, 10.0);
+
+        assert_eq!(target.collection_timings.per_unit_loop_ms, 12.5);
+        assert_eq!(target.collection_timings.timer_dbus_fetches, 2);
+    }
+
+    #[test]
+    fn test_merge_timer_stats_with_no_timers() {
+        // An empty allowlist result still costs a ListUnits call, so the time
+        // is accounted even though no timer was fetched.
+        let mut target = crate::units::SystemdUnitStats::default();
+
+        merge_timer_stats(&mut target, crate::units::SystemdUnitStats::default(), 3.0);
+
+        assert_eq!(target.collection_timings.per_unit_loop_ms, 3.0);
+        assert_eq!(target.collection_timings.timer_dbus_fetches, 0);
     }
 }

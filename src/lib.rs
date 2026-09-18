@@ -364,12 +364,18 @@ pub async fn stat_collector(
                     {
                         Ok(()) => {
                             // Timer properties are not yet exposed via varlink; collect via D-Bus.
+                            let timer_start = Instant::now();
                             match crate::timer::collect_all_timers_dbus(&sdc_clone, &config_clone)
                                 .await
                             {
                                 Ok(timer_stats) => {
+                                    let elapsed_ms = timer_start.elapsed().as_secs_f64() * 1000.0;
                                     let mut ms = stats_clone.write().await;
-                                    crate::timer::merge_timer_stats(&mut ms.units, timer_stats);
+                                    crate::timer::merge_timer_stats(
+                                        &mut ms.units,
+                                        timer_stats,
+                                        elapsed_ms,
+                                    );
                                 }
                                 Err(err) => {
                                     warn!("Varlink timer stats (D-Bus fallback) failed: {:?}", err);
