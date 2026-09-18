@@ -791,6 +791,10 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
   until PID 1 re-execs)
 - Falls back to the D-Bus `SystemState`/`Version` properties if the socket is unavailable
 
+**Boot blame** (`io.systemd.Metrics` — systemd v261+):
+- Slowest units at boot, from the per-unit `ActiveTimestamp`/`InactiveExitTimestamp` metrics rather than a D-Bus property read per unit
+- Falls back to D-Bus if the socket is unavailable
+
 **Networkd interfaces** (`io.systemd.Network.Describe` — systemd v257+):
 - Per-interface operational, carrier, admin, and address states
 - Falls back to parsing `/run/systemd/netif/links` state files if the socket is unavailable

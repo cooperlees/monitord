@@ -388,7 +388,7 @@ pub fn parse_one_metric(
 /// Collect all metrics from the varlink socket.
 /// Runs on a blocking thread with a dedicated runtime because the zlink
 /// stream is !Send and cannot be held across await points in a Send future.
-async fn collect_metrics(socket_path: String) -> anyhow::Result<Vec<ListOutput>> {
+pub(crate) async fn collect_metrics(socket_path: String) -> anyhow::Result<Vec<ListOutput>> {
     tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
