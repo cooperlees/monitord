@@ -145,6 +145,23 @@ impl TryFrom<String> for SystemdVersion {
     }
 }
 
+/// Map systemd's system state string to our enum.
+///
+/// Shared by the D-Bus `SystemState` property and the varlink
+/// `io.systemd.Manager.Describe` runtime field, which use the same vocabulary.
+pub fn parse_system_state(system_state: &str) -> SystemdSystemState {
+    match system_state {
+        "initializing" => SystemdSystemState::initializing,
+        "starting" => SystemdSystemState::starting,
+        "running" => SystemdSystemState::running,
+        "degraded" => SystemdSystemState::degraded,
+        "maintenance" => SystemdSystemState::maintenance,
+        "stopping" => SystemdSystemState::stopping,
+        "offline" => SystemdSystemState::offline,
+        _ => SystemdSystemState::unknown,
+    }
+}
+
 //pub fn get_system_state(dbus_address: &str) -> Result<SystemdSystemState, dbus::Error> {
 pub async fn get_system_state(
     connection: &zbus::Connection,
@@ -156,16 +173,7 @@ pub async fn get_system_state(
         .map_err(MonitordSystemError::ZbusError)?;
 
     let state = match p.system_state().await {
-        Ok(system_state) => match system_state.as_str() {
-            "initializing" => crate::system::SystemdSystemState::initializing,
-            "starting" => crate::system::SystemdSystemState::starting,
-            "running" => crate::system::SystemdSystemState::running,
-            "degraded" => crate::system::SystemdSystemState::degraded,
-            "maintenance" => crate::system::SystemdSystemState::maintenance,
-            "stopping" => crate::system::SystemdSystemState::stopping,
-            "offline" => crate::system::SystemdSystemState::offline,
-            _ => crate::system::SystemdSystemState::unknown,
-        },
+        Ok(system_state) => parse_system_state(&system_state),
         Err(err) => {
             error!("Failed to get system-state: {:?}", err);
             crate::system::SystemdSystemState::unknown
@@ -238,6 +246,14 @@ mod tests {
             format!("{}", SystemdSystemState::running),
             String::from("running"),
         )
+    }
+
+    #[test]
+    fn test_parse_system_state() {
+        assert_eq!(parse_system_state("running"), SystemdSystemState::running);
+        assert_eq!(parse_system_state("degraded"), SystemdSystemState::degraded);
+        // Anything systemd grows later reads as unknown rather than failing.
+        assert_eq!(parse_system_state("brand-new"), SystemdSystemState::unknown);
     }
 
     #[test]

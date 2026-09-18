@@ -37,6 +37,7 @@ pub mod unit_constants;
 pub mod units;
 pub mod varlink;
 pub mod varlink_networkd;
+pub mod varlink_system;
 pub mod varlink_units;
 pub mod verify;
 
@@ -239,13 +240,25 @@ pub async fn stat_collector(
         info!("Starting stat collection run");
 
         // Always collect systemd version
-
-        spawn_timed(
-            &mut join_set,
-            "version",
-            collect_start_time,
-            crate::system::update_version(sdc.clone(), locked_machine_stats.clone()),
-        );
+        {
+            let config_clone = Arc::clone(&config);
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_machine_stats.clone();
+            spawn_timed(&mut join_set, "version", collect_start_time, async move {
+                if config_clone.varlink.enabled {
+                    let socket_path = crate::varlink_system::MANAGER_SOCKET_PATH;
+                    match crate::varlink_system::update_version(socket_path, stats_clone.clone())
+                        .await
+                    {
+                        Ok(()) => return Ok(()),
+                        Err(err) => {
+                            warn!("Varlink version failed, falling back to D-Bus: {:?}", err);
+                        }
+                    }
+                }
+                crate::system::update_version(sdc_clone, stats_clone).await
+            });
+        }
 
         // Collect pid1 procfs stats
         if config.pid1.enabled {
@@ -291,11 +304,33 @@ pub async fn stat_collector(
 
         // Run system running (SystemState) state collector
         if config.system_state.enabled {
+            let config_clone = Arc::clone(&config);
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_machine_stats.clone();
             spawn_timed(
                 &mut join_set,
                 "system_state",
                 collect_start_time,
-                crate::system::update_system_stats(sdc.clone(), locked_machine_stats.clone()),
+                async move {
+                    if config_clone.varlink.enabled {
+                        let socket_path = crate::varlink_system::MANAGER_SOCKET_PATH;
+                        match crate::varlink_system::update_system_stats(
+                            socket_path,
+                            stats_clone.clone(),
+                        )
+                        .await
+                        {
+                            Ok(()) => return Ok(()),
+                            Err(err) => {
+                                warn!(
+                                    "Varlink system state failed, falling back to D-Bus: {:?}",
+                                    err
+                                );
+                            }
+                        }
+                    }
+                    crate::system::update_system_stats(sdc_clone, stats_clone).await
+                },
             );
         }
 
