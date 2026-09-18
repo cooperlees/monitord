@@ -239,16 +239,23 @@ pub async fn stat_collector(
         let run_guard = run_span.enter();
         info!("Starting stat collection run");
 
+        // One Manager.Describe serves both the version and system state
+        // collectors: PID 1 handles varlink requests one at a time, so a second
+        // call would sit behind the units collector's whole metrics stream.
+        let manager_describe = config.varlink.enabled.then(|| {
+            crate::varlink_system::shared_describe(
+                crate::varlink_system::MANAGER_SOCKET_PATH.to_string(),
+            )
+        });
+
         // Always collect systemd version
         {
-            let config_clone = Arc::clone(&config);
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
+            let describe = manager_describe.clone();
             spawn_timed(&mut join_set, "version", collect_start_time, async move {
-                if config_clone.varlink.enabled {
-                    let socket_path = crate::varlink_system::MANAGER_SOCKET_PATH;
-                    match crate::varlink_system::update_version(socket_path, stats_clone.clone())
-                        .await
+                if let Some(describe) = describe {
+                    match crate::varlink_system::update_version(describe, stats_clone.clone()).await
                     {
                         Ok(()) => return Ok(()),
                         Err(err) => {
@@ -304,18 +311,17 @@ pub async fn stat_collector(
 
         // Run system running (SystemState) state collector
         if config.system_state.enabled {
-            let config_clone = Arc::clone(&config);
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
+            let describe = manager_describe.clone();
             spawn_timed(
                 &mut join_set,
                 "system_state",
                 collect_start_time,
                 async move {
-                    if config_clone.varlink.enabled {
-                        let socket_path = crate::varlink_system::MANAGER_SOCKET_PATH;
+                    if let Some(describe) = describe {
                         match crate::varlink_system::update_system_stats(
-                            socket_path,
+                            describe,
                             stats_clone.clone(),
                         )
                         .await
