@@ -184,8 +184,11 @@ pub fn parse_one_metric(
                 return Ok(());
             }
             let value = metric.value_as_int();
-            // Negative values are expected here: systemd reports failures as
-            // negative errno, matching the D-Bus StatusErrno property.
+            // systemd rejects a negative ERRNO= in sd_notify ("Numerical result
+            // out of range") and emits this metric unsigned, so the value is
+            // non-negative. It is still stored as i32 to match the D-Bus
+            // StatusErrno property that ServiceStats is typed from, which is
+            // what makes the conversion below worth checking.
             let status_errno: i32 = match value.try_into() {
                 Ok(v) => v,
                 Err(_) => {
@@ -787,14 +790,14 @@ mod tests {
         let config = default_units_config();
         let services = HashSet::from(["my-service.service".to_string()]);
 
-        // systemd reports service failures as a negative errno.
+        // A service reporting EACCES via sd_notify's ERRNO=13, as seen live.
         let metric = ListOutput {
             name: "io.systemd.Manager.StatusErrno".to_string(),
-            value: int_value(-69),
+            value: int_value(13),
             object: Some("my-service.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric, &config, &services)
+        parse_one_metric(&mut stats, &metric, &config, &services, false)
             .expect("metric should parse successfully");
         assert_eq!(
             stats
@@ -802,7 +805,26 @@ mod tests {
                 .get("my-service.service")
                 .expect("my-service.service should have a service_stats entry")
                 .status_errno,
-            -69
+            13
+        );
+
+        // Out of i32 range: warn and leave the previous value alone rather than
+        // wrapping, since the metric is serialized unsigned.
+        let out_of_range = ListOutput {
+            name: "io.systemd.Manager.StatusErrno".to_string(),
+            value: int_value(i64::from(i32::MAX) + 1),
+            object: Some("my-service.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &out_of_range, &config, &services, false)
+            .expect("out_of_range should parse successfully");
+        assert_eq!(
+            stats
+                .service_stats
+                .get("my-service.service")
+                .expect("my-service.service should have a service_stats entry")
+                .status_errno,
+            13
         );
 
         // Units outside [services] get no service_stats entry even with data present.
@@ -812,7 +834,7 @@ mod tests {
             object: Some("other.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &other_metric, &config, &services)
+        parse_one_metric(&mut stats, &other_metric, &config, &services, false)
             .expect("other_metric should parse successfully");
         assert!(!stats.service_stats.contains_key("other.service"));
     }
