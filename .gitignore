@@ -17,3 +17,6 @@ Cargo.lock
 
 # Mac
 .DS_Store
+
+# Python bytecode from the integration test helpers
+__pycache__
