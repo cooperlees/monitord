@@ -603,6 +603,70 @@ pub async fn apply_oneshot_dbus_override(
     );
 }
 
+/// Collect per-unit detail over varlink: `ServiceStats` for the `[services]`
+/// list, and the service types the oneshot health override needs.
+///
+/// Both come from `io.systemd.Unit.List`, through one connection and one cache,
+/// so a unit wanted by both is fetched once. This replaces the per-service and
+/// oneshot-type D-Bus fetches the varlink path used to fall back to.
+///
+/// Selection runs under a read lock and the varlink round trips hold no lock at
+/// all, matching how the D-Bus override behaved.
+pub async fn apply_unit_details(
+    socket_path: &str,
+    locked_machine_stats: &Arc<RwLock<MachineStats>>,
+    config: &crate::config::Config,
+    fs_root: &str,
+) -> anyhow::Result<()> {
+    let candidates = {
+        let machine_stats = locked_machine_stats.read().await;
+        select_oneshot_candidates(&machine_stats.units, &config.units)
+    };
+    if candidates.is_empty() && config.services.is_empty() {
+        return Ok(());
+    }
+
+    let fetch_start = Instant::now();
+    let mut lookup = crate::varlink_unit::UnitLookup::connect(socket_path).await?;
+
+    let mut service_stats: HashMap<String, crate::units::ServiceStats> = HashMap::new();
+    for name in &config.services {
+        let Some(output) = lookup.get(name).await else {
+            continue;
+        };
+        // Cloned so the cache entry stays available to the oneshot pass below.
+        let output = output.clone();
+        let processes = crate::varlink_unit::count_cgroup_processes(fs_root, &output).await;
+        service_stats.insert(
+            name.clone(),
+            crate::varlink_unit::map_service_stats(&output, processes),
+        );
+    }
+
+    let mut oneshot_types: HashMap<String, bool> = HashMap::new();
+    for name in candidates {
+        if let Some(output) = lookup.get(&name).await {
+            oneshot_types.insert(name, crate::varlink_unit::is_oneshot(output));
+        }
+    }
+
+    let fetch_elapsed_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
+    debug!(
+        "Varlink unit details: {} unit(s) fetched for {} service(s) + {} oneshot candidate(s) in {:.2}ms",
+        lookup.fetches(),
+        config.services.len(),
+        oneshot_types.len(),
+        fetch_elapsed_ms
+    );
+    let mut machine_stats = locked_machine_stats.write().await;
+    machine_stats.units.service_stats.extend(service_stats);
+    apply_oneshot_types(&mut machine_stats.units, &oneshot_types, &config.units);
+    // The phase still folds into per_unit_loop_ms like its D-Bus predecessor,
+    // but nothing here touches D-Bus, so the *_dbus_fetches counters stay put.
+    machine_stats.units.collection_timings.per_unit_loop_ms += fetch_elapsed_ms;
+    Ok(())
+}
+
 /// Sum per-type counts as a fallback total for systemd versions whose metrics
 /// lack `UnitsTotal`. Mirrors what the D-Bus path computes as `units.len()`,
 /// except unmapped types (e.g. swap) are missed.

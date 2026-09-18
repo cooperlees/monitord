@@ -41,6 +41,11 @@ ALLOWLIST_RENAMES: dict[str, str] = {
     "sshd.service": "dbus-broker.service",
 }
 
+# [services] gets pointed at a real unit too, so the per-service stats both
+# paths now produce are actually compared. One real service is enough: the
+# mapping is shared, so a second would exercise no new code.
+SERVICE_RENAMES: dict[str, str] = {"sshd.service": "dbus-broker.service"}
+
 # Real Rawhide units the generated config tracks, and the states the parity
 # comparison assumes. kmod-static-nodes is inactive + oneshot (exercises the
 # oneshot health override); dbus-broker is active (guards the other direction).
@@ -63,12 +68,20 @@ FIXTURE_UNITS: dict[str, dict[str, str]] = {
 #                               service_dbus_fetches) so they must not be
 #                               expected to match by design
 #   time_in_state_usecs         now-relative per-unit value, varies between runs
+#   services.*.cpuusage_nsec    live cgroup accounting, sampled seconds apart:
+#   services.*.memory_current   CPU time only ever grows and memory moves under
+#   services.*.memory_available a running service. Every other ServiceStats
+#                               field is compared, including the timestamps,
+#                               process/task counts and the unset sentinels.
 EXCLUDED_KEY_PARTS: tuple[str, ...] = (
     "monitord.pid1.",
     "stat_collection_run_time_ms",
     "collector_timings.",
     "collection_timings.",
     "time_in_state_usecs",
+    "cpuusage_nsec",
+    "memory_current",
+    "memory_available",
 )
 
 
@@ -173,9 +186,7 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
     """Derive the (D-Bus, varlink) test configs from the stock monitord.conf.
 
     The stock config tracks units that do not exist in the container, so point
-    the state_stats allowlist at the real fixture units instead. [services] is
-    deliberately left pointing at nonexistent units: full ServiceStats has no
-    varlink parity yet, so both paths must produce empty service_stats. The
+    the state_stats allowlist and [services] at real fixture units instead. The
     timers allowlist is emptied so per-timer stats (backfilled over D-Bus on the
     varlink path) are compared too — timer timestamps are absolute and stable
     across the seconds-apart runs.
@@ -186,6 +197,8 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
     for line in conf_text.splitlines():
         if line.startswith("["):
             section = line.strip()
+        elif section == "[services]":
+            line = SERVICE_RENAMES.get(line.strip(), line)
         elif section == "[units.state_stats.allowlist]":
             # Tracked per substitution, not by searching the finished config:
             # the fixture units also appear in other sections, so a global

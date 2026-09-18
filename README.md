@@ -777,6 +777,7 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 - Per-unit health status (computed from active + load state)
 - Per-service restart counts (`nrestarts`)
 - Per-service errno status (`StatusErrno`, v261+; unavailable (0) on v260)
+- Full per-service stats for units in `[services]` via `io.systemd.Unit.List` (systemd v258+): CPU, memory, tasks, process count, timestamps and timeouts, matching what the D-Bus path reports
 - Falls back to D-Bus collection if the socket is unavailable
 
 **System state and version** (`io.systemd.Manager.Describe` — systemd v258+):

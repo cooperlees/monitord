@@ -46,13 +46,13 @@ class BuildCiConfigsTest(unittest.TestCase):
         self.assertIn("dbus-broker.service", allowlist)
         self.assertNotIn("chrony.service", allowlist)
 
-    def test_services_section_left_alone(self) -> None:
-        # [services] must keep pointing at units the container does not have:
-        # full ServiceStats has no varlink parity yet, so both paths are only
-        # comparable while service_stats stays empty.
+    def test_services_section_tracks_a_real_unit(self) -> None:
+        # Both paths now produce full per-service stats, so [services] points at
+        # a unit the container actually has — otherwise service_stats stays
+        # empty and the comparison proves nothing about them.
         services = section_body(self.dbus_conf, "[services]")
-        self.assertIn("chrony.service", services)
-        self.assertIn("sshd.service", services)
+        self.assertIn("dbus-broker.service", services)
+        self.assertNotIn("sshd.service", services)
 
     def test_timers_allowlist_emptied(self) -> None:
         self.assertNotIn("fstrim.timer", self.dbus_conf)
@@ -123,9 +123,30 @@ class DiffOutputsTest(unittest.TestCase):
             "monitord.collector_timings.0.elapsed_ms": 1.0,
             "monitord.units.collection_timings.timer_dbus_fetches": 4,
             "monitord.unit_states.foo.service.time_in_state_usecs": 100,
+            "monitord.services.foo.service.cpuusage_nsec": 5,
+            "monitord.services.foo.service.memory_current": 5,
+            "monitord.services.foo.service.memory_available": 5,
         }
         varlink_stats = {key: 999 for key in dbus_stats}
         self.assertEqual(vit.diff_outputs(dbus_stats, varlink_stats), [])
+
+    def test_stable_service_fields_are_compared(self) -> None:
+        # The live cgroup counters are excluded, but the rest of ServiceStats
+        # must still be diffed — that is what proves the varlink mapping,
+        # including the unset sentinels systemd omits.
+        for field in (
+            "status_errno",
+            "processes",
+            "tasks_current",
+            "restart_usec",
+            "timeout_clean_usec",
+            "ioread_bytes",
+            "active_enter_timestamp",
+        ):
+            key = f"monitord.services.foo.service.{field}"
+            self.assertEqual(
+                len(vit.diff_outputs({key: 1}, {key: 2})), 1, f"{field} not compared"
+            )
 
 
 class FindFallbacksTest(unittest.TestCase):
