@@ -143,11 +143,21 @@ pub fn merge_timer_stats(
     collected: crate::units::SystemdUnitStats,
     elapsed_ms: f64,
 ) {
-    target.collection_timings.per_unit_loop_ms += elapsed_ms;
+    record_backfill_duration(target, elapsed_ms);
     target.collection_timings.timer_dbus_fetches += collected.timer_stats.len() as u64;
     target.timer_stats = collected.timer_stats;
     target.timer_persistent_units = collected.timer_persistent_units;
     target.timer_remain_after_elapse = collected.timer_remain_after_elapse;
+}
+
+/// Account a timer backfill that produced no stats.
+///
+/// A failed backfill still spent D-Bus time — a `dbus_timeout` worth of it, if
+/// that is how it failed — so the duration is recorded even though there is
+/// nothing to merge and no fetch to count. Leaving it out would hide the
+/// slowest case from `per_unit_loop_ms`.
+pub fn record_backfill_duration(target: &mut crate::units::SystemdUnitStats, elapsed_ms: f64) {
+    target.collection_timings.per_unit_loop_ms += elapsed_ms;
 }
 
 /// Collect all timer stats via D-Bus and return them ready to merge into unit stats.
@@ -258,6 +268,20 @@ mod tests {
 
         assert_eq!(target.collection_timings.per_unit_loop_ms, 12.5);
         assert_eq!(target.collection_timings.timer_dbus_fetches, 2);
+    }
+
+    #[test]
+    fn test_record_backfill_duration_without_stats() {
+        // A backfill that failed — a dbus_timeout worth of wall time is the
+        // case worth seeing, so it is accounted with no fetch counted.
+        let mut target = crate::units::SystemdUnitStats::default();
+        target.collection_timings.per_unit_loop_ms = 1.5;
+
+        record_backfill_duration(&mut target, 5000.0);
+
+        assert_eq!(target.collection_timings.per_unit_loop_ms, 5001.5);
+        assert_eq!(target.collection_timings.timer_dbus_fetches, 0);
+        assert!(target.timer_stats.is_empty());
     }
 
     #[test]
