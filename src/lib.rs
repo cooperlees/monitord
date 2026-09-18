@@ -364,15 +364,27 @@ pub async fn stat_collector(
                     {
                         Ok(()) => {
                             // Timer properties are not yet exposed via varlink; collect via D-Bus.
-                            match crate::timer::collect_all_timers_dbus(&sdc_clone, &config_clone)
-                                .await
-                            {
+                            let timer_start = Instant::now();
+                            let timer_result =
+                                crate::timer::collect_all_timers_dbus(&sdc_clone, &config_clone)
+                                    .await;
+                            let timer_elapsed_ms = timer_start.elapsed().as_secs_f64() * 1000.0;
+                            match timer_result {
                                 Ok(timer_stats) => {
                                     let mut ms = stats_clone.write().await;
-                                    crate::timer::merge_timer_stats(&mut ms.units, timer_stats);
+                                    crate::timer::merge_timer_stats(
+                                        &mut ms.units,
+                                        timer_stats,
+                                        timer_elapsed_ms,
+                                    );
                                 }
                                 Err(err) => {
                                     warn!("Varlink timer stats (D-Bus fallback) failed: {:?}", err);
+                                    let mut ms = stats_clone.write().await;
+                                    crate::timer::record_backfill_duration(
+                                        &mut ms.units,
+                                        timer_elapsed_ms,
+                                    );
                                 }
                             }
                             // Service type is not exposed via varlink metrics; resolve

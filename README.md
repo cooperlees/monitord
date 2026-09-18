@@ -486,10 +486,11 @@ The per-collector lines are also emitted to logs at `debug!` level. The end-of-c
 (`varlink_units::parse_metrics` plus the oneshot D-Bus fallback). In the
 varlink case, `list_units_ms` is the bulk varlink `List` call on
 `io.systemd.Manager` and `per_unit_loop_ms` covers the local parse loop plus
-the oneshot `Service.Type` lookup phase; `service_dbus_fetches` counts the
-successful lookups. `state_dbus_fetches` and `timer_dbus_fetches` stay at zero
-on the varlink path (time-in-state comes from the `StateChangeTimestamp`
-metric rather than a D-Bus fetch; the timer backfill is not counted). This
+the two D-Bus phases that have no varlink equivalent yet — the oneshot
+`Service.Type` lookups and the timer backfill. `service_dbus_fetches` counts
+the successful type lookups and `timer_dbus_fetches` the timers resolved, as
+on the D-Bus path. Only `state_dbus_fetches` stays at zero, since time-in-state
+comes from the `StateChangeTimestamp` metric rather than a D-Bus fetch. This
 makes `varlink.enabled = true` vs `false` directly comparable on the same host.
 
 **Convention for new collectors moved to varlink:** when porting a collector

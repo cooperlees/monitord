@@ -141,8 +141,10 @@ pub struct SystemdUnitStats {
     pub unit_states: HashMap<String, UnitStates>,
     /// Inner timing breakdown for this collector. Zero-valued before the first
     /// run completes. On the varlink path, `list_units_ms`/`per_unit_loop_ms`
-    /// cover the varlink fetch, local parse, and oneshot D-Bus fallback, and
-    /// only `service_dbus_fetches` may be nonzero (oneshot type lookups).
+    /// cover the varlink fetch, local parse, and the two D-Bus phases that have
+    /// no varlink equivalent yet — the oneshot type lookups and the timer
+    /// backfill — so `service_dbus_fetches` and `timer_dbus_fetches` may both be
+    /// nonzero there. Only `state_dbus_fetches` stays zero on that path.
     pub collection_timings: UnitsCollectionTimings,
 }
 

@@ -298,20 +298,32 @@ pub async fn update_machines_stats(
                             // Timer properties are not exposed via varlink; collect
                             // via the container's D-Bus connection (same backfill
                             // as the host path).
-                            match crate::timer::collect_all_timers_dbus(
+                            let timer_start = std::time::Instant::now();
+                            let timer_result = crate::timer::collect_all_timers_dbus(
                                 &sdc_clone,
                                 &config_clone,
                             )
-                            .await
-                            {
+                            .await;
+                            let timer_elapsed_ms =
+                                timer_start.elapsed().as_secs_f64() * 1000.0;
+                            match timer_result {
                                 Ok(timer_stats) => {
                                     let mut ms = stats_clone.write().await;
-                                    crate::timer::merge_timer_stats(&mut ms.units, timer_stats);
+                                    crate::timer::merge_timer_stats(
+                                        &mut ms.units,
+                                        timer_stats,
+                                        timer_elapsed_ms,
+                                    );
                                 }
                                 Err(err) => {
                                     warn!(
                                         "Varlink timer stats (D-Bus fallback) failed for container {}: {:?}",
                                         machine_name, err
+                                    );
+                                    let mut ms = stats_clone.write().await;
+                                    crate::timer::record_backfill_duration(
+                                        &mut ms.units,
+                                        timer_elapsed_ms,
                                     );
                                 }
                             }
