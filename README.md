@@ -314,6 +314,11 @@ Is semi pretty too + custom. All unittested ...
 Prometheus metric naming conventions for duration units, which keeps unit semantics
 clear and consistent when these keys are transformed into Prometheus metric names.
 
+This sample is from a host with no containers, so it deliberately omits the
+`machines.<name>.*` key space. Those keys duplicate the top level ones documented
+here, just prefixed per machine — see [Machines support](#machines-support) — so
+they are not repeated below.
+
 ```json
 {
   "boot.blame.cpe_chef.service": 103.05,

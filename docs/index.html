@@ -517,6 +517,10 @@ Is semi pretty too + custom. All unittested ...</p>
 <p><code>stat_collection_run_time_ms</code> is emitted in <strong>milliseconds</strong> (with <code>_ms</code> suffix) to follow
 Prometheus metric naming conventions for duration units, which keeps unit semantics
 clear and consistent when these keys are transformed into Prometheus metric names.</p>
+<p>This sample is from a host with no containers, so it deliberately omits the
+<code>machines.&lt;name&gt;.*</code> key space. Those keys duplicate the top level ones documented
+here, just prefixed per machine — see <a href="#machines-support">Machines support</a> — so
+they are not repeated below.</p>
 <pre><code class="language-json">{
   &quot;boot.blame.cpe_chef.service&quot;: 103.05,
   &quot;boot.blame.dev-ttyS0.device&quot;: 15.809,

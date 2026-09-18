@@ -79,3 +79,7 @@ Single-crate project (both library and binary). The binary (`main.rs`) parses CL
 - When adding new output values, add them to the sample json-flat output in
   README.md (the `### json-flat` block under Output Formats), in sorted key
   order to match the `BTreeMap` flat output
+- Exception: do not add `machines.<name>.*` keys to that sample. They are the
+  same keys as the top level namespaces, just prefixed per machine, so listing
+  them only doubles the block. The `## Machines support` section documents the
+  prefix instead.
