@@ -7,7 +7,7 @@ use indexmap::map::IndexMap;
 use int_enum::IntEnum;
 use strum_macros::EnumString;
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, warn};
 
 #[derive(Error, Debug)]
 pub enum MonitordConfigError {
@@ -66,12 +66,17 @@ impl Default for MonitordConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NetworkdConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus/files while the rest move to varlink.
+    pub varlink: bool,
     pub link_state_dir: PathBuf,
 }
 impl Default for NetworkdConfig {
     fn default() -> Self {
         NetworkdConfig {
             enabled: false,
+            varlink: true,
             link_state_dir: crate::networkd::NETWORKD_STATE_FILES.into(),
         }
     }
@@ -90,10 +95,18 @@ impl Default for Pid1Config {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SystemStateConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus while the rest move to varlink. Also gates the always-on
+    /// systemd version collection, which shares the `Manager.Describe` call.
+    pub varlink: bool,
 }
 impl Default for SystemStateConfig {
     fn default() -> Self {
-        SystemStateConfig { enabled: true }
+        SystemStateConfig {
+            enabled: true,
+            varlink: true,
+        }
     }
 }
 
@@ -116,6 +129,10 @@ impl Default for TimersConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnitsConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus while the rest move to varlink.
+    pub varlink: bool,
     pub state_stats: bool,
     pub state_stats_allowlist: HashSet<String>,
     pub state_stats_blocklist: HashSet<String>,
@@ -135,6 +152,7 @@ impl Default for UnitsConfig {
     fn default() -> Self {
         UnitsConfig {
             enabled: true,
+            varlink: true,
             state_stats: false,
             state_stats_allowlist: HashSet::new(),
             state_stats_blocklist: HashSet::new(),
@@ -150,6 +168,11 @@ impl Default for UnitsConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MachinesConfig {
     pub enabled: bool,
+    /// Use varlink APIs inside containers when the global `[varlink]`
+    /// switch is on. Default true: set false to keep all container
+    /// collection on D-Bus. Container paths additionally require the
+    /// matching collector section's own `varlink` toggle.
+    pub varlink: bool,
     pub allowlist: HashSet<String>,
     pub blocklist: HashSet<String>,
 }
@@ -157,6 +180,7 @@ impl Default for MachinesConfig {
     fn default() -> Self {
         MachinesConfig {
             enabled: true,
+            varlink: true,
             allowlist: HashSet::new(),
             blocklist: HashSet::new(),
         }
@@ -212,6 +236,10 @@ impl Default for DBusStatsConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BootBlameConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus while the rest move to varlink.
+    pub varlink: bool,
     pub cache_enabled: bool,
     pub cache_dir: String,
     pub num_slowest_units: u64,
@@ -222,6 +250,7 @@ impl Default for BootBlameConfig {
     fn default() -> Self {
         BootBlameConfig {
             enabled: false,
+            varlink: true,
             cache_enabled: true,
             cache_dir: "/run/monitord".to_string(),
             num_slowest_units: 5,
@@ -231,15 +260,32 @@ impl Default for BootBlameConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifyConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus while the rest move to varlink.
+    pub varlink: bool,
     pub allowlist: HashSet<String>,
     pub blocklist: HashSet<String>,
+}
+impl Default for VerifyConfig {
+    fn default() -> Self {
+        VerifyConfig {
+            enabled: false,
+            varlink: true,
+            allowlist: HashSet::new(),
+            blocklist: HashSet::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct VarlinkConfig {
+    /// Global varlink master switch. Each varlink-capable collector section
+    /// has its own `varlink` opt-out; a collector uses varlink only when
+    /// both this and its section toggle are true.
     pub enabled: bool,
 }
 
@@ -259,6 +305,17 @@ pub struct Config {
     pub boot_blame: BootBlameConfig,
     pub verify: VerifyConfig,
     pub varlink: VarlinkConfig,
+}
+
+impl Config {
+    /// Whether collectors gated on the given section toggles may use varlink.
+    ///
+    /// The global `[varlink]` master switch ANDed with every section toggle
+    /// passed. Container paths additionally pass `machines.varlink`, since a
+    /// container may run older systemd without the varlink APIs.
+    pub fn use_varlink(&self, sections: &[bool]) -> bool {
+        self.varlink.enabled && sections.iter().all(|toggle| *toggle)
+    }
 }
 
 impl TryFrom<Ini> for Config {
@@ -298,6 +355,9 @@ impl TryFrom<Ini> for Config {
 
         // [networkd] section
         config.networkd.enabled = read_config_bool(&ini_config, "networkd", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "networkd", "varlink")? {
+            config.networkd.varlink = varlink;
+        }
         if let Some(link_state_dir) = ini_config.get("networkd", "link_state_dir") {
             config.networkd.link_state_dir = link_state_dir.into();
         }
@@ -313,6 +373,9 @@ impl TryFrom<Ini> for Config {
 
         // [system-state] section
         config.system_state.enabled = read_config_bool(&ini_config, "system-state", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "system-state", "varlink")? {
+            config.system_state.varlink = varlink;
+        }
 
         // [timers] section
         config.timers.enabled = read_config_bool(&ini_config, "timers", "enabled")?;
@@ -325,6 +388,9 @@ impl TryFrom<Ini> for Config {
 
         // [units] section
         config.units.enabled = read_config_bool(&ini_config, "units", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "units", "varlink")? {
+            config.units.varlink = varlink;
+        }
         config.units.state_stats = read_config_bool(&ini_config, "units", "state_stats")?;
         if let Some(state_stats_allowlist) = config_map.get("units.state_stats.allowlist") {
             config.units.state_stats_allowlist = state_stats_allowlist
@@ -358,6 +424,9 @@ impl TryFrom<Ini> for Config {
 
         // [machines] section
         config.machines.enabled = read_config_bool(&ini_config, "machines", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "machines", "varlink")? {
+            config.machines.varlink = varlink;
+        }
         if let Some(machines_allowlist) = config_map.get("machines.allowlist") {
             config.machines.allowlist = machines_allowlist.keys().map(|s| s.to_string()).collect();
         }
@@ -411,6 +480,9 @@ impl TryFrom<Ini> for Config {
 
         // [boot] section
         config.boot_blame.enabled = read_config_bool(&ini_config, "boot", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "boot", "varlink")? {
+            config.boot_blame.varlink = varlink;
+        }
         if let Some(cache_enabled) =
             read_config_optional_bool(&ini_config, "boot", "cache_enabled")?
         {
@@ -431,6 +503,9 @@ impl TryFrom<Ini> for Config {
 
         // [verify] section
         config.verify.enabled = read_config_bool(&ini_config, "verify", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "verify", "varlink")? {
+            config.verify.varlink = varlink;
+        }
         if let Some(verify_allowlist) = config_map.get("verify.allowlist") {
             config.verify.allowlist = verify_allowlist.keys().map(|s| s.to_string()).collect();
         }
@@ -441,8 +516,119 @@ impl TryFrom<Ini> for Config {
         // [varlink] section
         config.varlink.enabled = read_config_bool(&ini_config, "varlink", "enabled")?;
 
+        for entry in unknown_config_entries(&config_map) {
+            warn!("Ignoring {entry}; check for a typo'd key or section");
+        }
+
         Ok(config)
     }
+}
+
+/// Fixed-key sections and every key monitord reads from each.
+///
+/// Data sections (`[services]`, `*.allowlist`, `*.blocklist`) take arbitrary
+/// entries and are exempt; anything else unknown is warned about so a typo'd
+/// key parses loudly instead of silently doing nothing.
+const KNOWN_SECTION_KEYS: &[(&str, &[&str])] = &[
+    (
+        "monitord",
+        &[
+            "dbus_address",
+            "dbus_timeout",
+            "daemon",
+            "daemon_stats_refresh_secs",
+            "key_prefix",
+            "output_format",
+        ],
+    ),
+    ("networkd", &["enabled", "varlink", "link_state_dir"]),
+    ("pid1", &["enabled"]),
+    ("system-state", &["enabled", "varlink"]),
+    ("timers", &["enabled"]),
+    (
+        "units",
+        &[
+            "enabled",
+            "varlink",
+            "state_stats",
+            "state_stats_time_in_state",
+            "ignore_inactive_oneshot_services",
+            "unit_files",
+            "per_unit_concurrency",
+            "slowest_units_count",
+        ],
+    ),
+    ("machines", &["enabled", "varlink"]),
+    (
+        "dbus",
+        &[
+            "enabled",
+            "stale_fd_stats",
+            "user_stats",
+            "peer_stats",
+            "peer_well_known_names_only",
+            "peer_name_concurrency",
+            "cgroup_stats",
+        ],
+    ),
+    (
+        "boot",
+        &[
+            "enabled",
+            "varlink",
+            "cache_enabled",
+            "cache_dir",
+            "num_slowest_units",
+        ],
+    ),
+    ("verify", &["enabled", "varlink"]),
+    ("varlink", &["enabled"]),
+];
+
+/// Sections whose entries are data (unit/machine names), not fixed keys.
+const DATA_SECTIONS: &[&str] = &[
+    "services",
+    "timers.allowlist",
+    "timers.blocklist",
+    "units.state_stats.allowlist",
+    "units.state_stats.blocklist",
+    "machines.allowlist",
+    "machines.blocklist",
+    "dbus.user.allowlist",
+    "dbus.user.blocklist",
+    "dbus.peer.allowlist",
+    "dbus.peer.blocklist",
+    "dbus.cgroup.allowlist",
+    "dbus.cgroup.blocklist",
+    "boot.allowlist",
+    "boot.blocklist",
+    "verify.allowlist",
+    "verify.blocklist",
+];
+
+/// Unrecognized sections and keys, for warn-on-typo diagnostics.
+///
+/// Pure (returns messages) so tests can assert on it; the caller logs them.
+fn unknown_config_entries(
+    config_map: &IndexMap<String, IndexMap<String, Option<String>>>,
+) -> Vec<String> {
+    let mut unknown = Vec::new();
+    for (section, keys) in config_map {
+        if DATA_SECTIONS.contains(&section.as_str()) {
+            continue;
+        }
+        match KNOWN_SECTION_KEYS.iter().find(|(name, _)| name == section) {
+            None => unknown.push(format!("unknown section [{section}]")),
+            Some((_, known_keys)) => {
+                for key in keys.keys() {
+                    if !known_keys.contains(&key.as_str()) {
+                        unknown.push(format!("unknown key '{key}' in [{section}]"));
+                    }
+                }
+            }
+        }
+    }
+    unknown
 }
 
 /// Helper function to read "bool" config options
@@ -501,6 +687,7 @@ output_format = json-pretty
 
 [networkd]
 enabled = true
+varlink = false
 link_state_dir = /links
 
 [pid1]
@@ -512,6 +699,7 @@ bar.service
 
 [system-state]
 enabled = true
+varlink = false
 
 [timers]
 enabled = true
@@ -524,6 +712,7 @@ bar.timer
 
 [units]
 enabled = true
+varlink = false
 state_stats = true
 state_stats_time_in_state = true
 ignore_inactive_oneshot_services = true
@@ -539,6 +728,7 @@ bar.service
 
 [machines]
 enabled = true
+varlink = false
 
 [machines.allowlist]
 foo
@@ -579,6 +769,7 @@ foo2
 
 [boot]
 enabled = true
+varlink = true
 cache_enabled = false
 cache_dir = /tmp/monitord-test
 num_slowest_units = 10
@@ -588,6 +779,10 @@ foo.service
 
 [boot.blocklist]
 bar.service
+
+[verify]
+enabled = true
+varlink = false
 
 [varlink]
 enabled = true
@@ -600,7 +795,15 @@ output_format = json-flat
 
     #[test]
     fn test_default_config() {
-        assert!(Config::default().units.enabled)
+        assert!(Config::default().units.enabled);
+        // Per-section varlink toggles default to following the global switch
+        let default_config = Config::default();
+        assert!(default_config.units.varlink);
+        assert!(default_config.networkd.varlink);
+        assert!(default_config.system_state.varlink);
+        assert!(default_config.machines.varlink);
+        assert!(default_config.boot_blame.varlink);
+        assert!(default_config.verify.varlink);
     }
 
     #[test]
@@ -678,6 +881,95 @@ slowest_units_count = 0
     }
 
     #[test]
+    fn test_use_varlink_conjunction() {
+        // The conjunction is the point of the per-section toggles: every
+        // gate must agree, so a global-off with sections on stays off, and
+        // any single opt-out disables its collector (plus the container
+        // triple-AND through machines.varlink).
+        let mut config = Config::default();
+        assert!(!config.use_varlink(&[true]));
+        config.varlink.enabled = true;
+        assert!(config.use_varlink(&[true]));
+        assert!(!config.use_varlink(&[false]));
+        assert!(!config.use_varlink(&[true, false]));
+        assert!(config.use_varlink(&[true, true]));
+        config.varlink.enabled = false;
+        assert!(!config.use_varlink(&[true, true]));
+    }
+
+    #[test]
+    fn test_unknown_config_entries() {
+        // Typo'd keys and sections parse clean, so they must at least warn:
+        // [timers] varlink is the trap (timers follow [units]), and data
+        // sections must stay exempt since their entries are unit names.
+        let typo_config = r###"
+[monitord]
+output_format = json
+
+[units]
+varlnik = false
+
+[timers]
+varlink = false
+
+[services]
+foo.service
+
+[bogus]
+key = value
+"###;
+        let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
+        monitord_config
+            .write_all(typo_config.as_bytes())
+            .expect("Unable to write out temp config file");
+
+        let mut ini_config = Ini::new();
+        ini_config
+            .load(monitord_config.path())
+            .expect("Unable to load ini config");
+
+        let unknown = unknown_config_entries(&ini_config.get_map().expect("config map"));
+        assert!(unknown.contains(&"unknown key 'varlnik' in [units]".to_string()));
+        assert!(unknown.contains(&"unknown key 'varlink' in [timers]".to_string()));
+        assert!(unknown.contains(&"unknown section [bogus]".to_string()));
+        assert_eq!(unknown.len(), 3);
+    }
+
+    #[test]
+    fn test_per_section_varlink_toggle_defaults_and_override() {
+        // Only [units] opts out; every other section keeps the default true,
+        // so collectors can move to varlink one at a time.
+        let varlink_override_config = r###"
+[monitord]
+output_format = json
+
+[varlink]
+enabled = true
+
+[units]
+varlink = false
+"###;
+        let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
+        monitord_config
+            .write_all(varlink_override_config.as_bytes())
+            .expect("Unable to write out temp config file");
+
+        let mut ini_config = Ini::new();
+        let _config_map = ini_config
+            .load(monitord_config.path())
+            .expect("Unable to load ini config");
+
+        let parsed_config: Config = ini_config.try_into().expect("Failed to parse config");
+        assert!(parsed_config.varlink.enabled);
+        assert!(!parsed_config.units.varlink);
+        assert!(parsed_config.networkd.varlink);
+        assert!(parsed_config.system_state.varlink);
+        assert!(parsed_config.machines.varlink);
+        assert!(parsed_config.boot_blame.varlink);
+        assert!(parsed_config.verify.varlink);
+    }
+
+    #[test]
     fn test_full_config() {
         let expected_config = Config {
             monitord: MonitordConfig {
@@ -690,11 +982,15 @@ slowest_units_count = 0
             },
             networkd: NetworkdConfig {
                 enabled: true,
+                varlink: false,
                 link_state_dir: "/links".into(),
             },
             pid1: Pid1Config { enabled: true },
             services: HashSet::from([String::from("foo.service"), String::from("bar.service")]),
-            system_state: SystemStateConfig { enabled: true },
+            system_state: SystemStateConfig {
+                enabled: true,
+                varlink: false,
+            },
             timers: TimersConfig {
                 enabled: true,
                 allowlist: HashSet::from([String::from("foo.timer")]),
@@ -702,6 +998,7 @@ slowest_units_count = 0
             },
             units: UnitsConfig {
                 enabled: true,
+                varlink: false,
                 state_stats: true,
                 state_stats_allowlist: HashSet::from([String::from("foo.service")]),
                 state_stats_blocklist: HashSet::from([String::from("bar.service")]),
@@ -713,6 +1010,7 @@ slowest_units_count = 0
             },
             machines: MachinesConfig {
                 enabled: true,
+                varlink: false,
                 allowlist: HashSet::from([String::from("foo"), String::from("bar")]),
                 blocklist: HashSet::from([String::from("foo2")]),
             },
@@ -733,6 +1031,10 @@ slowest_units_count = 0
             },
             boot_blame: BootBlameConfig {
                 enabled: true,
+                // Explicit true (the other sections pin false): proves the
+                // key is actually read rather than the default shining
+                // through.
+                varlink: true,
                 cache_enabled: false,
                 cache_dir: "/tmp/monitord-test".to_string(),
                 num_slowest_units: 10,
@@ -740,7 +1042,8 @@ slowest_units_count = 0
                 blocklist: HashSet::from([String::from("bar.service")]),
             },
             verify: VerifyConfig {
-                enabled: false,
+                enabled: true,
+                varlink: false,
                 allowlist: HashSet::new(),
                 blocklist: HashSet::new(),
             },
