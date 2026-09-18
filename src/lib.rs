@@ -242,6 +242,13 @@ pub async fn stat_collector(
         // One Manager.Describe serves both the version and system state
         // collectors: PID 1 handles varlink requests one at a time, so a second
         // call would sit behind the units collector's whole metrics stream.
+        //
+        // Which request reaches PID 1 first is still up to the scheduler, so
+        // under CPU pressure this call can land behind that stream anyway. That
+        // is the old cost for one call rather than two, not a new failure mode.
+        // Making it deterministic would mean holding the units collector until
+        // this resolves, which would put the collector that gates the cycle
+        // behind an unrelated socket.
         let manager_describe = config.varlink.enabled.then(|| {
             crate::varlink_system::shared_describe(
                 crate::varlink_system::MANAGER_SOCKET_PATH.to_string(),
