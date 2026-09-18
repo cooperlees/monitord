@@ -187,9 +187,9 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
 
     The stock config tracks units that do not exist in the container, so point
     the state_stats allowlist and [services] at real fixture units instead. The
-    timers allowlist is emptied so per-timer stats (backfilled over D-Bus on the
-    varlink path) are compared too — timer timestamps are absolute and stable
-    across the seconds-apart runs.
+    timers allowlist is emptied so per-timer stats are compared too, and boot
+    blame is switched on with its cache off. All of those values are absolute
+    boot-time measurements, so they are stable across the seconds-apart runs.
     """
     dbus_lines: list[str] = []
     renamed: set[str] = set()
@@ -210,6 +210,15 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
                 renamed.add(replacement)
         elif section == "[timers.allowlist]" and line.strip() == "fstrim.timer":
             continue
+        elif section == "[boot]" and line.strip() == "enabled = false":
+            # Boot blame ships disabled, so neither path collects it by default
+            # and the comparison would say nothing about it.
+            line = "enabled = true"
+        elif section == "[boot]" and line.strip() == "cache_enabled = true":
+            # Both runs share cache_dir, so leaving this on would have the D-Bus
+            # run read back the cache the varlink run just wrote — the two
+            # outputs would match because they came from the same collection.
+            line = "cache_enabled = false"
         dbus_lines.append(line)
 
     missing = set(ALLOWLIST_RENAMES.values()) - renamed
