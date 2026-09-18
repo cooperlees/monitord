@@ -41,6 +41,7 @@ pub use crate::unit_constants::is_unit_unhealthy_for_service;
 pub use crate::unit_constants::SystemdUnitActiveState;
 pub use crate::unit_constants::SystemdUnitLoadState;
 pub use crate::unit_constants::SYSTEMD_SERVICE_SUFFIX;
+pub use crate::unit_constants::SYSTEMD_TIMER_SUFFIX;
 
 /// Inner timing breakdown for the units collector D-Bus phases.
 ///
@@ -800,7 +801,7 @@ pub async fn parse_unit_state(
 
                 // Collect timer stats
                 if config.timers.enabled
-                    && unit.name.contains(".timer")
+                    && unit.name.ends_with(SYSTEMD_TIMER_SUFFIX)
                     && !config.timers.blocklist.contains(&unit.name)
                     && (config.timers.allowlist.is_empty()
                         || config.timers.allowlist.contains(&unit.name))
