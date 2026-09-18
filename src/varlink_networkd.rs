@@ -83,6 +83,13 @@ fn map_interface(iface: &Interface) -> InterfaceState {
 /// No `spawn_blocking` here, unlike the streaming `io.systemd.Metrics.List`
 /// call in `varlink_units`: a single-shot zlink call holds no `!Send` stream
 /// across an await, so it runs on the main runtime like any other future.
+///
+/// NOTE: measured ~15ms slower than the file-based fallback on a 35-interface
+/// host (systemd 259): `Describe` returns a ~112KB payload — every interface
+/// plus the full route/nexthop/policy tables, which monitord discards — while
+/// the fallback just reads the small state files in `/run/systemd/netif/links`.
+/// The cost is daemon-side serialization, so nothing client-side avoids it;
+/// varlink still wins on authority (one RPC vs. scraping daemon-private files).
 pub async fn get_networkd_state(socket_path: &str) -> anyhow::Result<NetworkdState> {
     let mut conn = zlink::unix::connect(socket_path).await?;
     let result = conn.describe().await?;

@@ -224,6 +224,8 @@ pub async fn update_verify_stats(
         {
             Ok(all_units) => {
                 log_enumerated_units(&all_units);
+                locked_machine_stats.write().await.varlink_usage.verify =
+                    Some(crate::CollectorTransport::Varlink);
                 verify_units(filter_unit_names(all_units, &allowlist, &blocklist))
                     .await
                     .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?
@@ -233,12 +235,16 @@ pub async fn update_verify_stats(
                     "Varlink verify enumeration failed, falling back to D-Bus: {:?}",
                     err
                 );
+                locked_machine_stats.write().await.varlink_usage.verify =
+                    Some(crate::CollectorTransport::Dbus);
                 get_verify_stats(&connection, &allowlist, &blocklist)
                     .await
                     .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?
             }
         }
     } else {
+        locked_machine_stats.write().await.varlink_usage.verify =
+            Some(crate::CollectorTransport::Dbus);
         get_verify_stats(&connection, &allowlist, &blocklist)
             .await
             .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?

@@ -73,6 +73,17 @@ fn encode_boot_blame_stats(stats: &BootBlameStats) -> BootCacheResult<Vec<u8>> {
     Ok(out)
 }
 
+/// Cached boot blame payload plus the transport that produced it.
+///
+/// The transport byte is appended after the entries by current writers.
+/// `None` means a legacy file written before transport tracking existed —
+/// the caller treats that as a miss and re-collects, so a legacy hit can
+/// never emit a gauge claiming a transport that was never recorded.
+struct DecodedBootBlame {
+    stats: BootBlameStats,
+    transport: Option<crate::CollectorTransport>,
+}
+
 fn decode_boot_blame_stats(content: &[u8]) -> BootCacheResult<BootBlameStats> {
     const U32_BYTES: usize = std::mem::size_of::<u32>();
     const F64_BYTES: usize = std::mem::size_of::<f64>();
@@ -113,27 +124,63 @@ fn decode_boot_blame_stats(content: &[u8]) -> BootCacheResult<BootBlameStats> {
     Ok(stats)
 }
 
+fn encode_cached_boot_blame(
+    stats: &BootBlameStats,
+    transport: crate::CollectorTransport,
+) -> BootCacheResult<Vec<u8>> {
+    let mut out = encode_boot_blame_stats(stats)?;
+    out.push(transport as u8);
+    Ok(out)
+}
+
+fn decode_cached_boot_blame(content: &[u8]) -> BootCacheResult<DecodedBootBlame> {
+    // Current files carry one trailing transport byte after the entries;
+    // legacy files end right after the last entry. A last byte of 0/1 whose
+    // removal leaves a well-formed entry payload is the new format —
+    // anything else decodes as legacy (transport unknown).
+    if let Some((payload, [marker])) = content.split_at_checked(content.len().saturating_sub(1)) {
+        if *marker <= 1 {
+            if let Ok(stats) = decode_boot_blame_stats(payload) {
+                let transport = if *marker == 1 {
+                    crate::CollectorTransport::Varlink
+                } else {
+                    crate::CollectorTransport::Dbus
+                };
+                return Ok(DecodedBootBlame {
+                    stats,
+                    transport: Some(transport),
+                });
+            }
+        }
+    }
+    Ok(DecodedBootBlame {
+        stats: decode_boot_blame_stats(content)?,
+        transport: None,
+    })
+}
+
 async fn read_cached_boot_blame_from_dir(
     cache_dir: &Path,
     boot_id: &str,
-) -> BootCacheResult<Option<BootBlameStats>> {
+) -> BootCacheResult<Option<DecodedBootBlame>> {
     let cache_path = cache_file_path(cache_dir, boot_id);
     let content = match tokio::fs::read(&cache_path).await {
         Ok(content) => content,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(err.into()),
     };
-    Ok(Some(decode_boot_blame_stats(&content)?))
+    Ok(Some(decode_cached_boot_blame(&content)?))
 }
 
 async fn write_cached_boot_blame_to_dir(
     cache_dir: &Path,
     boot_id: &str,
     stats: &BootBlameStats,
+    transport: crate::CollectorTransport,
 ) -> BootCacheResult<()> {
     tokio::fs::create_dir_all(cache_dir).await?;
     let cache_path = cache_file_path(cache_dir, boot_id);
-    let encoded = encode_boot_blame_stats(stats)?;
+    let encoded = encode_cached_boot_blame(stats, transport)?;
     tokio::fs::write(cache_path, encoded).await?;
     Ok(())
 }
@@ -230,6 +277,8 @@ pub async fn update_boot_blame_stats(
 
     let mut maybe_boot_id = None;
     if config.boot_blame.cache_enabled {
+        // In-memory hit: the collecting run already recorded which transport
+        // produced these stats, so the gauge is intact — keep it.
         let cached_stats = machine_stats.read().await.boot_blame.clone();
         if cached_stats.is_some() {
             debug!("Using in-memory cached boot blame stats");
@@ -240,13 +289,39 @@ pub async fn update_boot_blame_stats(
         match get_boot_id().await {
             Ok(boot_id) => {
                 match read_cached_boot_blame_from_dir(cache_dir, &boot_id).await {
-                    Ok(Some(cached_boot_blame)) => {
+                    Ok(Some(cached)) => {
                         let cache_path = cache_file_path(cache_dir, &boot_id);
                         debug!(
                             "Using cached boot blame stats from {}",
                             cache_path.display()
                         );
-                        machine_stats.write().await.boot_blame = Some(cached_boot_blame);
+                        let mut stats = machine_stats.write().await;
+                        stats.boot_blame = Some(cached.stats);
+                        match cached.transport {
+                            Some(transport) => {
+                                // Replay the transport that produced the
+                                // cached entry so the gauge stays stable
+                                // across runs instead of going absent.
+                                stats.varlink_usage.boot_blame = Some(transport);
+                            }
+                            None => {
+                                // Legacy file from before transport tracking:
+                                // re-collect below so the gauge is honest
+                                // rather than absent or guessed.
+                                debug!(
+                                    "Boot blame cache predates transport tracking, re-collecting"
+                                );
+                                drop(stats);
+                                maybe_boot_id = Some(boot_id);
+                                return collect_and_cache(
+                                    &config,
+                                    &connection,
+                                    machine_stats,
+                                    maybe_boot_id,
+                                )
+                                .await;
+                            }
+                        }
                         return Ok(());
                     }
                     Ok(None) => {
@@ -267,24 +342,43 @@ pub async fn update_boot_blame_stats(
         }
     }
 
-    let boot_blame_stats = if config.use_varlink(&[config.boot_blame.varlink]) {
+    collect_and_cache(&config, &connection, machine_stats, maybe_boot_id).await
+}
+
+/// Collect boot blame over whichever transport applies, record it, and write
+/// the disk cache (stamping which transport produced the entry so cache hits
+/// replay an honest gauge instead of going absent).
+async fn collect_and_cache(
+    config: &Arc<Config>,
+    connection: &zbus::Connection,
+    machine_stats: Arc<RwLock<MachineStats>>,
+    maybe_boot_id: Option<String>,
+) -> Result<()> {
+    let use_varlink = config.use_varlink(&[config.boot_blame.varlink]);
+    let (boot_blame_stats, transport) = if use_varlink {
         match crate::varlink_boot::get_boot_blame_stats(
             crate::varlink_boot::METRICS_SOCKET_PATH,
             &config.boot_blame,
         )
         .await
         {
-            Ok(stats) => stats,
+            Ok(stats) => (stats, crate::CollectorTransport::Varlink),
             Err(err) => {
                 tracing::warn!(
                     "Varlink boot blame failed, falling back to D-Bus: {:?}",
                     err
                 );
-                collect_boot_blame_dbus(&config, &connection).await?
+                (
+                    collect_boot_blame_dbus(config, connection).await?,
+                    crate::CollectorTransport::Dbus,
+                )
             }
         }
     } else {
-        collect_boot_blame_dbus(&config, &connection).await?
+        (
+            collect_boot_blame_dbus(config, connection).await?,
+            crate::CollectorTransport::Dbus,
+        )
     };
 
     debug!("Collected {} boot blame stats", boot_blame_stats.len());
@@ -292,12 +386,14 @@ pub async fn update_boot_blame_stats(
     // Update machine stats
     let mut stats = machine_stats.write().await;
     stats.boot_blame = Some(boot_blame_stats);
+    stats.varlink_usage.boot_blame = Some(transport);
     if config.boot_blame.cache_enabled {
         if let Some(boot_id) = maybe_boot_id {
             if let Some(cached_stats) = stats.boot_blame.as_ref() {
                 let cache_dir = Path::new(&config.boot_blame.cache_dir);
                 if let Err(err) =
-                    write_cached_boot_blame_to_dir(cache_dir, &boot_id, cached_stats).await
+                    write_cached_boot_blame_to_dir(cache_dir, &boot_id, cached_stats, transport)
+                        .await
                 {
                     debug!(
                         "Failed to write boot blame cache for boot id {} to {}: {}",
@@ -334,6 +430,36 @@ mod tests {
         assert!(decode_boot_blame_stats(&invalid_payload).is_err());
     }
 
+    #[test]
+    fn test_cached_boot_blame_roundtrips_transport() {
+        // The disk cache stamps which transport produced the entry so hits
+        // replay an honest gauge instead of going absent.
+        let mut stats = BootBlameStats::new();
+        stats.insert("foo.service".to_string(), 12.3);
+        for transport in [
+            crate::CollectorTransport::Varlink,
+            crate::CollectorTransport::Dbus,
+        ] {
+            let encoded = encode_cached_boot_blame(&stats, transport).expect("encode");
+            let decoded = decode_cached_boot_blame(&encoded).expect("decode");
+            assert_eq!(stats, decoded.stats);
+            assert_eq!(Some(transport), decoded.transport);
+        }
+    }
+
+    #[test]
+    fn test_legacy_boot_blame_cache_decodes_without_transport() {
+        // Pre-gauge files carry no transport byte: they decode with
+        // transport None, and the caller re-collects rather than guessing.
+        let mut stats = BootBlameStats::new();
+        stats.insert("foo.service".to_string(), 12.3);
+        stats.insert("bar.service".to_string(), 45.6);
+        let encoded = encode_boot_blame_stats(&stats).expect("encode should succeed");
+        let decoded = decode_cached_boot_blame(&encoded).expect("decode should succeed");
+        assert_eq!(stats, decoded.stats);
+        assert_eq!(None, decoded.transport);
+    }
+
     #[tokio::test]
     async fn test_boot_blame_cache_read_write_roundtrip() {
         let temp_dir = tempfile::tempdir().expect("create temp dir");
@@ -341,13 +467,20 @@ mod tests {
         let mut stats = BootBlameStats::new();
         stats.insert("foo.service".to_string(), 1.25);
 
-        write_cached_boot_blame_to_dir(temp_dir.path(), boot_id, &stats)
+        write_cached_boot_blame_to_dir(
+            temp_dir.path(),
+            boot_id,
+            &stats,
+            crate::CollectorTransport::Varlink,
+        )
+        .await
+        .expect("write cache");
+        let read = read_cached_boot_blame_from_dir(temp_dir.path(), boot_id)
             .await
-            .expect("write cache");
-        let read_stats = read_cached_boot_blame_from_dir(temp_dir.path(), boot_id)
-            .await
-            .expect("read cache");
-        assert_eq!(Some(stats), read_stats);
+            .expect("read cache")
+            .expect("cache hit");
+        assert_eq!(stats, read.stats);
+        assert_eq!(Some(crate::CollectorTransport::Varlink), read.transport);
     }
 
     #[tokio::test]

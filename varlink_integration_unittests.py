@@ -176,6 +176,7 @@ class DiffOutputsTest(unittest.TestCase):
             "monitord.stat_collection_run_time_ms": 10.0,
             "monitord.collector_timings.0.elapsed_ms": 1.0,
             "monitord.units.collection_timings.timer_dbus_fetches": 4,
+            "monitord.varlink_usage.units": 0,
             "monitord.unit_states.foo.service.time_in_state_usecs": 100,
             "monitord.services.foo.service.cpuusage_nsec": 5,
             "monitord.services.foo.service.memory_current": 5,
@@ -232,6 +233,67 @@ class EnumeratedVerifyUnitsTest(unittest.TestCase):
     def test_empty_set_fails_loudly(self) -> None:
         with self.assertRaises(SystemExit):
             vit.enumerated_verify_units("verify enumerated 0 units: \n")
+
+
+class VarlinkUsageTest(unittest.TestCase):
+    STATS = {
+        "monitord.units.active_units": 42,
+        "monitord.varlink_usage.version": 1,
+        "monitord.varlink_usage.system_state": 1,
+        "monitord.varlink_usage.units": 1,
+        "monitord.varlink_usage.networkd": 1,
+        "monitord.varlink_usage.machines": 0,
+        "monitord.varlink_usage.boot_blame": 1,
+        "monitord.varlink_usage.verify": 1,
+    }
+
+    def test_extracts_gauges(self) -> None:
+        usage = vit.varlink_usage(self.STATS)
+        self.assertEqual(len(usage), len(vit.EXPECTED_VARLINK_COLLECTORS))
+        self.assertEqual(usage["version"], 1)
+        # Host machine enumeration is D-Bus-only, so always 0.
+        self.assertEqual(usage["machines"], 0)
+
+    def test_varlink_run_fully_adopted(self) -> None:
+        # Must not raise: every collector but enumeration on varlink.
+        vit.assert_varlink_usage(
+            {"varlink": dict(self.STATS), "dbus": self.dbus_stats()}
+        )
+
+    def test_varlink_fallback_fails_loudly(self) -> None:
+        stats = dict(self.STATS, **{"monitord.varlink_usage.units": 0})
+        with self.assertRaises(SystemExit) as caught:
+            vit.assert_varlink_usage({"varlink": stats, "dbus": self.dbus_stats()})
+        self.assertIn("units=0", str(caught.exception))
+
+    def test_dbus_run_leaking_varlink_fails_loudly(self) -> None:
+        stats = dict(self.dbus_stats(), **{"monitord.varlink_usage.units": 1})
+        with self.assertRaises(SystemExit) as caught:
+            vit.assert_varlink_usage({"varlink": dict(self.STATS), "dbus": stats})
+        self.assertIn("units=1", str(caught.exception))
+
+    def test_missing_gauge_fails_loudly(self) -> None:
+        # A missing gauge would silently shrink Grafana's count() denominator.
+        stats = {
+            key: value for key, value in self.STATS.items() if "verify" not in key
+        }
+        with self.assertRaises(SystemExit) as caught:
+            vit.assert_varlink_usage({"varlink": stats, "dbus": self.dbus_stats()})
+        self.assertIn("missing", str(caught.exception))
+
+    def test_unexpected_gauge_fails_loudly(self) -> None:
+        stats = dict(self.STATS, **{"monitord.varlink_usage.dbus_stats": 0})
+        with self.assertRaises(SystemExit) as caught:
+            vit.assert_varlink_usage({"varlink": stats, "dbus": self.dbus_stats()})
+        self.assertIn("unexpected", str(caught.exception))
+
+    @staticmethod
+    def dbus_stats() -> dict:
+        return {
+            key: 0
+            for key in VarlinkUsageTest.STATS
+            if key.startswith("monitord.varlink_usage.")
+        }
 
 
 class FindFallbacksTest(unittest.TestCase):

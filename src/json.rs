@@ -304,6 +304,10 @@ fn flatten_machines(
             false => format!("{}.machines.{}", key_prefix, machine),
         };
         flat_stats.extend(flatten_networkd(&stats.networkd, &machine_key_prefix));
+        flat_stats.extend(flatten_varlink_usage(
+            &stats.varlink_usage,
+            &machine_key_prefix,
+        ));
         flat_stats.extend(flatten_units(&stats.units, &machine_key_prefix));
         flat_stats.extend(flatten_unit_files(
             &stats.units.unit_files,
@@ -513,6 +517,41 @@ fn flatten_verify_stats(
     flat_stats
 }
 
+/// Emit one `varlink_usage.<collector>` 0/1 gauge per collector that ran.
+///
+/// Only collectors whose `Option<CollectorTransport>` is `Some` emit a gauge:
+/// disabled collectors (and any re-validation the caller does over the
+/// enabled sections) stay absent, so `count()` over the `varlink_usage_*`
+/// gauges is the enabled set and `sum() / count()` is the share of
+/// collectors served by varlink this run. Downstream metric consumers (e.g.
+/// monitord-exporter) aggregate the gauges from there; monitord itself only
+/// makes them available in its output formats.
+fn flatten_varlink_usage(
+    usage: &crate::VarlinkUsage,
+    key_prefix: &str,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let base_metric_name = gen_base_metric_key(key_prefix, "varlink_usage");
+    let fields: [(&str, Option<crate::CollectorTransport>); 7] = [
+        ("version", usage.version),
+        ("system_state", usage.system_state),
+        ("units", usage.units),
+        ("networkd", usage.networkd),
+        ("machines", usage.machines),
+        ("boot_blame", usage.boot_blame),
+        ("verify", usage.verify),
+    ];
+    for (name, transport) in fields {
+        if let Some(transport) = transport {
+            flat_stats.insert(
+                format!("{base_metric_name}.{name}"),
+                transport.as_u64().into(),
+            );
+        }
+    }
+    flat_stats
+}
+
 fn flatten_collector_timings(
     timings: &[crate::CollectorTiming],
     key_prefix: &str,
@@ -585,6 +624,10 @@ fn flatten_stats(
     );
     flat_stats.extend(flatten_collector_timings(
         &stats_struct.collector_timings,
+        key_prefix,
+    ));
+    flat_stats.extend(flatten_varlink_usage(
+        &stats_struct.varlink_usage,
         key_prefix,
     ));
     flat_stats.extend(flatten_units_collection_timings(
@@ -763,6 +806,8 @@ mod tests {
   "units.timer_remain_after_elapse": 0,
   "units.timer_units": 0,
   "units.total_units": 0,
+  "varlink_usage.units": 0,
+  "varlink_usage.version": 1,
   "verify.failing.service": 2,
   "verify.failing.slice": 1,
   "verify.failing.total": 3,
@@ -819,6 +864,11 @@ mod tests {
                     success: false,
                 },
             ],
+            varlink_usage: crate::VarlinkUsage {
+                version: Some(crate::CollectorTransport::Varlink),
+                units: Some(crate::CollectorTransport::Dbus),
+                ..Default::default()
+            },
         };
         stats.units.collection_timings = units::UnitsCollectionTimings {
             list_units_ms: 5.0,
@@ -899,7 +949,41 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(129, json_flat_map.len());
+        assert_eq!(131, json_flat_map.len());
+    }
+
+    #[test]
+    fn test_collector_transport_serializes_as_integer_everywhere() {
+        // The repr discriminants are the gauge values, so json/json-pretty
+        // report the same integers as json-flat — not strings.
+        let usage = crate::VarlinkUsage {
+            version: Some(crate::CollectorTransport::Varlink),
+            units: Some(crate::CollectorTransport::Dbus),
+            ..Default::default()
+        };
+        let value = serde_json::to_value(&usage).expect("serialize");
+        assert_eq!(value["version"], serde_json::Value::from(1u64));
+        assert_eq!(value["units"], serde_json::Value::from(0u64));
+        assert!(value.get("networkd").is_none());
+    }
+
+    #[test]
+    fn test_flatten_varlink_usage_only_emits_ran_collectors() {
+        // Disabled collectors stay None and emit no gauge: count() over the
+        // gauges is the enabled set, which is what makes sum/count a valid
+        // Grafana adoption ratio without a separate enabled counter.
+        let flat = flatten_varlink_usage(
+            &crate::VarlinkUsage {
+                version: Some(crate::CollectorTransport::Varlink),
+                units: Some(crate::CollectorTransport::Dbus),
+                ..Default::default()
+            },
+            "",
+        );
+        assert_eq!(flat.len(), 2);
+        assert_eq!(flat["varlink_usage.version"], serde_json::Value::from(1u64));
+        assert_eq!(flat["varlink_usage.units"], serde_json::Value::from(0u64));
+        assert!(flatten_varlink_usage(&crate::VarlinkUsage::default(), "").is_empty());
     }
 
     #[test]

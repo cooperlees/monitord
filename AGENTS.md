@@ -76,3 +76,6 @@ Single-crate project (both library and binary). The binary (`main.rs`) parses CL
 - Move to using varlink APIs where ever possible as they become available
 - Keep the varlink support requirements in README.md up to date when adding,
   changing, or removing varlink endpoints (minimum systemd version per endpoint)
+- When adding new output values, add them to the sample json-flat output in
+  README.md (the `### json-flat` block under Output Formats), in sorted key
+  order to match the `BTreeMap` flat output

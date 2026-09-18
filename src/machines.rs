@@ -201,6 +201,8 @@ pub async fn update_machines_stats(
                         Ok(networkd_stats) => {
                             let mut machine_stats = stats_clone.write().await;
                             machine_stats.networkd = networkd_stats;
+                            machine_stats.varlink_usage.networkd =
+                                Some(crate::CollectorTransport::Varlink);
                             return Ok(());
                         }
                         Err(err) => {
@@ -211,6 +213,8 @@ pub async fn update_machines_stats(
                         }
                     }
                 }
+                stats_clone.write().await.varlink_usage.networkd =
+                    Some(crate::CollectorTransport::Dbus);
                 crate::networkd::update_networkd_stats(
                     config_clone.networkd.link_state_dir.clone(),
                     None,
@@ -244,7 +248,11 @@ pub async fn update_machines_stats(
                     match crate::varlink_system::update_system_stats(describe, stats_clone.clone())
                         .await
                     {
-                        Ok(()) => return Ok(()),
+                        Ok(()) => {
+                            stats_clone.write().await.varlink_usage.system_state =
+                                Some(crate::CollectorTransport::Varlink);
+                            return Ok(());
+                        }
                         Err(err) => {
                             warn!(
                                 "Varlink system state failed for container {}, falling back to D-Bus: {:?}",
@@ -253,7 +261,9 @@ pub async fn update_machines_stats(
                         }
                     }
                 }
-                crate::system::update_system_stats(sdc_clone, stats_clone).await
+                stats_clone.write().await.varlink_usage.system_state =
+                    Some(crate::CollectorTransport::Dbus);
+                crate::system::update_system_stats(sdc_clone, stats_clone.clone()).await
             });
         }
 
@@ -266,7 +276,11 @@ pub async fn update_machines_stats(
                 if let Some(describe) = describe {
                     match crate::varlink_system::update_version(describe, stats_clone.clone()).await
                     {
-                        Ok(()) => return Ok(()),
+                        Ok(()) => {
+                            stats_clone.write().await.varlink_usage.version =
+                                Some(crate::CollectorTransport::Varlink);
+                            return Ok(());
+                        }
                         Err(err) => {
                             warn!(
                                 "Varlink version failed for container {}, falling back to D-Bus: {:?}",
@@ -275,7 +289,9 @@ pub async fn update_machines_stats(
                         }
                     }
                 }
-                crate::system::update_version(sdc_clone, stats_clone).await
+                stats_clone.write().await.varlink_usage.version =
+                    Some(crate::CollectorTransport::Dbus);
+                crate::system::update_version(sdc_clone, stats_clone.clone()).await
             });
         }
 
@@ -350,6 +366,8 @@ pub async fn update_machines_stats(
                                 let mut ms = stats_clone.write().await;
                                 ms.units.unit_files = unit_files;
                             }
+                            stats_clone.write().await.varlink_usage.units =
+                                Some(crate::CollectorTransport::Varlink);
                             Ok(())
                         }
                         Err(err) => {
@@ -358,6 +376,11 @@ pub async fn update_machines_stats(
                                 err
                             );
                             let container_root = format!("/proc/{}/root", leader_pid);
+                            // Set before the call (the lib.rs ordering): if
+                            // the D-Bus collection errors, the gauge still
+                            // says D-Bus rather than going stale or absent.
+                            stats_clone.write().await.varlink_usage.units =
+                                Some(crate::CollectorTransport::Dbus);
                             crate::units::update_unit_stats(
                                 config_clone,
                                 sdc_clone,
@@ -370,12 +393,23 @@ pub async fn update_machines_stats(
                 });
             } else {
                 let container_root = format!("/proc/{}/root", leader_pid);
-                join_set.spawn(crate::units::update_unit_stats(
-                    Arc::clone(&config),
-                    sdc.clone(),
-                    locked_machine_stats.clone(),
-                    container_root,
-                ));
+                let config_clone = Arc::clone(&config);
+                let sdc_clone = sdc.clone();
+                let stats_clone = locked_machine_stats.clone();
+                join_set.spawn(async move {
+                    // Set before the call (the lib.rs ordering): if the
+                    // collection errors, the gauge still says D-Bus rather
+                    // than going stale or absent.
+                    stats_clone.write().await.varlink_usage.units =
+                        Some(crate::CollectorTransport::Dbus);
+                    crate::units::update_unit_stats(
+                        config_clone,
+                        sdc_clone,
+                        stats_clone,
+                        container_root,
+                    )
+                    .await
+                });
             }
         }
 
