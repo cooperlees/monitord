@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["SYSTEMD_SERVICE_SUFFIX"],"enum":["SystemdUnitActiveState","SystemdUnitLoadState"],"fn":["is_unit_unhealthy","is_unit_unhealthy_for_service"],"struct":["SystemdUnitActiveStateIter","SystemdUnitLoadStateIter"]};
+window.SIDEBAR_ITEMS = {"constant":["SYSTEMD_SERVICE_SUFFIX","SYSTEMD_TIMER_SUFFIX"],"enum":["SystemdUnitActiveState","SystemdUnitLoadState"],"fn":["is_unit_unhealthy","is_unit_unhealthy_for_service"],"struct":["SystemdUnitActiveStateIter","SystemdUnitLoadStateIter"]};

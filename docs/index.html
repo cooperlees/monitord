@@ -244,7 +244,28 @@
 <li>systemd-networkd installed (for networkd metrics; the collector can be disabled in config)</li>
 <li>PID 1 stats require procfs (<code>/proc</code>) — available on all standard Linux systems</li>
 <li>D-Bus system bus accessible (default: <code>unix:path=/run/dbus/system_bus_socket</code>)</li>
-<li>Varlink metrics require systemd v260+ (optional; falls back to D-Bus automatically)</li>
+<li>Varlink support is optional and falls back to D-Bus automatically. Minimum
+  systemd versions per endpoint (audited while digging into what is left to
+  move off D-Bus for <a href="https://github.com/cooperlees/monitord/issues/37">#37</a>):</li>
+<li>Metrics (<code>io.systemd.Metrics</code> on <code>/run/systemd/report/io.systemd.Manager</code>,
+    used today for unit counts/state): v260+; v261+ for <code>JobsQueued</code>, the
+    exact <code>UnitsTotal</code>, <code>UnitsByLoadStateTotal</code>, per-unit
+    <code>StateChangeTimestamp</code>, and per-service <code>StatusErrno</code> (on v260,
+    <code>total_units</code> is approximated by summing mapped per-type counts, load-state
+    totals are counted from per-unit load states, while <code>jobs_queued</code>,
+    <code>time_in_state_usecs</code> and <code>status_errno</code> are unavailable)</li>
+<li>networkd (<code>io.systemd.Network.Describe</code>, used today for interface states):
+    v257+</li>
+<li>PID 1 manager (<code>io.systemd.Manager</code>/<code>io.systemd.Unit</code> on
+    <code>/run/systemd/io.systemd.Manager</code>): v258+ for <code>Manager.Describe</code>, used
+    today for the systemd version and system state. <strong><code>Unit.List</code> needs v261+</strong>
+    for anything monitord reads from it: the method exists in v258, but the
+    per-type context sections it returns are added by <code>varlink-service.c</code> and
+    <code>varlink-timer.c</code>, which first appear in v261 — so per-service stats and
+    service types are unavailable before then. v261+ also for job listing</li>
+<li>machined (<code>io.systemd.Machine.List</code> on
+    <code>/run/systemd/machine/io.systemd.Machine</code>; planned future use for machine
+    enumeration — see #37): v257+</li>
 </ul>
 <h2>What does monitord monitor?</h2>
 <p>monitord collects systemd health metrics via D-Bus (and optionally Varlink) and outputs them as JSON. It provides visibility into:</p>
@@ -479,11 +500,11 @@ Alternatively, set <code>cache_dir</code> to a location like <code>/tmp</code> t
 <p>From version <code>&gt;=0.11</code> monitord supports obtaining the same set of key from
 systemd 'machines' (i.e. <code>machinectl --list</code>).</p>
 <p>The keys are the same format as below in <code>json_flat</code> output but are prefixed with
-the <code>machine</code> keyword and machine name. For example:</p>
-<pre><code class="language-json"># $KEY_PREFIX.machine.$MACHINE_NAME
+the <code>machines</code> keyword and machine name. For example:</p>
+<pre><code class="language-json"># $KEY_PREFIX.machines.$MACHINE_NAME
 {
   ...
-  &quot;monitord.machine.foo.pid1.fd_count&quot;: 69,
+  &quot;monitord.machines.foo.pid1.fd_count&quot;: 69,
   ...
 }
 </code></pre>
@@ -497,30 +518,50 @@ Is semi pretty too + custom. All unittested ...</p>
 Prometheus metric naming conventions for duration units, which keeps unit semantics
 clear and consistent when these keys are transformed into Prometheus metric names.</p>
 <pre><code class="language-json">{
-  &quot;boot.blame.dnf5-automatic.service&quot;: 204.159,
   &quot;boot.blame.cpe_chef.service&quot;: 103.05,
-  &quot;boot.blame.sys-module-fuse.device&quot;: 16.21,
   &quot;boot.blame.dev-ttyS0.device&quot;: 15.809,
+  &quot;boot.blame.dnf5-automatic.service&quot;: 204.159,
+  &quot;boot.blame.sys-module-fuse.device&quot;: 16.21,
   &quot;boot.blame.systemd-networkd-wait-online.service&quot;: 1.674,
   &quot;collection_timings.list_units_ms&quot;: 5.26,
   &quot;collection_timings.per_unit_loop_ms&quot;: 42.99,
   &quot;collection_timings.service_dbus_fetches&quot;: 0,
+  &quot;collection_timings.slowest_units.0.chronyd.service&quot;: 5.248485,
+  &quot;collection_timings.slowest_units.1.fstrim.timer&quot;: 5.173884,
+  &quot;collection_timings.slowest_units.2.systemd-logind.service&quot;: 0.042048,
+  &quot;collection_timings.slowest_units.3.dev-nvme0n1.device&quot;: 0.035938,
+  &quot;collection_timings.slowest_units.4.sys-module-fuse.device&quot;: 0.035106,
   &quot;collection_timings.state_dbus_fetches&quot;: 0,
   &quot;collection_timings.timer_dbus_fetches&quot;: 24,
   &quot;collector_timings.boot_blame.elapsed_ms&quot;: 53.36,
   &quot;collector_timings.boot_blame.start_offset_ms&quot;: 0.08,
   &quot;collector_timings.boot_blame.success&quot;: 1,
+  &quot;collector_timings.dbus_stats.elapsed_ms&quot;: 1.84,
+  &quot;collector_timings.dbus_stats.start_offset_ms&quot;: 0.11,
+  &quot;collector_timings.dbus_stats.success&quot;: 1,
+  &quot;collector_timings.machines.elapsed_ms&quot;: 0.51,
+  &quot;collector_timings.machines.start_offset_ms&quot;: 0.14,
+  &quot;collector_timings.machines.success&quot;: 0,
+  &quot;collector_timings.networkd.elapsed_ms&quot;: 8.48,
+  &quot;collector_timings.networkd.start_offset_ms&quot;: 0.1,
+  &quot;collector_timings.networkd.success&quot;: 1,
+  &quot;collector_timings.pid1.elapsed_ms&quot;: 0.94,
+  &quot;collector_timings.pid1.start_offset_ms&quot;: 0.1,
+  &quot;collector_timings.pid1.success&quot;: 1,
+  &quot;collector_timings.system_state.elapsed_ms&quot;: 2.38,
+  &quot;collector_timings.system_state.start_offset_ms&quot;: 0.12,
+  &quot;collector_timings.system_state.success&quot;: 1,
   &quot;collector_timings.units.elapsed_ms&quot;: 53.24,
   &quot;collector_timings.units.start_offset_ms&quot;: 0.06,
   &quot;collector_timings.units.success&quot;: 1,
+  &quot;collector_timings.verify.elapsed_ms&quot;: 31.07,
+  &quot;collector_timings.verify.start_offset_ms&quot;: 0.13,
+  &quot;collector_timings.verify.success&quot;: 1,
+  &quot;collector_timings.version.elapsed_ms&quot;: 2.25,
+  &quot;collector_timings.version.start_offset_ms&quot;: 0.09,
+  &quot;collector_timings.version.success&quot;: 1,
   &quot;dbus.active_connections&quot;: 10,
   &quot;dbus.bus_names&quot;: 16,
-  &quot;dbus.incomplete_connections&quot;: 0,
-  &quot;dbus.match_rules&quot;: 26,
-  &quot;dbus.peak_bus_names&quot;: 33,
-  &quot;dbus.peak_bus_names_per_connection&quot;: 2,
-  &quot;dbus.peak_match_rules&quot;: 33,
-  &quot;dbus.peak_match_rules_per_connection&quot;: 13,
   &quot;dbus.cgroup.system.slice-systemd-logind.service.activation_request_bytes&quot;: 0,
   &quot;dbus.cgroup.system.slice-systemd-logind.service.activation_request_fds&quot;: 0,
   &quot;dbus.cgroup.system.slice-systemd-logind.service.incoming_bytes&quot;: 16,
@@ -531,6 +572,12 @@ clear and consistent when these keys are transformed into Prometheus metric name
   &quot;dbus.cgroup.system.slice-systemd-logind.service.outgoing_bytes&quot;: 0,
   &quot;dbus.cgroup.system.slice-systemd-logind.service.outgoing_fds&quot;: 0,
   &quot;dbus.cgroup.system.slice-systemd-logind.service.reply_objects&quot;: 0,
+  &quot;dbus.incomplete_connections&quot;: 0,
+  &quot;dbus.match_rules&quot;: 26,
+  &quot;dbus.peak_bus_names&quot;: 33,
+  &quot;dbus.peak_bus_names_per_connection&quot;: 2,
+  &quot;dbus.peak_match_rules&quot;: 33,
+  &quot;dbus.peak_match_rules_per_connection&quot;: 13,
   &quot;dbus.peer.org.freedesktop.systemd1.activation_request_bytes&quot;: 0,
   &quot;dbus.peer.org.freedesktop.systemd1.activation_request_fds&quot;: 0,
   &quot;dbus.peer.org.freedesktop.systemd1.incoming_bytes&quot;: 16,
@@ -541,10 +588,12 @@ clear and consistent when these keys are transformed into Prometheus metric name
   &quot;dbus.peer.org.freedesktop.systemd1.outgoing_bytes&quot;: 0,
   &quot;dbus.peer.org.freedesktop.systemd1.outgoing_fds&quot;: 0,
   &quot;dbus.peer.org.freedesktop.systemd1.reply_objects&quot;: 0,
+  &quot;dbus.stale_fds&quot;: 3,
   &quot;dbus.user.cooper.bytes&quot;: 919236,
   &quot;dbus.user.cooper.fds&quot;: 78,
   &quot;dbus.user.cooper.matches&quot;: 510,
   &quot;dbus.user.cooper.objects&quot;: 80,
+  &quot;dbus.user.root.stale_fds&quot;: 3,
   &quot;networkd.eno4.address_state&quot;: 3,
   &quot;networkd.eno4.admin_state&quot;: 4,
   &quot;networkd.eno4.carrier_state&quot;: 5,
@@ -574,6 +623,7 @@ clear and consistent when these keys are transformed into Prometheus metric name
   &quot;services.chronyd.service.memory_available&quot;: 18446744073709551615,
   &quot;services.chronyd.service.memory_current&quot;: 5214208,
   &quot;services.chronyd.service.nrestarts&quot;: 0,
+  &quot;services.chronyd.service.processes&quot;: 1,
   &quot;services.chronyd.service.restart_usec&quot;: 100000,
   &quot;services.chronyd.service.state_change_timestamp&quot;: 1683556542382710,
   &quot;services.chronyd.service.status_errno&quot;: 0,
@@ -602,7 +652,8 @@ clear and consistent when these keys are transformed into Prometheus metric name
   &quot;unit_files.user.transient.scope_units&quot;: 19,
   &quot;unit_files.user.transient.service_units&quot;: 15,
   &quot;unit_states.chronyd.service.active_state&quot;: 1,
-  &quot;unit_states.chronyd.service.loaded_state&quot;: 1,
+  &quot;unit_states.chronyd.service.load_state&quot;: 1,
+  &quot;unit_states.chronyd.service.time_in_state_usecs&quot;: 2176062087185,
   &quot;unit_states.chronyd.service.unhealthy&quot;: 0,
   &quot;units.activating_units&quot;: 0,
   &quot;units.active_units&quot;: 403,
@@ -621,8 +672,17 @@ clear and consistent when these keys are transformed into Prometheus metric name
   &quot;units.slice_units&quot;: 7,
   &quot;units.socket_units&quot;: 28,
   &quot;units.target_units&quot;: 54,
+  &quot;units.timer_persistent_units&quot;: 1,
+  &quot;units.timer_remain_after_elapse&quot;: 1,
   &quot;units.timer_units&quot;: 20,
   &quot;units.total_units&quot;: 562,
+  &quot;varlink_usage.boot_blame&quot;: 1,
+  &quot;varlink_usage.machines&quot;: 0,
+  &quot;varlink_usage.networkd&quot;: 1,
+  &quot;varlink_usage.system_state&quot;: 1,
+  &quot;varlink_usage.units&quot;: 1,
+  &quot;varlink_usage.verify&quot;: 1,
+  &quot;varlink_usage.version&quot;: 1,
   &quot;verify.failing.device&quot;: 43,
   &quot;verify.failing.mount&quot;: 15,
   &quot;verify.failing.service&quot;: 31,
@@ -638,6 +698,25 @@ clear and consistent when these keys are transformed into Prometheus metric name
 <code>stat_collector</code> cycle and exposes the result on <code>MonitordStats::collector_timings</code>,
 plus an inner phase breakdown for the units collector
 (<code>SystemdUnitStats::collection_timings</code>).</p>
+<h3>Varlink usage gauges</h3>
+<p>Each collector that can use varlink reports which transport served it on the
+last run: <code>varlink_usage.&lt;collector&gt;</code> is 1 when the varlink attempt succeeded
+and 0 when the collector fell back to D-Bus (or file-based collection for
+networkd). Collectors with no varlink path (<code>pid1</code>, <code>dbus_stats</code>) and disabled
+collectors emit no gauge, so the present gauges are exactly the enabled set —
+no separate enabled-collectors counter is needed.</p>
+<p>As the systemd under monitord upgrades past each endpoint's minimum version
+(networkd v257+, system state/version v258+, units v260+, unit details v261+),
+collectors silently flip from 0 to 1 with no config change, so watching these
+gauges over time shows varlink adoption climbing across the fleet. Downstream
+consumers such as monitord-exporter can aggregate them (share of collectors
+reporting 1) from there; monitord itself only makes the gauges available in
+its output formats. Per-container gauges are emitted under
+<code>machines.&lt;name&gt;.varlink_usage.&lt;collector&gt;</code>; note a container <code>units</code> gauge
+of 1 still includes D-Bus calls underneath (the timer backfill and oneshot
+type override, which have no varlink equivalent inside containers), so compare
+host and container gauges separately. The host <code>machines</code> gauge covers
+enumeration only and stays 0 until machined grows a varlink List API.</p>
 <table>
 <thead>
 <tr>
@@ -692,11 +771,16 @@ plus an inner phase breakdown for the units collector
 <h4>Varlink-vs-D-Bus parity</h4>
 <p><code>collection_timings</code> is populated identically by the D-Bus path
 (<code>units::parse_unit_state</code>) and the varlink path
-(<code>varlink_units::parse_metrics</code>). In the varlink case, <code>list_units_ms</code> is the
-bulk varlink <code>List</code> call on <code>io.systemd.Manager</code> and <code>per_unit_loop_ms</code> is the
-local parse loop; the <code>*_dbus_fetches</code> counters stay at zero, which is itself a
-useful signal that the varlink path is not paying per-unit D-Bus cost. This
-makes <code>varlink.enabled = true</code> vs <code>false</code> directly comparable on the same host.</p>
+(<code>varlink_units::parse_metrics</code> plus the <code>io.systemd.Unit.List</code> detail pass).
+In the varlink case, <code>list_units_ms</code> is the bulk varlink <code>List</code> call on
+<code>io.systemd.Manager</code> and <code>per_unit_loop_ms</code> covers the local parse loop plus
+the per-unit detail pass that fills service and timer stats.</p>
+<p><strong>All three <code>*_dbus_fetches</code> counters stay at zero on the varlink path</strong>, since
+nothing there touches D-Bus any more: per-service stats, timer properties and
+service types come from <code>io.systemd.Unit.List</code>, and time-in-state from the
+<code>StateChangeTimestamp</code> metric. They only become nonzero if that socket is
+unusable and monitord falls back. This makes <code>varlink.enabled = true</code> vs
+<code>false</code> directly comparable on the same host.</p>
 <p><strong>Convention for new collectors moved to varlink:</strong> when porting a collector
 from D-Bus to varlink, add the equivalent inner timings so the two
 implementations remain comparable. The minimum is wall time of the bulk
@@ -789,7 +873,7 @@ already covers them.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>loaded_state</strong> (unit_states.*.loaded_state)</p>
+<p><strong>load_state</strong> (unit_states.*.load_state)</p>
 <table>
 <thead>
 <tr>
@@ -976,6 +1060,32 @@ already covers them.</p>
 </tr>
 </tbody>
 </table>
+<p><strong>networkd required_for_online</strong></p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>false</td>
+</tr>
+<tr>
+<td>1</td>
+<td>true</td>
+</tr>
+<tr>
+<td>255</td>
+<td>unknown</td>
+</tr>
+</tbody>
+</table>
+<p>Note the <code>unknown</code> sentinel is <code>255</code> (<code>u8::MAX</code>), not <code>0</code> — <code>0</code> means an
+explicit <code>false</code>. Alerting rules should treat <code>255</code> as "no data", not as
+"not required for online".</p>
 <h2>dbus stats</h2>
 <p>You're going to need to be root or allow permissiong to pull dbus stats.
 For dbus-broker here is example config allow a user <code>monitord</code> to query
@@ -1123,14 +1233,41 @@ enabled = true
 <p>When varlink is enabled, monitord will attempt to collect stats via the varlink APIs first,
 automatically falling back to D-Bus or file-based collection when a varlink socket is unavailable
 (e.g., older systemd versions).</p>
+<p>Each varlink-capable collector (<code>[units]</code>, <code>[networkd]</code>, <code>[system-state]</code>, <code>[boot]</code>,
+<code>[verify]</code>, <code>[machines]</code> for container collection) also has its own <code>varlink</code> toggle,
+defaulting to true. A collector uses varlink only when both the global switch and its section toggle are
+true, so collectors can be moved to varlink one at a time by setting a section toggle to
+false. Container collection additionally requires <code>[machines] varlink</code>. Timers have no
+toggle of their own: they ride the units path and follow <code>[units] varlink</code>.
+<code>[system-state] varlink</code> also gates version collection, which shares the
+<code>Manager.Describe</code> call — including when <code>[system-state]</code> itself is disabled.</p>
 <h3>Metrics collected via Varlink</h3>
-<p><strong>Units</strong> (<code>io.systemd.Metrics</code> — systemd v260+):
+<p><strong>Units</strong> (<code>io.systemd.Metrics</code> — systemd v260+, v261+ for jobs queued, exact totals, load-state totals, time-in-state, service errno, and the <code>ActiveTimestamp</code>/<code>InactiveExitTimestamp</code> families boot blame reads):
 - Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)
-- Unit counts by state (active, failed, inactive)
+- Unit counts by state (activating, active, failed, inactive)
+- Unit counts by load state (<code>UnitsByLoadStateTotal</code>, v261+: loaded, masked, not-found; counted from per-unit load states on v260)
+- Exact total unit count (<code>UnitsTotal</code>, v261+; approximated from mapped per-type counts on v260)
+- Queued job count (<code>JobsQueued</code>, v261+; unavailable (0) on v260)
 - Per-unit active state and load state (with allowlist/blocklist filtering)
+- Per-unit time in state (<code>StateChangeTimestamp</code>, v261+; unavailable on v260)
 - Per-unit health status (computed from active + load state)
 - Per-service restart counts (<code>nrestarts</code>)
+- Per-service errno status (<code>StatusErrno</code>, v261+; unavailable (0) on v260)
+- Full per-service stats for units in <code>[services]</code> via <code>io.systemd.Unit.List</code> (systemd v261+): CPU, memory, tasks, process count, timestamps and timeouts, matching what the D-Bus path reports. Unavailable counters are reported as <code>u64::MAX</code>, exactly as the D-Bus properties do when accounting is disabled
+- Per-timer stats via <code>io.systemd.Unit.List</code> (systemd v261+): accuracy, delays, next elapse, last trigger, and the triggered unit's state change — no D-Bus backfill
 - Falls back to D-Bus collection if the socket is unavailable</p>
+<p><strong>System state and version</strong> (<code>io.systemd.Manager.Describe</code> — systemd v258+):
+- Overall systemd system state (running, degraded, …)
+- Version of the running systemd manager (which can trail the installed package
+  until PID 1 re-execs)
+- Falls back to the D-Bus <code>SystemState</code>/<code>Version</code> properties if the socket is unavailable</p>
+<p><strong>Boot blame</strong> (<code>io.systemd.Metrics</code> — systemd v261+):
+- Slowest units at boot, from the per-unit <code>ActiveTimestamp</code>/<code>InactiveExitTimestamp</code> metrics rather than a D-Bus property read per unit
+- Falls back to D-Bus if the socket is unavailable</p>
+<p><strong>Verify</strong> (unit names from <code>UnitLoadState</code> metric objects — systemd v260+):
+- Unit enumeration for <code>systemd-analyze verify</code> without D-Bus <code>ListUnits</code>; the metric objects are the same set <code>ListUnits</code> returns (verified live, including <code>not-found</code> units)
+- The analyze run itself is unchanged and shared by both paths
+- Falls back to D-Bus if the socket is unavailable</p>
 <p><strong>Networkd interfaces</strong> (<code>io.systemd.Network.Describe</code> — systemd v257+):
 - Per-interface operational, carrier, admin, and address states
 - Falls back to parsing <code>/run/systemd/netif/links</code> state files if the socket is unavailable</p>
@@ -1138,7 +1275,8 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 <p>For systemd-nspawn containers, monitord connects to the container's varlink socket via
 <code>/proc/&lt;leader_pid&gt;/root/run/systemd/report/io.systemd.Manager</code>, similar to how D-Bus uses
 the container-scoped bus socket. Networkd stats use
-<code>/proc/&lt;leader_pid&gt;/root/run/systemd/netif/io.systemd.Network</code>, with the same file-based fallback.</p>
+<code>/proc/&lt;leader_pid&gt;/root/run/systemd/netif/io.systemd.Network</code>, with the same file-based fallback.
+System state and version use <code>/proc/&lt;leader_pid&gt;/root/run/systemd/io.systemd.Manager</code>.</p>
 <h3>varlink 101</h3>
 <p>varlink might one day replace our DBUS usage. Here are some notes on how to work with systemd varlink
 as there isn't really documentation outside <code>man</code> pages.</p>
@@ -1146,18 +1284,25 @@ as there isn't really documentation outside <code>man</code> pages.</p>
 <ul>
 <li>varlinkctl is your friend - https://man7.org/linux/man-pages/man1/varlinkctl.1.html</li>
 </ul>
-<p>Here is an example with networkd's interfaces:</p>
+<p>Here is an example with networkd's interfaces. monitord uses <code>Describe</code>, which
+returns per-interface states (<code>GetStates</code> returns the manager-level aggregate
+instead):</p>
 <pre><code>varlinkctl info unix:/run/systemd/netif/io.systemd.Network
 varlinkctl introspect unix:/run/systemd/netif/io.systemd.Network io.systemd.Network
 
-cooper@au:~$ varlinkctl call unix:/run/systemd/netif/io.systemd.Network io.systemd.Network.GetStates '{}' -j | jq
+cooper@au:~$ varlinkctl call unix:/run/systemd/netif/io.systemd.Network io.systemd.Network.Describe '{}' | jq '.Interfaces[0]'
 {
+  &quot;Index&quot;: 2,
+  &quot;Name&quot;: &quot;eth0&quot;,
+  &quot;AdministrativeState&quot;: &quot;configured&quot;,
+  &quot;OperationalState&quot;: &quot;routable&quot;,
+  &quot;CarrierState&quot;: &quot;carrier&quot;,
   &quot;AddressState&quot;: &quot;routable&quot;,
   &quot;IPv4AddressState&quot;: &quot;routable&quot;,
   &quot;IPv6AddressState&quot;: &quot;routable&quot;,
-  &quot;CarrierState&quot;: &quot;carrier&quot;,
   &quot;OnlineState&quot;: &quot;online&quot;,
-  &quot;OperationalState&quot;: &quot;routable&quot;
+  &quot;NetworkFile&quot;: &quot;/etc/systemd/network/69-eno4.network&quot;,
+  &quot;RequiredForOnline&quot;: true
 }
 </code></pre>
     </div>

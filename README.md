@@ -288,13 +288,13 @@ From version `>=0.11` monitord supports obtaining the same set of key from
 systemd 'machines' (i.e. `machinectl --list`).
 
 The keys are the same format as below in `json_flat` output but are prefixed with
-the `machine` keyword and machine name. For example:
+the `machines` keyword and machine name. For example:
 
 ```json
-# $KEY_PREFIX.machine.$MACHINE_NAME
+# $KEY_PREFIX.machines.$MACHINE_NAME
 {
   ...
-  "monitord.machine.foo.pid1.fd_count": 69,
+  "monitord.machines.foo.pid1.fd_count": 69,
   ...
 }
 ```
@@ -316,30 +316,50 @@ clear and consistent when these keys are transformed into Prometheus metric name
 
 ```json
 {
-  "boot.blame.dnf5-automatic.service": 204.159,
   "boot.blame.cpe_chef.service": 103.05,
-  "boot.blame.sys-module-fuse.device": 16.21,
   "boot.blame.dev-ttyS0.device": 15.809,
+  "boot.blame.dnf5-automatic.service": 204.159,
+  "boot.blame.sys-module-fuse.device": 16.21,
   "boot.blame.systemd-networkd-wait-online.service": 1.674,
   "collection_timings.list_units_ms": 5.26,
   "collection_timings.per_unit_loop_ms": 42.99,
   "collection_timings.service_dbus_fetches": 0,
+  "collection_timings.slowest_units.0.chronyd.service": 5.248485,
+  "collection_timings.slowest_units.1.fstrim.timer": 5.173884,
+  "collection_timings.slowest_units.2.systemd-logind.service": 0.042048,
+  "collection_timings.slowest_units.3.dev-nvme0n1.device": 0.035938,
+  "collection_timings.slowest_units.4.sys-module-fuse.device": 0.035106,
   "collection_timings.state_dbus_fetches": 0,
   "collection_timings.timer_dbus_fetches": 24,
   "collector_timings.boot_blame.elapsed_ms": 53.36,
   "collector_timings.boot_blame.start_offset_ms": 0.08,
   "collector_timings.boot_blame.success": 1,
+  "collector_timings.dbus_stats.elapsed_ms": 1.84,
+  "collector_timings.dbus_stats.start_offset_ms": 0.11,
+  "collector_timings.dbus_stats.success": 1,
+  "collector_timings.machines.elapsed_ms": 0.51,
+  "collector_timings.machines.start_offset_ms": 0.14,
+  "collector_timings.machines.success": 0,
+  "collector_timings.networkd.elapsed_ms": 8.48,
+  "collector_timings.networkd.start_offset_ms": 0.1,
+  "collector_timings.networkd.success": 1,
+  "collector_timings.pid1.elapsed_ms": 0.94,
+  "collector_timings.pid1.start_offset_ms": 0.1,
+  "collector_timings.pid1.success": 1,
+  "collector_timings.system_state.elapsed_ms": 2.38,
+  "collector_timings.system_state.start_offset_ms": 0.12,
+  "collector_timings.system_state.success": 1,
   "collector_timings.units.elapsed_ms": 53.24,
   "collector_timings.units.start_offset_ms": 0.06,
   "collector_timings.units.success": 1,
+  "collector_timings.verify.elapsed_ms": 31.07,
+  "collector_timings.verify.start_offset_ms": 0.13,
+  "collector_timings.verify.success": 1,
+  "collector_timings.version.elapsed_ms": 2.25,
+  "collector_timings.version.start_offset_ms": 0.09,
+  "collector_timings.version.success": 1,
   "dbus.active_connections": 10,
   "dbus.bus_names": 16,
-  "dbus.incomplete_connections": 0,
-  "dbus.match_rules": 26,
-  "dbus.peak_bus_names": 33,
-  "dbus.peak_bus_names_per_connection": 2,
-  "dbus.peak_match_rules": 33,
-  "dbus.peak_match_rules_per_connection": 13,
   "dbus.cgroup.system.slice-systemd-logind.service.activation_request_bytes": 0,
   "dbus.cgroup.system.slice-systemd-logind.service.activation_request_fds": 0,
   "dbus.cgroup.system.slice-systemd-logind.service.incoming_bytes": 16,
@@ -350,6 +370,12 @@ clear and consistent when these keys are transformed into Prometheus metric name
   "dbus.cgroup.system.slice-systemd-logind.service.outgoing_bytes": 0,
   "dbus.cgroup.system.slice-systemd-logind.service.outgoing_fds": 0,
   "dbus.cgroup.system.slice-systemd-logind.service.reply_objects": 0,
+  "dbus.incomplete_connections": 0,
+  "dbus.match_rules": 26,
+  "dbus.peak_bus_names": 33,
+  "dbus.peak_bus_names_per_connection": 2,
+  "dbus.peak_match_rules": 33,
+  "dbus.peak_match_rules_per_connection": 13,
   "dbus.peer.org.freedesktop.systemd1.activation_request_bytes": 0,
   "dbus.peer.org.freedesktop.systemd1.activation_request_fds": 0,
   "dbus.peer.org.freedesktop.systemd1.incoming_bytes": 16,
@@ -360,10 +386,12 @@ clear and consistent when these keys are transformed into Prometheus metric name
   "dbus.peer.org.freedesktop.systemd1.outgoing_bytes": 0,
   "dbus.peer.org.freedesktop.systemd1.outgoing_fds": 0,
   "dbus.peer.org.freedesktop.systemd1.reply_objects": 0,
+  "dbus.stale_fds": 3,
   "dbus.user.cooper.bytes": 919236,
   "dbus.user.cooper.fds": 78,
   "dbus.user.cooper.matches": 510,
   "dbus.user.cooper.objects": 80,
+  "dbus.user.root.stale_fds": 3,
   "networkd.eno4.address_state": 3,
   "networkd.eno4.admin_state": 4,
   "networkd.eno4.carrier_state": 5,
@@ -393,6 +421,7 @@ clear and consistent when these keys are transformed into Prometheus metric name
   "services.chronyd.service.memory_available": 18446744073709551615,
   "services.chronyd.service.memory_current": 5214208,
   "services.chronyd.service.nrestarts": 0,
+  "services.chronyd.service.processes": 1,
   "services.chronyd.service.restart_usec": 100000,
   "services.chronyd.service.state_change_timestamp": 1683556542382710,
   "services.chronyd.service.status_errno": 0,
@@ -421,7 +450,8 @@ clear and consistent when these keys are transformed into Prometheus metric name
   "unit_files.user.transient.scope_units": 19,
   "unit_files.user.transient.service_units": 15,
   "unit_states.chronyd.service.active_state": 1,
-  "unit_states.chronyd.service.loaded_state": 1,
+  "unit_states.chronyd.service.load_state": 1,
+  "unit_states.chronyd.service.time_in_state_usecs": 2176062087185,
   "unit_states.chronyd.service.unhealthy": 0,
   "units.activating_units": 0,
   "units.active_units": 403,
@@ -440,6 +470,8 @@ clear and consistent when these keys are transformed into Prometheus metric name
   "units.slice_units": 7,
   "units.socket_units": 28,
   "units.target_units": 54,
+  "units.timer_persistent_units": 1,
+  "units.timer_remain_after_elapse": 1,
   "units.timer_units": 20,
   "units.total_units": 562,
   "varlink_usage.boot_blame": 1,
@@ -564,7 +596,7 @@ Many metrics are serialized as integers. Here are the enum mappings:
 | 5 | activating |
 | 6 | deactivating |
 
-**loaded_state** (unit_states.\*.loaded_state)
+**load_state** (unit_states.\*.load_state)
 
 | Value | State |
 |-------|-------|
@@ -621,6 +653,18 @@ Many metrics are serialized as integers. Here are the enum mappings:
 | 7 | degraded |
 | 8 | enslaved |
 | 9 | routable |
+
+**networkd required_for_online**
+
+| Value | State |
+|-------|-------|
+| 0 | false |
+| 1 | true |
+| 255 | unknown |
+
+Note the `unknown` sentinel is `255` (`u8::MAX`), not `0` — `0` means an
+explicit `false`. Alerting rules should treat `255` as "no data", not as
+"not required for online".
 
 ## dbus stats
 

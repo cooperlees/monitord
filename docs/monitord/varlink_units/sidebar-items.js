@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["METRICS_SOCKET_PATH"],"fn":["get_unit_stats","parse_metrics","parse_one_metric","update_unit_stats"]};
+window.SIDEBAR_ITEMS = {"constant":["METRICS_SOCKET_PATH"],"fn":["apply_oneshot_dbus_override","apply_oneshot_types","apply_unit_details","fetch_oneshot_types","get_unit_stats","parse_metrics","parse_one_metric","select_oneshot_candidates","update_unit_stats"]};

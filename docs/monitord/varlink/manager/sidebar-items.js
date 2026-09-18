@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MANAGER_SOCKET_PATH"],"enum":["ManagerError"],"struct":["DescribeOutput","ManagerRuntime"],"trait":["Manager","ManagerChain"]};

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["metrics","network"]};
+window.SIDEBAR_ITEMS = {"mod":["manager","metrics","network","unit"]};

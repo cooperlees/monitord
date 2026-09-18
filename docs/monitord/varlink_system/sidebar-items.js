@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["get_system_state","get_version","shared_describe","update_system_stats","update_version"],"type":["SharedDescribe"]};
