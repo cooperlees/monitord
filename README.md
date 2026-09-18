@@ -778,7 +778,8 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 
 **System state and version** (`io.systemd.Manager.Describe` — systemd v258+):
 - Overall systemd system state (running, degraded, …)
-- Installed systemd version
+- Version of the running systemd manager (which can trail the installed package
+  until PID 1 re-execs)
 - Falls back to the D-Bus `SystemState`/`Version` properties if the socket is unavailable
 
 **Networkd interfaces** (`io.systemd.Network.Describe` — systemd v257+):

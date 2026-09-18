@@ -29,6 +29,7 @@ CONTAINER = "monitord-test"
 CONTAINER_TARGET_DIR = "/ctarget"
 METRICS_SOCKET = "/run/systemd/report/io.systemd.Manager"
 NETWORK_SOCKET = "/run/systemd/netif/io.systemd.Network"
+MANAGER_SOCKET = "/run/systemd/io.systemd.Manager"
 DBUS_CONF = "/tmp/monitord-ci.conf"
 VARLINK_CONF = "/tmp/monitord-varlink-ci.conf"
 
@@ -392,7 +393,7 @@ def main() -> None:
     docker_exec(args.container, "systemctl", "enable", "--now", "systemd-networkd")
 
     step("Checking varlink sockets")
-    for socket in (METRICS_SOCKET, NETWORK_SOCKET):
+    for socket in (METRICS_SOCKET, NETWORK_SOCKET, MANAGER_SOCKET):
         found = subprocess.run(
             ["docker", "exec", args.container, "test", "-S", socket]
         ).returncode
