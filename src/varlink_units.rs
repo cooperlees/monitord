@@ -170,6 +170,42 @@ pub fn parse_one_metric(
                 .or_default()
                 .nrestarts = nrestarts;
         }
+        "StatusErrno" => {
+            // Per-service like NRestarts above: tracked for the [services] list only.
+            if !services.contains(&object_name) {
+                return Ok(());
+            }
+            if !metric.value().is_i64() {
+                warn!(
+                    "Metric {} has non-integer value: {:?}",
+                    metric.name(),
+                    metric.value()
+                );
+                return Ok(());
+            }
+            let value = metric.value_as_int();
+            // systemd rejects a negative ERRNO= in sd_notify ("Numerical result
+            // out of range") and emits this metric unsigned, so the value is
+            // non-negative. It is still stored as i32 to match the D-Bus
+            // StatusErrno property that ServiceStats is typed from, which is
+            // what makes the conversion below worth checking.
+            let status_errno: i32 = match value.try_into() {
+                Ok(v) => v,
+                Err(_) => {
+                    warn!(
+                        "Metric {} has out-of-range value for i32: {}",
+                        metric.name(),
+                        value
+                    );
+                    return Ok(());
+                }
+            };
+            stats
+                .service_stats
+                .entry(object_name.to_string())
+                .or_default()
+                .status_errno = status_errno;
+        }
         "UnitsByTypeTotal" => {
             if let Some(type_str) = metric.get_field_as_str("type") {
                 if !metric.value().is_i64() {
@@ -740,6 +776,61 @@ mod tests {
         let other_metric = ListOutput {
             name: "io.systemd.Manager.NRestarts".to_string(),
             value: int_value(7),
+            object: Some("other.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &other_metric, &config, &services, false)
+            .expect("other_metric should parse successfully");
+        assert!(!stats.service_stats.contains_key("other.service"));
+    }
+
+    #[test]
+    fn test_parse_one_metric_status_errno() {
+        let mut stats = SystemdUnitStats::default();
+        let config = default_units_config();
+        let services = HashSet::from(["my-service.service".to_string()]);
+
+        // A service reporting EACCES via sd_notify's ERRNO=13, as seen live.
+        let metric = ListOutput {
+            name: "io.systemd.Manager.StatusErrno".to_string(),
+            value: int_value(13),
+            object: Some("my-service.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &metric, &config, &services, false)
+            .expect("metric should parse successfully");
+        assert_eq!(
+            stats
+                .service_stats
+                .get("my-service.service")
+                .expect("my-service.service should have a service_stats entry")
+                .status_errno,
+            13
+        );
+
+        // Out of i32 range: warn and leave the previous value alone rather than
+        // wrapping, since the metric is serialized unsigned.
+        let out_of_range = ListOutput {
+            name: "io.systemd.Manager.StatusErrno".to_string(),
+            value: int_value(i64::from(i32::MAX) + 1),
+            object: Some("my-service.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &out_of_range, &config, &services, false)
+            .expect("out_of_range should parse successfully");
+        assert_eq!(
+            stats
+                .service_stats
+                .get("my-service.service")
+                .expect("my-service.service should have a service_stats entry")
+                .status_errno,
+            13
+        );
+
+        // Units outside [services] get no service_stats entry even with data present.
+        let other_metric = ListOutput {
+            name: "io.systemd.Manager.StatusErrno".to_string(),
+            value: int_value(1),
             object: Some("other.service".to_string()),
             fields: None,
         };
