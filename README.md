@@ -485,15 +485,17 @@ The per-collector lines are also emitted to logs at `debug!` level. The end-of-c
 
 `collection_timings` is populated identically by the D-Bus path
 (`units::parse_unit_state`) and the varlink path
-(`varlink_units::parse_metrics` plus the oneshot D-Bus fallback). In the
-varlink case, `list_units_ms` is the bulk varlink `List` call on
+(`varlink_units::parse_metrics` plus the `io.systemd.Unit.List` detail pass).
+In the varlink case, `list_units_ms` is the bulk varlink `List` call on
 `io.systemd.Manager` and `per_unit_loop_ms` covers the local parse loop plus
-the two D-Bus phases that have no varlink equivalent yet — the oneshot
-`Service.Type` lookups and the timer backfill. `service_dbus_fetches` counts
-the successful type lookups and `timer_dbus_fetches` the timers resolved, as
-on the D-Bus path. Only `state_dbus_fetches` stays at zero, since time-in-state
-comes from the `StateChangeTimestamp` metric rather than a D-Bus fetch. This
-makes `varlink.enabled = true` vs `false` directly comparable on the same host.
+the per-unit detail pass that fills service and timer stats.
+
+**All three `*_dbus_fetches` counters stay at zero on the varlink path**, since
+nothing there touches D-Bus any more: per-service stats, timer properties and
+service types come from `io.systemd.Unit.List`, and time-in-state from the
+`StateChangeTimestamp` metric. They only become nonzero if that socket is
+unusable and monitord falls back. This makes `varlink.enabled = true` vs
+`false` directly comparable on the same host.
 
 **Convention for new collectors moved to varlink:** when porting a collector
 from D-Bus to varlink, add the equivalent inner timings so the two
@@ -780,6 +782,7 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 - Per-service restart counts (`nrestarts`)
 - Per-service errno status (`StatusErrno`, v261+; unavailable (0) on v260)
 - Full per-service stats for units in `[services]` via `io.systemd.Unit.List` (systemd v261+): CPU, memory, tasks, process count, timestamps and timeouts, matching what the D-Bus path reports. Unavailable counters are reported as `u64::MAX`, exactly as the D-Bus properties do when accounting is disabled
+- Per-timer stats via `io.systemd.Unit.List` (systemd v261+): accuracy, delays, next elapse, last trigger, and the triggered unit's state change — no D-Bus backfill
 - Falls back to D-Bus collection if the socket is unavailable
 
 **System state and version** (`io.systemd.Manager.Describe` — systemd v258+):

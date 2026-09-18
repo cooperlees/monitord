@@ -44,6 +44,8 @@ pub struct UnitContext {
     pub service: Option<ServiceContext>,
     #[serde(rename = "Exec")]
     pub exec: Option<ExecContext>,
+    #[serde(rename = "Timer")]
+    pub timer: Option<TimerContext>,
 }
 
 /// Execution configuration shared by every unit type that runs processes.
@@ -53,6 +55,24 @@ pub struct ExecContext {
     /// rather than under `Service`, unlike the D-Bus property of the same name.
     #[serde(rename = "TimeoutCleanUSec")]
     pub timeout_clean_usec: Option<u64>,
+}
+
+/// Timer-specific configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimerContext {
+    /// Unit this timer triggers, e.g. "logrotate.service".
+    #[serde(rename = "Unit")]
+    pub unit: Option<String>,
+    #[serde(rename = "AccuracyUSec")]
+    pub accuracy_usec: Option<u64>,
+    #[serde(rename = "RandomizedDelayUSec")]
+    pub randomized_delay_usec: Option<u64>,
+    #[serde(rename = "FixedRandomDelay")]
+    pub fixed_random_delay: Option<bool>,
+    #[serde(rename = "Persistent")]
+    pub persistent: Option<bool>,
+    #[serde(rename = "RemainAfterElapse")]
+    pub remain_after_elapse: Option<bool>,
 }
 
 /// Service-specific configuration.
@@ -91,6 +111,21 @@ pub struct UnitRuntime {
     pub cgroup: Option<CGroupRuntime>,
     #[serde(rename = "Service")]
     pub service: Option<ServiceRuntime>,
+    #[serde(rename = "Timer")]
+    pub timer: Option<TimerRuntime>,
+}
+
+/// Timer-specific runtime state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimerRuntime {
+    /// Next elapse on CLOCK_REALTIME; 0 for a purely monotonic timer.
+    #[serde(rename = "NextElapseUSecRealtime")]
+    pub next_elapse_usec_realtime: Option<u64>,
+    #[serde(rename = "NextElapseUSecMonotonic")]
+    pub next_elapse_usec_monotonic: Option<u64>,
+    /// When the timer last fired; absent if it never has.
+    #[serde(rename = "LastTriggerUSec")]
+    pub last_trigger_usec: Option<Timestamp>,
 }
 
 /// A systemd timestamp, carrying both clocks.
