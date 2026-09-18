@@ -105,6 +105,35 @@ def container_running(container: str) -> bool:
     return container in docker("ps", "--format", "{{.Names}}").split()
 
 
+def remove_container(container: str) -> None:
+    """Remove the container if there is one to remove.
+
+    `docker rm -f` on a name that does not exist is a no-op on current Docker,
+    but older versions and podman treat it as an error, which would take --fresh
+    down on the first run of a clean machine.
+    """
+    if container in docker("ps", "-a", "--format", "{{.Names}}").split():
+        docker("rm", "-f", container)
+
+
+def container_matches(container: str, repo: Path, image: str) -> bool:
+    """Whether the running container was started from `image` with `repo` mounted.
+
+    Containers are reused by name, so without this a `monitord-test` left
+    running by another checkout would be reused — building and testing that
+    checkout's source while reporting on this one.
+    """
+    image_used = docker("inspect", "-f", "{{.Config.Image}}", container).strip()
+    mounted = docker(
+        "inspect",
+        "-f",
+        '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}',
+        container,
+    ).strip()
+    # Docker Desktop reports host bind mounts under a /host_mnt prefix.
+    return image_used == image and mounted.removeprefix("/host_mnt") == str(repo)
+
+
 def image_exists(image: str) -> bool:
     return bool(docker("images", "-q", image).strip())
 
@@ -151,28 +180,49 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
     across the seconds-apart runs.
     """
     dbus_lines: list[str] = []
+    renamed: set[str] = set()
     section = ""
     for line in conf_text.splitlines():
         if line.startswith("["):
             section = line.strip()
         elif section == "[units.state_stats.allowlist]":
-            line = ALLOWLIST_RENAMES.get(line.strip(), line)
+            # Tracked per substitution, not by searching the finished config:
+            # the fixture units also appear in other sections, so a global
+            # search would still pass with an empty state_stats allowlist and
+            # the parity run would silently stop comparing per-unit state.
+            replacement = ALLOWLIST_RENAMES.get(line.strip())
+            if replacement is not None:
+                line = replacement
+                renamed.add(replacement)
         elif section == "[timers.allowlist]" and line.strip() == "fstrim.timer":
             continue
         dbus_lines.append(line)
 
-    missing = set(ALLOWLIST_RENAMES.values()) - set(dbus_lines)
+    missing = set(ALLOWLIST_RENAMES.values()) - renamed
     if missing:
-        raise SystemExit(f"FAIL: allowlist substitution did not apply: {missing}")
+        raise SystemExit(
+            "FAIL: [units.state_stats.allowlist] in monitord.conf no longer names "
+            f"the units this test renames, so nothing tracks {sorted(missing)}"
+        )
 
     varlink_lines: list[str] = []
     section = ""
+    enabled_varlink = False
     for line in dbus_lines:
         if line.startswith("["):
             section = line.strip()
         elif section == "[varlink]" and line.strip() == "enabled = false":
             line = "enabled = true"
+            enabled_varlink = True
         varlink_lines.append(line)
+
+    if not enabled_varlink:
+        # Both configs would then select the same collection path and the parity
+        # comparison would pass by comparing a run against itself.
+        raise SystemExit(
+            "FAIL: no '[varlink] enabled = false' in monitord.conf to flip, so the "
+            "varlink run would repeat the D-Bus run"
+        )
 
     return "\n".join(dbus_lines) + "\n", "\n".join(varlink_lines) + "\n"
 
@@ -309,12 +359,17 @@ def main() -> None:
     repo: Path = args.repo.resolve()
 
     if args.fresh:
-        docker("rm", "-f", args.container)
+        remove_container(args.container)
     if args.fresh or not image_exists(args.image):
         step(f"Building {args.image} image")
         docker("build", "-t", args.image, str(repo), capture=False)
+    if container_running(args.container) and not container_matches(
+        args.container, repo, args.image
+    ):
+        step(f"Replacing {args.container}: it holds a different repo or image")
+        remove_container(args.container)
     if not container_running(args.container):
-        docker("rm", "-f", args.container)
+        remove_container(args.container)
         start_container(repo, args.image, args.container)
 
     print(docker_exec(args.container, "systemctl", "--version").splitlines()[0])

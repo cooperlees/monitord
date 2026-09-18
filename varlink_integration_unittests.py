@@ -30,12 +30,18 @@ enabled = false
 """
 
 
+def section_body(conf: str, header: str) -> str:
+    """Return one section's lines, bounded at the next section header."""
+    body = conf.split(f"{header}\n", 1)[1]
+    return body.split("\n[", 1)[0]
+
+
 class BuildCiConfigsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.dbus_conf, self.varlink_conf = vit.build_ci_configs(STOCK_CONF)
 
     def test_allowlist_points_at_container_units(self) -> None:
-        allowlist = self.dbus_conf.split("[units.state_stats.allowlist]")[1]
+        allowlist = section_body(self.dbus_conf, "[units.state_stats.allowlist]")
         self.assertIn("kmod-static-nodes.service", allowlist)
         self.assertIn("dbus-broker.service", allowlist)
         self.assertNotIn("chrony.service", allowlist)
@@ -44,7 +50,7 @@ class BuildCiConfigsTest(unittest.TestCase):
         # [services] must keep pointing at units the container does not have:
         # full ServiceStats has no varlink parity yet, so both paths are only
         # comparable while service_stats stays empty.
-        services = self.dbus_conf.split("[services]")[1].split("[")[0]
+        services = section_body(self.dbus_conf, "[services]")
         self.assertIn("chrony.service", services)
         self.assertIn("sshd.service", services)
 
@@ -64,8 +70,31 @@ class BuildCiConfigsTest(unittest.TestCase):
     def test_missing_units_to_rename_fails_loudly(self) -> None:
         # A monitord.conf whose allowlist stops naming the units we rename would
         # silently produce a config tracking no units at all.
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as caught:
             vit.build_ci_configs("[units.state_stats.allowlist]\nfoo.service\n")
+        self.assertIn("state_stats.allowlist", str(caught.exception))
+
+    def test_fixture_units_named_elsewhere_do_not_count(self) -> None:
+        # The fixture units also appear in other sections, so confirming the
+        # rename by searching the whole config would pass with an empty state
+        # allowlist — and the parity run would stop comparing per-unit state.
+        conf = (
+            "[services]\nkmod-static-nodes.service\ndbus-broker.service\n\n"
+            "[units.state_stats.allowlist]\nsomething-else.service\n"
+        )
+        with self.assertRaises(SystemExit):
+            vit.build_ci_configs(conf)
+
+    def test_missing_varlink_toggle_fails_loudly(self) -> None:
+        # With nothing to flip, both configs select the same collection path and
+        # the parity comparison comes down to diffing a run against itself.
+        conf = (
+            "[units.state_stats.allowlist]\nchrony.service\nsshd.service\n\n"
+            "[varlink]\nenabled = true\n"
+        )
+        with self.assertRaises(SystemExit) as caught:
+            vit.build_ci_configs(conf)
+        self.assertIn("varlink", str(caught.exception))
 
 
 class DiffOutputsTest(unittest.TestCase):
