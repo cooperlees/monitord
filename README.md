@@ -795,6 +795,11 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 - Slowest units at boot, from the per-unit `ActiveTimestamp`/`InactiveExitTimestamp` metrics rather than a D-Bus property read per unit
 - Falls back to D-Bus if the socket is unavailable
 
+**Verify** (unit names from `UnitLoadState` metric objects — systemd v260+):
+- Unit enumeration for `systemd-analyze verify` without D-Bus `ListUnits`; the metric objects are the same set `ListUnits` returns (verified live, including `not-found` units)
+- The analyze run itself is unchanged and shared by both paths
+- Falls back to D-Bus if the socket is unavailable
+
 **Networkd interfaces** (`io.systemd.Network.Describe` — systemd v257+):
 - Per-interface operational, carrier, admin, and address states
 - Falls back to parsing `/run/systemd/netif/links` state files if the socket is unavailable

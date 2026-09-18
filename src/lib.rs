@@ -41,6 +41,7 @@ pub mod varlink_networkd;
 pub mod varlink_system;
 pub mod varlink_unit;
 pub mod varlink_units;
+pub mod varlink_verify;
 pub mod verify;
 
 pub const DEFAULT_DBUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
@@ -462,6 +463,7 @@ pub async fn stat_collector(
                     locked_machine_stats.clone(),
                     config.verify.allowlist.clone(),
                     config.verify.blocklist.clone(),
+                    config.varlink.enabled,
                 ),
             );
         }

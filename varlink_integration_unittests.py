@@ -31,6 +31,12 @@ cache_enabled = true
 cache_dir = /tmp
 num_slowest_units = 5
 
+[verify]
+enabled = false
+
+[verify.allowlist]
+# example.service
+
 [varlink]
 enabled = false
 """
@@ -70,6 +76,15 @@ class BuildCiConfigsTest(unittest.TestCase):
         self.assertIn("enabled = true", boot)
         self.assertIn("cache_enabled = false", boot)
         self.assertNotIn("cache_enabled = true", boot)
+
+    def test_verify_enabled_with_fixture_allowlist(self) -> None:
+        # Enabled so enumeration parity is compared at all, restricted to the
+        # fixture units so analyze does not run over every unit twice.
+        verify = section_body(self.dbus_conf, "[verify]")
+        self.assertIn("enabled = true", verify)
+        allowlist = section_body(self.dbus_conf, "[verify.allowlist]")
+        self.assertIn("dbus-broker.service", allowlist)
+        self.assertIn("kmod-static-nodes.service", allowlist)
 
     def test_only_varlink_config_enables_varlink(self) -> None:
         self.assertIn("[varlink]\nenabled = false", self.dbus_conf)

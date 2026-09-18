@@ -187,9 +187,12 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
 
     The stock config tracks units that do not exist in the container, so point
     the state_stats allowlist and [services] at real fixture units instead. The
-    timers allowlist is emptied so per-timer stats are compared too, and boot
-    blame is switched on with its cache off. All of those values are absolute
-    boot-time measurements, so they are stable across the seconds-apart runs.
+    timers allowlist is emptied so per-timer stats are compared too, boot blame
+    is switched on with its cache off, and verify is switched on restricted to
+    the fixture units so enumeration parity is compared without analyze running
+    over every unit. All of those values are absolute boot-time measurements or
+    deterministic analyze output, so they are stable across the seconds-apart
+    runs.
     """
     dbus_lines: list[str] = []
     renamed: set[str] = set()
@@ -197,6 +200,15 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
     for line in conf_text.splitlines():
         if line.startswith("["):
             section = line.strip()
+            if section == "[verify.allowlist]":
+                # Restrict verify to the fixture units: full verify runs
+                # analyze over every unit and would dominate the test's
+                # runtime, while two units still exercise enumeration,
+                # analyze, and parse on both paths.
+                dbus_lines.append(line)
+                dbus_lines.append("dbus-broker.service")
+                dbus_lines.append("kmod-static-nodes.service")
+                continue
         elif section == "[services]":
             line = SERVICE_RENAMES.get(line.strip(), line)
         elif section == "[units.state_stats.allowlist]":
@@ -219,6 +231,10 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
             # run read back the cache the varlink run just wrote — the two
             # outputs would match because they came from the same collection.
             line = "cache_enabled = false"
+        elif section == "[verify]" and line.strip() == "enabled = false":
+            # Verify ships disabled, so neither path collects it by default
+            # and the comparison would say nothing about enumeration parity.
+            line = "enabled = true"
         dbus_lines.append(line)
 
     missing = set(ALLOWLIST_RENAMES.values()) - renamed

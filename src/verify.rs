@@ -101,25 +101,17 @@ fn parse_verify_output(stderr: &str) -> HashSet<String> {
     failing_units
 }
 
-/// Collect verification stats for all units in the system
-pub async fn get_verify_stats(
-    connection: &zbus::Connection,
+/// Filter unit names by the verify allowlist/blocklist.
+///
+/// Shared by the D-Bus and varlink enumeration paths so both check the same
+/// set for a given config.
+fn filter_unit_names(
+    all_units: Vec<String>,
     allowlist: &HashSet<String>,
     blocklist: &HashSet<String>,
-) -> Result<VerifyStats, MonitordVerifyError> {
-    let mut stats = VerifyStats::default();
-
-    // Get list of all units from systemd
-    let manager_proxy = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
-        .cache_properties(zbus::proxy::CacheProperties::No)
-        .build()
-        .await?;
-    let all_units = manager_proxy.list_units().await?;
-
-    // Filter units based on allowlist/blocklist
-    let units_to_check: Vec<String> = all_units
+) -> Vec<String> {
+    all_units
         .into_iter()
-        .map(|unit| unit.0)
         .filter(|unit_name| {
             // Apply allowlist
             if !allowlist.is_empty() && !allowlist.contains(unit_name) {
@@ -131,24 +123,41 @@ pub async fn get_verify_stats(
             }
             true
         })
-        .collect();
+        .collect()
+}
+
+/// Build the `systemd-analyze verify` invocation for the given units.
+///
+/// The `--` separator is required: unit names like `-.mount` start with a
+/// dash and would otherwise be parsed as (bogus) options, making analyze exit
+/// before checking anything.
+fn build_verify_command(units_to_check: &[String]) -> Command {
+    let mut cmd = Command::new("systemd-analyze");
+    cmd.arg("verify");
+    cmd.arg("--");
+    for unit_name in units_to_check {
+        cmd.arg(unit_name);
+    }
+    cmd
+}
+
+/// Run `systemd-analyze verify` over the given units and count failures by type.
+///
+/// Shared by the D-Bus and varlink enumeration paths: only the source of the
+/// unit list differs. All units are checked in one invocation for performance.
+async fn verify_units(units_to_check: Vec<String>) -> Result<VerifyStats, MonitordVerifyError> {
+    let mut stats = VerifyStats::default();
 
     if units_to_check.is_empty() {
         return Ok(stats);
     }
 
     // Run systemd-analyze verify on all units at once for better performance
-    let output = tokio::task::spawn_blocking(move || {
-        let mut cmd = Command::new("systemd-analyze");
-        cmd.arg("verify");
-        for unit_name in &units_to_check {
-            cmd.arg(unit_name);
-        }
-        cmd.output()
-    })
-    .await
-    .map_err(|e| MonitordVerifyError::CommandError(e.to_string()))?
-    .map_err(|e| MonitordVerifyError::CommandError(e.to_string()))?;
+    let output =
+        tokio::task::spawn_blocking(move || build_verify_command(&units_to_check).output())
+            .await
+            .map_err(|e| MonitordVerifyError::CommandError(e.to_string()))?
+            .map_err(|e| MonitordVerifyError::CommandError(e.to_string()))?;
 
     // Parse stderr for failing units
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -166,16 +175,57 @@ pub async fn get_verify_stats(
     Ok(stats)
 }
 
+/// Collect verification stats for all units in the system
+pub async fn get_verify_stats(
+    connection: &zbus::Connection,
+    allowlist: &HashSet<String>,
+    blocklist: &HashSet<String>,
+) -> Result<VerifyStats, MonitordVerifyError> {
+    // Get list of all units from systemd
+    let manager_proxy = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
+    let all_units = manager_proxy.list_units().await?;
+
+    let units_to_check = filter_unit_names(
+        all_units.into_iter().map(|unit| unit.0).collect(),
+        allowlist,
+        blocklist,
+    );
+    verify_units(units_to_check).await
+}
+
 /// Async wrapper that updates verify stats when passed a locked struct
 pub async fn update_verify_stats(
     connection: zbus::Connection,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
     allowlist: HashSet<String>,
     blocklist: HashSet<String>,
+    varlink_enabled: bool,
 ) -> anyhow::Result<()> {
-    let verify_stats = get_verify_stats(&connection, &allowlist, &blocklist)
-        .await
-        .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?;
+    let verify_stats = if varlink_enabled {
+        match crate::varlink_verify::list_unit_names(crate::varlink_verify::METRICS_SOCKET_PATH)
+            .await
+        {
+            Ok(all_units) => verify_units(filter_unit_names(all_units, &allowlist, &blocklist))
+                .await
+                .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?,
+            Err(err) => {
+                tracing::warn!(
+                    "Varlink verify enumeration failed, falling back to D-Bus: {:?}",
+                    err
+                );
+                get_verify_stats(&connection, &allowlist, &blocklist)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?
+            }
+        }
+    } else {
+        get_verify_stats(&connection, &allowlist, &blocklist)
+            .await
+            .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?
+    };
 
     let mut machine_stats = locked_machine_stats.write().await;
     machine_stats.verify_stats = Some(verify_stats);
@@ -192,6 +242,44 @@ mod tests {
         assert_eq!(get_unit_type("bar.slice"), Some("slice".to_string()));
         assert_eq!(get_unit_type("baz.timer"), Some("timer".to_string()));
         assert_eq!(get_unit_type("test"), Some("test".to_string()));
+    }
+
+    #[test]
+    fn test_filter_unit_names() {
+        let all = vec![
+            "wanted.service".to_string(),
+            "blocked.service".to_string(),
+            "other.timer".to_string(),
+        ];
+
+        // Empty allowlist: everything except blocklisted.
+        assert_eq!(
+            filter_unit_names(
+                all.clone(),
+                &HashSet::new(),
+                &HashSet::from(["blocked.service".to_string()]),
+            ),
+            vec!["wanted.service".to_string(), "other.timer".to_string()]
+        );
+
+        // Non-empty allowlist: only listed units, minus blocklisted.
+        assert_eq!(
+            filter_unit_names(
+                all.clone(),
+                &HashSet::from(["wanted.service".to_string(), "blocked.service".to_string()]),
+                &HashSet::from(["blocked.service".to_string()]),
+            ),
+            vec!["wanted.service".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_build_verify_command_separates_flags_from_units() {
+        // Units like -.mount start with a dash: without `--`, analyze parses
+        // them as options and exits before checking anything.
+        let cmd = build_verify_command(&["-.mount".to_string(), "foo.service".to_string()]);
+        let args: Vec<_> = cmd.get_args().collect();
+        assert_eq!(args, vec!["verify", "--", "-.mount", "foo.service"]);
     }
 
     #[test]
