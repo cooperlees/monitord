@@ -770,7 +770,7 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 
 ### Metrics collected via Varlink
 
-**Units** (`io.systemd.Metrics` — systemd v260+, v261+ for jobs queued, exact totals, load-state totals, time-in-state, and service errno):
+**Units** (`io.systemd.Metrics` — systemd v260+, v261+ for jobs queued, exact totals, load-state totals, time-in-state, service errno, and the `ActiveTimestamp`/`InactiveExitTimestamp` families boot blame reads):
 - Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)
 - Unit counts by state (activating, active, failed, inactive)
 - Unit counts by load state (`UnitsByLoadStateTotal`, v261+: loaded, masked, not-found; counted from per-unit load states on v260)

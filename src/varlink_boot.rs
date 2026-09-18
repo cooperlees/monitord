@@ -52,9 +52,21 @@ fn collect_activations(
             continue;
         }
         if !metric.value().is_i64() {
+            debug!(
+                "Skipping {} for {}: non-integer value {:?}",
+                metric.name(),
+                unit_name,
+                metric.value()
+            );
             continue;
         }
         let Ok(value) = u64::try_from(metric.value_as_int()) else {
+            debug!(
+                "Skipping {} for {}: negative value {}",
+                metric.name(),
+                unit_name,
+                metric.value_as_int()
+            );
             continue;
         };
 
@@ -105,12 +117,32 @@ fn rank_slowest(
     unit_times.into_iter().collect()
 }
 
+/// Whether the stream carries the per-unit timestamp families at all.
+///
+/// systemd v260 answers on this socket but predates `ActiveTimestamp` and
+/// `InactiveExitTimestamp`, so those metrics are simply absent and the blame
+/// would come back empty while the call looked like a success — the same
+/// silent-wrong-answer shape the per-unit context guard exists for. A running
+/// systemd always has units, so seeing none of these means the family is
+/// missing rather than the system being idle.
+fn has_activation_metrics(metrics: &[ListOutput]) -> bool {
+    metrics
+        .iter()
+        .any(|metric| metric.name_suffix() == "ActiveTimestamp")
+}
+
 /// Collect boot blame over varlink.
 pub async fn get_boot_blame_stats(
     socket_path: &str,
     config: &BootBlameConfig,
 ) -> anyhow::Result<BootBlameStats> {
     let metrics = crate::varlink_units::collect_metrics(socket_path.to_string()).await?;
+    if !has_activation_metrics(&metrics) {
+        anyhow::bail!(
+            "metrics carry no ActiveTimestamp family: this systemd is older than v261, \
+             where the per-unit boot timestamps were added"
+        );
+    }
     let activations = collect_activations(&metrics, config);
     Ok(rank_slowest(activations, config.num_slowest_units as usize))
 }
@@ -191,6 +223,27 @@ mod tests {
         let stats = rank_slowest(collect_activations(&metrics, &config()), 5);
 
         assert!(stats.is_empty(), "got {stats:?}");
+    }
+
+    #[test]
+    fn test_pre_v261_metrics_are_rejected() {
+        // v260 answers on this socket but has no per-unit timestamp families,
+        // so the stream parses fine and yields nothing. Without this the blame
+        // would report empty and never fall back to D-Bus. CI only runs
+        // Rawhide, so this shape has to be pinned here.
+        let v260_shaped = vec![ListOutput {
+            name: "io.systemd.Manager.UnitsTotal".to_string(),
+            value: serde_json::json!(295),
+            object: None,
+            fields: None,
+        }];
+        assert!(!has_activation_metrics(&v260_shaped));
+
+        assert!(has_activation_metrics(&unit_metrics(
+            "foo.service",
+            1_000_000,
+            2_000_000
+        )));
     }
 
     #[test]
