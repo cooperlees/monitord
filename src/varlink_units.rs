@@ -3,6 +3,7 @@
 //! All main systemd unit statistics. Counts of types of units, unit states and
 //! queued jobs. We also house service specific statistics and system unit states.
 
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -15,12 +16,14 @@ use tokio::sync::RwLock;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tracing::debug;
+use tracing::error;
 
 use tracing::warn;
 
+use crate::timer::TimerStats;
 use crate::unit_constants::{
     is_unit_unhealthy, is_unit_unhealthy_for_service, SystemdUnitActiveState, SystemdUnitLoadState,
-    SYSTEMD_SERVICE_SUFFIX,
+    SYSTEMD_SERVICE_SUFFIX, SYSTEMD_TIMER_SUFFIX,
 };
 use crate::units::SystemdUnitStats;
 use crate::units::UnitsCollectionTimings;
@@ -422,7 +425,7 @@ pub async fn parse_metrics(
     socket_path: &str,
     config: &crate::config::UnitsConfig,
     services: &HashSet<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<String>> {
     // Parity with the D-Bus path's UnitsCollectionTimings: list_units_ms is the
     // bulk fetch (varlink List on io.systemd.Manager), per_unit_loop_ms is the
     // local parse loop. Two later D-Bus phases add their own duration to
@@ -443,10 +446,21 @@ pub async fn parse_metrics(
     for metric in &metrics {
         parse_one_metric(stats, metric, config, services, has_load_state_totals)?;
     }
+    // Timer units are enumerated from the metrics we already have rather than
+    // from a second bulk call: every unit appears here as a metric object, so
+    // this costs a scan of a vector we fetched anyway. Mirrors how the D-Bus
+    // path picks timers out of its ListUnits reply.
+    let timer_names: BTreeSet<String> = metrics
+        .iter()
+        .filter_map(|metric| metric.object())
+        .filter(|object| object.ends_with(SYSTEMD_TIMER_SUFFIX))
+        .map(|object| object.to_string())
+        .collect();
+
     let parse_loop_elapsed = parse_loop_start.elapsed();
     stats.collection_timings.per_unit_loop_ms = parse_loop_elapsed.as_secs_f64() * 1000.0;
 
-    Ok(())
+    Ok(timer_names.into_iter().collect())
 }
 
 /// Select unit names whose health needs a service-type check.
@@ -633,8 +647,28 @@ fn require_service_context(
     Ok(())
 }
 
+/// Pick the timers to collect, applying the same `[timers]` gating as the
+/// D-Bus path in `timer::collect_all_timers_dbus`.
+fn select_timers(timer_names: &[String], config: &crate::config::TimersConfig) -> Vec<String> {
+    if !config.enabled {
+        return Vec::new();
+    }
+    timer_names
+        .iter()
+        .filter(|name| {
+            if config.blocklist.contains(*name) {
+                debug!("Skipping timer stats for {} due to blocklist", name);
+                return false;
+            }
+            config.allowlist.is_empty() || config.allowlist.contains(*name)
+        })
+        .cloned()
+        .collect()
+}
+
 /// Collect per-unit detail over varlink: `ServiceStats` for the `[services]`
-/// list, and the service types the oneshot health override needs.
+/// list, the tracked timers, and the service types the oneshot health override
+/// needs.
 ///
 /// Both come from `io.systemd.Unit.List`, through one connection and one cache,
 /// so a unit wanted by both is fetched once. This replaces the per-service and
@@ -647,12 +681,14 @@ pub async fn apply_unit_details(
     locked_machine_stats: &Arc<RwLock<MachineStats>>,
     config: &crate::config::Config,
     fs_root: &str,
+    timer_names: &[String],
 ) -> anyhow::Result<()> {
     let candidates = {
         let machine_stats = locked_machine_stats.read().await;
         select_oneshot_candidates(&machine_stats.units, &config.units)
     };
-    if candidates.is_empty() && config.services.is_empty() {
+    let timers = select_timers(timer_names, &config.timers);
+    if candidates.is_empty() && config.services.is_empty() && timers.is_empty() {
         return Ok(());
     }
 
@@ -683,6 +719,28 @@ pub async fn apply_unit_details(
         }
     }
 
+    // Timers need a second unit each — the one they trigger — for its state
+    // change timestamps. That unit is often already in [services], which is
+    // where the lookup cache earns its place.
+    let mut timer_stats: HashMap<String, TimerStats> = HashMap::new();
+    for name in timers {
+        let Some(output) = lookup.get(&name).await? else {
+            continue;
+        };
+        let output = output.clone();
+        let triggered = match crate::varlink_unit::timer_triggered_unit(&output) {
+            Some(triggered) => lookup.get(triggered).await?.cloned(),
+            None => {
+                error!("{}: No service unit name found for timer.", name);
+                None
+            }
+        };
+        timer_stats.insert(
+            name,
+            crate::varlink_unit::map_timer_stats(&output, triggered.as_ref()),
+        );
+    }
+
     let fetch_elapsed_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
     debug!(
         "Varlink unit details: {} unit(s) fetched for {} service(s) + {} oneshot candidate(s) in {:.2}ms",
@@ -692,6 +750,15 @@ pub async fn apply_unit_details(
         fetch_elapsed_ms
     );
     let mut machine_stats = locked_machine_stats.write().await;
+    machine_stats.units.timer_persistent_units = timer_stats
+        .values()
+        .filter(|timer| timer.persistent)
+        .count() as u64;
+    machine_stats.units.timer_remain_after_elapse = timer_stats
+        .values()
+        .filter(|timer| timer.remain_after_elapse)
+        .count() as u64;
+    machine_stats.units.timer_stats = timer_stats;
     machine_stats.units.service_stats.extend(service_stats);
     apply_oneshot_types(&mut machine_stats.units, &oneshot_types, &config.units);
     // The phase still folds into per_unit_loop_ms like its D-Bus predecessor,
@@ -719,7 +786,7 @@ fn sum_units_by_type(stats: &SystemdUnitStats) -> u64 {
 pub async fn get_unit_stats(
     config: &crate::config::Config,
     socket_path: &str,
-) -> anyhow::Result<SystemdUnitStats> {
+) -> anyhow::Result<(SystemdUnitStats, Vec<String>)> {
     if !config.units.state_stats_allowlist.is_empty() {
         debug!(
             "Using unit state allowlist: {:?}",
@@ -738,7 +805,8 @@ pub async fn get_unit_stats(
 
     // Always collect metrics to get aggregate counts (UnitsByTypeTotal, UnitsByStateTotal)
     // as well as per-unit state data when config.units.state_stats is enabled.
-    parse_metrics(&mut stats, socket_path, &config.units, &config.services).await?;
+    let timer_names =
+        parse_metrics(&mut stats, socket_path, &config.units, &config.services).await?;
 
     // Prefer the UnitsTotal metric when present: it is exact, including unit
     // types we do not map (e.g. swap). Fall back to summing per-type counts
@@ -748,7 +816,7 @@ pub async fn get_unit_stats(
     }
 
     debug!("unit stats: {:?}", stats);
-    Ok(stats)
+    Ok((stats, timer_names))
 }
 
 /// Async wrapper that can update unit stats when passed a locked struct.
@@ -756,11 +824,11 @@ pub async fn update_unit_stats(
     config: Arc<crate::config::Config>,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
     socket_path: String,
-) -> anyhow::Result<()> {
-    let units_stats = get_unit_stats(&config, &socket_path).await?;
+) -> anyhow::Result<Vec<String>> {
+    let (units_stats, timer_names) = get_unit_stats(&config, &socket_path).await?;
     let mut machine_stats = locked_machine_stats.write().await;
     machine_stats.units = units_stats;
-    Ok(())
+    Ok(timer_names)
 }
 
 #[cfg(test)]
@@ -1026,6 +1094,7 @@ mod tests {
             context: Some(UnitContext {
                 service: None,
                 exec: None,
+                timer: None,
             }),
             runtime: None,
         };
@@ -1046,6 +1115,7 @@ mod tests {
                     watchdog_usec: None,
                 }),
                 exec: None,
+                timer: None,
             }),
             runtime: None,
         };

@@ -9,6 +9,7 @@ use strum_macros::EnumIter;
 use strum_macros::EnumString;
 
 pub const SYSTEMD_SERVICE_SUFFIX: &str = ".service";
+pub const SYSTEMD_TIMER_SUFFIX: &str = ".timer";
 
 /// Possible systemd unit active states enumerated
 #[allow(non_camel_case_types)]

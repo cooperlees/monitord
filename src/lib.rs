@@ -363,42 +363,19 @@ pub async fn stat_collector(
                     )
                     .await
                     {
-                        Ok(()) => {
-                            // Timer properties are not yet exposed via varlink; collect via D-Bus.
-                            let timer_start = Instant::now();
-                            let timer_result =
-                                crate::timer::collect_all_timers_dbus(&sdc_clone, &config_clone)
-                                    .await;
-                            let timer_elapsed_ms = timer_start.elapsed().as_secs_f64() * 1000.0;
-                            match timer_result {
-                                Ok(timer_stats) => {
-                                    let mut ms = stats_clone.write().await;
-                                    crate::timer::merge_timer_stats(
-                                        &mut ms.units,
-                                        timer_stats,
-                                        timer_elapsed_ms,
-                                    );
-                                }
-                                Err(err) => {
-                                    warn!("Varlink timer stats (D-Bus fallback) failed: {:?}", err);
-                                    let mut ms = stats_clone.write().await;
-                                    crate::timer::record_backfill_duration(
-                                        &mut ms.units,
-                                        timer_elapsed_ms,
-                                    );
-                                }
-                            }
-                            // Per-service stats and service types come from
-                            // io.systemd.Unit.List. If that socket is unusable
-                            // the whole units collection is redone over D-Bus:
-                            // restoring only the oneshot override would leave
-                            // [services] entries partially filled from the
-                            // metrics, which is worse than either path alone.
+                        Ok(timer_names) => {
+                            // Per-service stats, timer properties and service
+                            // types all come from io.systemd.Unit.List. If that
+                            // socket is unusable the whole units collection is
+                            // redone over D-Bus: restoring pieces of it would
+                            // leave [services] and timers partially filled from
+                            // the metrics, which is worse than either path alone.
                             if let Err(err) = crate::varlink_units::apply_unit_details(
                                 crate::varlink_unit::MANAGER_SOCKET_PATH,
                                 &stats_clone,
                                 &config_clone,
                                 "",
+                                &timer_names,
                             )
                             .await
                             {

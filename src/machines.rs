@@ -294,10 +294,13 @@ pub async fn update_machines_stats(
                     )
                     .await
                     {
-                        Ok(()) => {
-                            // Timer properties are not exposed via varlink; collect
-                            // via the container's D-Bus connection (same backfill
-                            // as the host path).
+                        Ok(_timer_names) => {
+                            // Containers keep the D-Bus backfill rather than the
+                            // host's io.systemd.Unit.List path: systemd refuses
+                            // varlink peers from another PID namespace, so a
+                            // container's unit socket is unreachable from here
+                            // (see #211). The timer names collected above go
+                            // unused for the same reason.
                             let timer_start = std::time::Instant::now();
                             let timer_result = crate::timer::collect_all_timers_dbus(
                                 &sdc_clone,

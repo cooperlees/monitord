@@ -23,6 +23,7 @@ use std::collections::HashSet;
 
 use tracing::debug;
 
+use crate::timer::TimerStats;
 use crate::units::ServiceStats;
 use crate::varlink::unit::{ListOutput, Unit};
 
@@ -166,6 +167,69 @@ pub fn map_service_stats(output: &ListOutput, processes: u32) -> ServiceStats {
     }
 }
 
+/// The unit a timer triggers, e.g. "logrotate.service" for "logrotate.timer".
+pub fn timer_triggered_unit(output: &ListOutput) -> Option<&str> {
+    output
+        .context
+        .as_ref()
+        .and_then(|context| context.timer.as_ref())
+        .and_then(|timer| timer.unit.as_deref())
+}
+
+/// Map a `Unit.List` reply onto `TimerStats`.
+///
+/// `triggered` is the reply for the unit this timer starts, looked up
+/// separately because its state change timestamps are properties of that unit
+/// rather than of the timer. `None` when it could not be resolved, which
+/// leaves those two fields at 0 — the same as the D-Bus path, which reports 0
+/// when the timer names no unit.
+pub fn map_timer_stats(output: &ListOutput, triggered: Option<&ListOutput>) -> TimerStats {
+    let context = output
+        .context
+        .as_ref()
+        .and_then(|context| context.timer.as_ref());
+    let runtime = output
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.timer.as_ref());
+    let last_trigger = runtime.and_then(|runtime| runtime.last_trigger_usec);
+    let service_state_change = triggered
+        .and_then(|triggered| triggered.runtime.as_ref())
+        .and_then(|runtime| runtime.state_change_timestamp);
+
+    TimerStats {
+        accuracy_usec: context.and_then(|timer| timer.accuracy_usec).unwrap_or(0),
+        fixed_random_delay: context
+            .and_then(|timer| timer.fixed_random_delay)
+            .unwrap_or(false),
+        last_trigger_usec: last_trigger
+            .and_then(|timestamp| timestamp.realtime)
+            .unwrap_or(0),
+        last_trigger_usec_monotonic: last_trigger
+            .and_then(|timestamp| timestamp.monotonic)
+            .unwrap_or(0),
+        next_elapse_usec_monotonic: runtime
+            .and_then(|timer| timer.next_elapse_usec_monotonic)
+            .unwrap_or(0),
+        next_elapse_usec_realtime: runtime
+            .and_then(|timer| timer.next_elapse_usec_realtime)
+            .unwrap_or(0),
+        persistent: context.and_then(|timer| timer.persistent).unwrap_or(false),
+        randomized_delay_usec: context
+            .and_then(|timer| timer.randomized_delay_usec)
+            .unwrap_or(0),
+        remain_after_elapse: context
+            .and_then(|timer| timer.remain_after_elapse)
+            .unwrap_or(false),
+        service_unit_last_state_change_usec: service_state_change
+            .and_then(|timestamp| timestamp.realtime)
+            .unwrap_or(0),
+        service_unit_last_state_change_usec_monotonic: service_state_change
+            .and_then(|timestamp| timestamp.monotonic)
+            .unwrap_or(0),
+    }
+}
+
 /// Count the processes in a unit's cgroup, including nested ones.
 ///
 /// The D-Bus path counts what `GetProcesses` returns, and systemd walks the
@@ -216,8 +280,8 @@ pub async fn count_cgroup_processes(fs_root: &str, output: &ListOutput) -> u32 {
 mod tests {
     use super::*;
     use crate::varlink::unit::{
-        CGroupRuntime, ExecContext, ServiceContext, ServiceRuntime, Timestamp, UnitContext,
-        UnitRuntime,
+        CGroupRuntime, ExecContext, ServiceContext, ServiceRuntime, TimerContext, TimerRuntime,
+        Timestamp, UnitContext, UnitRuntime,
     };
 
     fn output(context: Option<UnitContext>, runtime: Option<UnitRuntime>) -> ListOutput {
@@ -232,6 +296,7 @@ mod tests {
                 watchdog_usec: None,
             }),
             exec: None,
+            timer: None,
         }
     }
 
@@ -261,6 +326,7 @@ mod tests {
                     exec: Some(ExecContext {
                         timeout_clean_usec: Some(30_000_000),
                     }),
+                    timer: None,
                 }),
                 Some(UnitRuntime {
                     state_change_timestamp: Some(Timestamp {
@@ -293,6 +359,7 @@ mod tests {
                         status_errno: Some(0),
                         n_restarts: Some(0),
                     }),
+                    timer: None,
                 }),
             ),
             2,
@@ -313,6 +380,99 @@ mod tests {
         assert_eq!(stats.ioread_bytes, u64::MAX);
         assert_eq!(stats.ioread_operations, u64::MAX);
         assert_eq!(stats.watchdog_usec, 0);
+    }
+
+    fn timer_output() -> ListOutput {
+        // Shaped from a real systemd-tmpfiles-clean.timer reply.
+        ListOutput {
+            context: Some(UnitContext {
+                service: None,
+                exec: None,
+                timer: Some(TimerContext {
+                    unit: Some("systemd-tmpfiles-clean.service".to_string()),
+                    accuracy_usec: Some(60_000_000),
+                    randomized_delay_usec: None,
+                    fixed_random_delay: Some(false),
+                    persistent: Some(false),
+                    remain_after_elapse: Some(true),
+                }),
+            }),
+            runtime: Some(UnitRuntime {
+                state_change_timestamp: None,
+                active_enter_timestamp: None,
+                inactive_exit_timestamp: None,
+                active_exit_timestamp: None,
+                cgroup: None,
+                service: None,
+                timer: Some(TimerRuntime {
+                    next_elapse_usec_realtime: Some(0),
+                    next_elapse_usec_monotonic: Some(91_091_400_515),
+                    last_trigger_usec: Some(Timestamp {
+                        realtime: Some(1_789_702_359_355_506),
+                        monotonic: Some(4_691_399_604),
+                    }),
+                }),
+            }),
+        }
+    }
+
+    #[test]
+    fn test_map_timer_stats() {
+        let triggered = output(
+            None,
+            Some(UnitRuntime {
+                state_change_timestamp: Some(Timestamp {
+                    realtime: Some(1_789_702_359_400_000),
+                    monotonic: Some(4_691_444_098),
+                }),
+                active_enter_timestamp: None,
+                inactive_exit_timestamp: None,
+                active_exit_timestamp: None,
+                cgroup: None,
+                service: None,
+                timer: None,
+            }),
+        );
+        let stats = map_timer_stats(&timer_output(), Some(&triggered));
+
+        assert_eq!(stats.accuracy_usec, 60_000_000);
+        assert_eq!(stats.last_trigger_usec, 1_789_702_359_355_506);
+        assert_eq!(stats.last_trigger_usec_monotonic, 4_691_399_604);
+        assert_eq!(stats.next_elapse_usec_monotonic, 91_091_400_515);
+        // A monotonic-only timer reports 0 here, as the D-Bus property does.
+        assert_eq!(stats.next_elapse_usec_realtime, 0);
+        assert!(stats.remain_after_elapse);
+        assert!(!stats.persistent);
+        // Omitted by systemd when unset, and 0 over D-Bus.
+        assert_eq!(stats.randomized_delay_usec, 0);
+        // Comes from the triggered unit, not the timer.
+        assert_eq!(
+            stats.service_unit_last_state_change_usec,
+            1_789_702_359_400_000
+        );
+        assert_eq!(
+            stats.service_unit_last_state_change_usec_monotonic,
+            4_691_444_098
+        );
+    }
+
+    #[test]
+    fn test_map_timer_stats_without_the_triggered_unit() {
+        // The D-Bus path reports 0 for both when the timer names no unit, so an
+        // unresolvable trigger target must not invent a timestamp.
+        let stats = map_timer_stats(&timer_output(), None);
+        assert_eq!(stats.service_unit_last_state_change_usec, 0);
+        assert_eq!(stats.service_unit_last_state_change_usec_monotonic, 0);
+        assert_eq!(stats.accuracy_usec, 60_000_000);
+    }
+
+    #[test]
+    fn test_timer_triggered_unit() {
+        assert_eq!(
+            timer_triggered_unit(&timer_output()),
+            Some("systemd-tmpfiles-clean.service")
+        );
+        assert_eq!(timer_triggered_unit(&output(None, None)), None);
     }
 
     #[test]
