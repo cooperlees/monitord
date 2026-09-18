@@ -170,6 +170,39 @@ pub fn parse_one_metric(
                 .or_default()
                 .nrestarts = nrestarts;
         }
+        "StatusErrno" => {
+            // Per-service like NRestarts above: tracked for the [services] list only.
+            if !services.contains(&object_name) {
+                return Ok(());
+            }
+            if !metric.value().is_i64() {
+                warn!(
+                    "Metric {} has non-integer value: {:?}",
+                    metric.name(),
+                    metric.value()
+                );
+                return Ok(());
+            }
+            let value = metric.value_as_int();
+            // Negative values are expected here: systemd reports failures as
+            // negative errno, matching the D-Bus StatusErrno property.
+            let status_errno: i32 = match value.try_into() {
+                Ok(v) => v,
+                Err(_) => {
+                    warn!(
+                        "Metric {} has out-of-range value for i32: {}",
+                        metric.name(),
+                        value
+                    );
+                    return Ok(());
+                }
+            };
+            stats
+                .service_stats
+                .entry(object_name.to_string())
+                .or_default()
+                .status_errno = status_errno;
+        }
         "UnitsByTypeTotal" => {
             if let Some(type_str) = metric.get_field_as_str("type") {
                 if !metric.value().is_i64() {
@@ -744,6 +777,42 @@ mod tests {
             fields: None,
         };
         parse_one_metric(&mut stats, &other_metric, &config, &services, false)
+            .expect("other_metric should parse successfully");
+        assert!(!stats.service_stats.contains_key("other.service"));
+    }
+
+    #[test]
+    fn test_parse_one_metric_status_errno() {
+        let mut stats = SystemdUnitStats::default();
+        let config = default_units_config();
+        let services = HashSet::from(["my-service.service".to_string()]);
+
+        // systemd reports service failures as a negative errno.
+        let metric = ListOutput {
+            name: "io.systemd.Manager.StatusErrno".to_string(),
+            value: int_value(-69),
+            object: Some("my-service.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &metric, &config, &services)
+            .expect("metric should parse successfully");
+        assert_eq!(
+            stats
+                .service_stats
+                .get("my-service.service")
+                .expect("my-service.service should have a service_stats entry")
+                .status_errno,
+            -69
+        );
+
+        // Units outside [services] get no service_stats entry even with data present.
+        let other_metric = ListOutput {
+            name: "io.systemd.Manager.StatusErrno".to_string(),
+            value: int_value(1),
+            object: Some("other.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &other_metric, &config, &services)
             .expect("other_metric should parse successfully");
         assert!(!stats.service_stats.contains_key("other.service"));
     }
