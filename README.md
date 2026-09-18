@@ -25,10 +25,12 @@ monitord ... know how happy your systemd is! 😊
   - networkd (`io.systemd.Network.Describe`, used today for interface states):
     v257+
   - PID 1 manager (`io.systemd.Manager`/`io.systemd.Unit` on
-    `/run/systemd/io.systemd.Manager`; `Manager.Describe` used today for the
-    systemd version and system state, planned future use for
-    units/timers/services — see #37): v258+,
-    v259+ for full service detail, v261+ for job listing
+    `/run/systemd/io.systemd.Manager`): v258+ for `Manager.Describe`, used
+    today for the systemd version and system state. **`Unit.List` needs v261+**
+    for anything monitord reads from it: the method exists in v258, but the
+    per-type context sections it returns are added by `varlink-service.c` and
+    `varlink-timer.c`, which first appear in v261 — so per-service stats and
+    service types are unavailable before then. v261+ also for job listing
   - machined (`io.systemd.Machine.List` on
     `/run/systemd/machine/io.systemd.Machine`; planned future use for machine
     enumeration — see #37): v257+
@@ -777,6 +779,7 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 - Per-unit health status (computed from active + load state)
 - Per-service restart counts (`nrestarts`)
 - Per-service errno status (`StatusErrno`, v261+; unavailable (0) on v260)
+- Full per-service stats for units in `[services]` via `io.systemd.Unit.List` (systemd v261+): CPU, memory, tasks, process count, timestamps and timeouts, matching what the D-Bus path reports. Unavailable counters are reported as `u64::MAX`, exactly as the D-Bus properties do when accounting is disabled
 - Falls back to D-Bus collection if the socket is unavailable
 
 **System state and version** (`io.systemd.Manager.Describe` — systemd v258+):

@@ -38,6 +38,7 @@ pub mod units;
 pub mod varlink;
 pub mod varlink_networkd;
 pub mod varlink_system;
+pub mod varlink_unit;
 pub mod varlink_units;
 pub mod verify;
 
@@ -387,15 +388,32 @@ pub async fn stat_collector(
                                     );
                                 }
                             }
-                            // Service type is not exposed via varlink metrics; resolve
-                            // it over D-Bus so inactive oneshot services are not
-                            // marked unhealthy.
-                            crate::varlink_units::apply_oneshot_dbus_override(
-                                &sdc_clone,
+                            // Per-service stats and service types come from
+                            // io.systemd.Unit.List. If that socket is unusable
+                            // the whole units collection is redone over D-Bus:
+                            // restoring only the oneshot override would leave
+                            // [services] entries partially filled from the
+                            // metrics, which is worse than either path alone.
+                            if let Err(err) = crate::varlink_units::apply_unit_details(
+                                crate::varlink_unit::MANAGER_SOCKET_PATH,
                                 &stats_clone,
-                                &config_clone.units,
+                                &config_clone,
+                                "",
                             )
-                            .await;
+                            .await
+                            {
+                                warn!(
+                                    "Varlink unit details failed, falling back to D-Bus: {:?}",
+                                    err
+                                );
+                                return crate::units::update_unit_stats(
+                                    config_clone,
+                                    sdc_clone,
+                                    stats_clone,
+                                    String::new(),
+                                )
+                                .await;
+                            }
                             if config_clone.units.unit_files {
                                 let unit_files = crate::units::collect_unit_files_stats("").await;
                                 let mut ms = stats_clone.write().await;

@@ -603,6 +603,103 @@ pub async fn apply_oneshot_dbus_override(
     );
 }
 
+/// Refuse a `Unit.List` reply that carries no `context.Service` for a service.
+///
+/// systemd v258 through v260 answer `Unit.List` successfully but without the
+/// per-type context sections — `src/core/varlink-service.c` only lands in v261.
+/// Without this check every field would map to its default on those versions,
+/// the call would look like a success, and the D-Bus fallback would never run:
+/// silently wrong numbers rather than a visible failure. Only `.service` names
+/// are checked, so a non-service listed in `[services]` does not trip it.
+fn require_service_context(
+    name: &str,
+    output: &crate::varlink::unit::ListOutput,
+) -> anyhow::Result<()> {
+    if !name.ends_with(SYSTEMD_SERVICE_SUFFIX) {
+        return Ok(());
+    }
+    if output
+        .context
+        .as_ref()
+        .and_then(|context| context.service.as_ref())
+        .is_none()
+    {
+        anyhow::bail!(
+            "{} came back with no context.Service: this systemd is older than v261, \
+             where io.systemd.Unit gained the per-type context sections",
+            name
+        );
+    }
+    Ok(())
+}
+
+/// Collect per-unit detail over varlink: `ServiceStats` for the `[services]`
+/// list, and the service types the oneshot health override needs.
+///
+/// Both come from `io.systemd.Unit.List`, through one connection and one cache,
+/// so a unit wanted by both is fetched once. This replaces the per-service and
+/// oneshot-type D-Bus fetches the varlink path used to fall back to.
+///
+/// Selection runs under a read lock and the varlink round trips hold no lock at
+/// all, matching how the D-Bus override behaved.
+pub async fn apply_unit_details(
+    socket_path: &str,
+    locked_machine_stats: &Arc<RwLock<MachineStats>>,
+    config: &crate::config::Config,
+    fs_root: &str,
+) -> anyhow::Result<()> {
+    let candidates = {
+        let machine_stats = locked_machine_stats.read().await;
+        select_oneshot_candidates(&machine_stats.units, &config.units)
+    };
+    if candidates.is_empty() && config.services.is_empty() {
+        return Ok(());
+    }
+
+    let fetch_start = Instant::now();
+    let mut lookup = crate::varlink_unit::UnitLookup::connect(socket_path).await?;
+
+    let mut service_stats: HashMap<String, crate::units::ServiceStats> = HashMap::new();
+    for name in &config.services {
+        let Some(output) = lookup.get(name).await? else {
+            continue;
+        };
+        // Cloned so the cache entry stays available to the oneshot pass below.
+        let output = output.clone();
+        require_service_context(name, &output)?;
+        let processes = crate::varlink_unit::count_cgroup_processes(fs_root, &output).await;
+        service_stats.insert(
+            name.clone(),
+            crate::varlink_unit::map_service_stats(&output, processes),
+        );
+    }
+
+    let mut oneshot_types: HashMap<String, bool> = HashMap::new();
+    for name in candidates {
+        if let Some(output) = lookup.get(&name).await? {
+            let output = output.clone();
+            require_service_context(&name, &output)?;
+            oneshot_types.insert(name, crate::varlink_unit::is_oneshot(&output));
+        }
+    }
+
+    let fetch_elapsed_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
+    debug!(
+        "Varlink unit details: {} unit(s) fetched for {} service(s) + {} oneshot candidate(s) in {:.2}ms",
+        lookup.fetches(),
+        config.services.len(),
+        oneshot_types.len(),
+        fetch_elapsed_ms
+    );
+    let mut machine_stats = locked_machine_stats.write().await;
+    machine_stats.units.service_stats.extend(service_stats);
+    apply_oneshot_types(&mut machine_stats.units, &oneshot_types, &config.units);
+    // The phase still folds into per_unit_loop_ms like its D-Bus predecessor,
+    // but nothing here touches D-Bus, so the *_dbus_fetches counters stay put.
+    machine_stats.units.collection_timings.per_unit_loop_ms += fetch_elapsed_ms;
+    Ok(())
+}
+
 /// Sum per-type counts as a fallback total for systemd versions whose metrics
 /// lack `UnitsTotal`. Mirrors what the D-Bus path computes as `units.len()`,
 /// except unmapped types (e.g. swap) are missed.
@@ -915,6 +1012,48 @@ mod tests {
         parse_one_metric(&mut stats, &total_metric, &config, &HashSet::new(), false)
             .expect("total_metric should parse successfully");
         assert_eq!(stats.total_units, 196);
+    }
+
+    #[test]
+    fn test_require_service_context_rejects_pre_v261_replies() {
+        use crate::varlink::unit::{ListOutput as UnitListOutput, ServiceContext, UnitContext};
+
+        // systemd v258-v260 answer Unit.List successfully but omit the
+        // per-type context sections, so a reply that parses fine still carries
+        // nothing we can map. CI only ever runs Rawhide, so this shape cannot
+        // be reached there and has to be pinned here instead.
+        let without_service = UnitListOutput {
+            context: Some(UnitContext {
+                service: None,
+                exec: None,
+            }),
+            runtime: None,
+        };
+        assert!(require_service_context("foo.service", &without_service).is_err());
+        // Nothing at all is equally unusable.
+        let empty = UnitListOutput {
+            context: None,
+            runtime: None,
+        };
+        assert!(require_service_context("foo.service", &empty).is_err());
+
+        // A v261+ reply passes.
+        let with_service = UnitListOutput {
+            context: Some(UnitContext {
+                service: Some(ServiceContext {
+                    r#type: Some("simple".to_string()),
+                    restart_usec: None,
+                    watchdog_usec: None,
+                }),
+                exec: None,
+            }),
+            runtime: None,
+        };
+        assert!(require_service_context("foo.service", &with_service).is_ok());
+
+        // A non-service in [services] is a config mistake, not an old systemd,
+        // so it must not trigger a version fallback.
+        assert!(require_service_context("foo.timer", &without_service).is_ok());
     }
 
     #[test]
