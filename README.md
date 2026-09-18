@@ -25,8 +25,9 @@ monitord ... know how happy your systemd is! 😊
   - networkd (`io.systemd.Network.Describe`, used today for interface states):
     v257+
   - PID 1 manager (`io.systemd.Manager`/`io.systemd.Unit` on
-    `/run/systemd/io.systemd.Manager`; planned future use for
-    version/state/units/timers/services — see #37): v258+,
+    `/run/systemd/io.systemd.Manager`; `Manager.Describe` used today for the
+    systemd version and system state, planned future use for
+    units/timers/services — see #37): v258+,
     v259+ for full service detail, v261+ for job listing
   - machined (`io.systemd.Machine.List` on
     `/run/systemd/machine/io.systemd.Machine`; planned future use for machine
@@ -777,6 +778,12 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 - Per-service errno status (`StatusErrno`, v261+; unavailable (0) on v260)
 - Falls back to D-Bus collection if the socket is unavailable
 
+**System state and version** (`io.systemd.Manager.Describe` — systemd v258+):
+- Overall systemd system state (running, degraded, …)
+- Version of the running systemd manager (which can trail the installed package
+  until PID 1 re-execs)
+- Falls back to the D-Bus `SystemState`/`Version` properties if the socket is unavailable
+
 **Networkd interfaces** (`io.systemd.Network.Describe` — systemd v257+):
 - Per-interface operational, carrier, admin, and address states
 - Falls back to parsing `/run/systemd/netif/links` state files if the socket is unavailable
@@ -787,6 +794,7 @@ For systemd-nspawn containers, monitord connects to the container's varlink sock
 `/proc/<leader_pid>/root/run/systemd/report/io.systemd.Manager`, similar to how D-Bus uses
 the container-scoped bus socket. Networkd stats use
 `/proc/<leader_pid>/root/run/systemd/netif/io.systemd.Network`, with the same file-based fallback.
+System state and version use `/proc/<leader_pid>/root/run/systemd/io.systemd.Manager`.
 
 ### varlink 101
 
