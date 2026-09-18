@@ -36,6 +36,7 @@ pub mod timer;
 pub mod unit_constants;
 pub mod units;
 pub mod varlink;
+pub mod varlink_boot;
 pub mod varlink_networkd;
 pub mod varlink_system;
 pub mod varlink_unit;

@@ -25,6 +25,12 @@ fstrim.timer
 chrony.service
 sshd.service
 
+[boot]
+enabled = false
+cache_enabled = true
+cache_dir = /tmp
+num_slowest_units = 5
+
 [varlink]
 enabled = false
 """
@@ -57,15 +63,36 @@ class BuildCiConfigsTest(unittest.TestCase):
     def test_timers_allowlist_emptied(self) -> None:
         self.assertNotIn("fstrim.timer", self.dbus_conf)
 
+    def test_boot_blame_enabled_with_cache_off(self) -> None:
+        # Enabled so it is compared at all, and uncached so the second run
+        # actually collects instead of reading back what the first one wrote.
+        boot = section_body(self.dbus_conf, "[boot]")
+        self.assertIn("enabled = true", boot)
+        self.assertIn("cache_enabled = false", boot)
+        self.assertNotIn("cache_enabled = true", boot)
+
     def test_only_varlink_config_enables_varlink(self) -> None:
         self.assertIn("[varlink]\nenabled = false", self.dbus_conf)
         self.assertIn("[varlink]\nenabled = true", self.varlink_conf)
 
     def test_configs_differ_only_in_varlink_toggle(self) -> None:
-        self.assertEqual(
-            self.dbus_conf.replace("enabled = false", "enabled = true"),
-            self.varlink_conf,
-        )
+        # Compared line by line rather than by a blanket string replace: the
+        # configs contain several `enabled = ...` keys, and a global swap would
+        # also rewrite unrelated ones like [boot] cache_enabled.
+        dbus_lines = self.dbus_conf.splitlines()
+        varlink_lines = self.varlink_conf.splitlines()
+        self.assertEqual(len(dbus_lines), len(varlink_lines))
+        differing = [
+            (index, dbus, varlink)
+            for index, (dbus, varlink) in enumerate(zip(dbus_lines, varlink_lines))
+            if dbus != varlink
+        ]
+        self.assertEqual(len(differing), 1, f"expected one differing line, got {differing}")
+        index, dbus, varlink = differing[0]
+        self.assertEqual((dbus, varlink), ("enabled = false", "enabled = true"))
+        # ...and it must be the one inside [varlink].
+        preceding = [line for line in dbus_lines[:index] if line.startswith("[")]
+        self.assertEqual(preceding[-1], "[varlink]")
 
     def test_missing_units_to_rename_fails_loudly(self) -> None:
         # A monitord.conf whose allowlist stops naming the units we rename would

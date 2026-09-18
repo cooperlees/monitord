@@ -165,6 +165,61 @@ async fn get_unit_activation_time(
     Ok(activation_time_sec)
 }
 
+/// Collect boot blame over D-Bus: one ListUnits plus two property reads
+/// per unit on the system.
+async fn collect_boot_blame_dbus(
+    config: &Config,
+    connection: &zbus::Connection,
+) -> Result<BootBlameStats> {
+    let systemd_proxy = ManagerProxy::builder(connection)
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
+    let units = systemd_proxy.list_units().await?;
+
+    let mut unit_times: Vec<(String, f64)> = Vec::new();
+
+    // Collect activation times for all units
+    for unit_info in units {
+        let unit_name = unit_info.0;
+        let unit_path = unit_info.6;
+
+        // Apply blocklist: skip units explicitly excluded
+        if config.boot_blame.blocklist.contains(&unit_name) {
+            debug!("Skipping boot blame for {} due to blocklist", &unit_name);
+            continue;
+        }
+        // Apply allowlist: if non-empty, only include listed units
+        if !config.boot_blame.allowlist.is_empty()
+            && !config.boot_blame.allowlist.contains(&unit_name)
+        {
+            continue;
+        }
+
+        match get_unit_activation_time(connection, &unit_path).await {
+            Ok(time) if time > 0.0 => {
+                unit_times.push((unit_name, time));
+            }
+            Ok(_) => {
+                // Unit has no activation time (0.0), skip it
+            }
+            Err(e) => {
+                debug!("Failed to get activation time for {}: {}", unit_name, e);
+            }
+        }
+    }
+
+    // Sort by activation time in descending order (slowest first)
+    unit_times.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Take only the N slowest units
+    let num_slowest = config.boot_blame.num_slowest_units as usize;
+    unit_times.truncate(num_slowest);
+
+    // Convert to HashMap
+    Ok(unit_times.into_iter().collect())
+}
+
 /// Update boot blame statistics with the N slowest units at boot
 pub async fn update_boot_blame_stats(
     config: Arc<Config>,
@@ -212,53 +267,25 @@ pub async fn update_boot_blame_stats(
         }
     }
 
-    let systemd_proxy = ManagerProxy::builder(&connection)
-        .cache_properties(zbus::proxy::CacheProperties::No)
-        .build()
-        .await?;
-    let units = systemd_proxy.list_units().await?;
-
-    let mut unit_times: Vec<(String, f64)> = Vec::new();
-
-    // Collect activation times for all units
-    for unit_info in units {
-        let unit_name = unit_info.0;
-        let unit_path = unit_info.6;
-
-        // Apply blocklist: skip units explicitly excluded
-        if config.boot_blame.blocklist.contains(&unit_name) {
-            debug!("Skipping boot blame for {} due to blocklist", &unit_name);
-            continue;
-        }
-        // Apply allowlist: if non-empty, only include listed units
-        if !config.boot_blame.allowlist.is_empty()
-            && !config.boot_blame.allowlist.contains(&unit_name)
+    let boot_blame_stats = if config.varlink.enabled {
+        match crate::varlink_boot::get_boot_blame_stats(
+            crate::varlink_boot::METRICS_SOCKET_PATH,
+            &config.boot_blame,
+        )
+        .await
         {
-            continue;
-        }
-
-        match get_unit_activation_time(&connection, &unit_path).await {
-            Ok(time) if time > 0.0 => {
-                unit_times.push((unit_name, time));
-            }
-            Ok(_) => {
-                // Unit has no activation time (0.0), skip it
-            }
-            Err(e) => {
-                debug!("Failed to get activation time for {}: {}", unit_name, e);
+            Ok(stats) => stats,
+            Err(err) => {
+                tracing::warn!(
+                    "Varlink boot blame failed, falling back to D-Bus: {:?}",
+                    err
+                );
+                collect_boot_blame_dbus(&config, &connection).await?
             }
         }
-    }
-
-    // Sort by activation time in descending order (slowest first)
-    unit_times.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-    // Take only the N slowest units
-    let num_slowest = config.boot_blame.num_slowest_units as usize;
-    unit_times.truncate(num_slowest);
-
-    // Convert to HashMap
-    let boot_blame_stats: BootBlameStats = unit_times.into_iter().collect();
+    } else {
+        collect_boot_blame_dbus(&config, &connection).await?
+    };
 
     debug!("Collected {} boot blame stats", boot_blame_stats.len());
 
