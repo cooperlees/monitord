@@ -80,40 +80,32 @@ fn map_interface(iface: &Interface) -> InterfaceState {
 
 /// Collect networkd interface stats via the `io.systemd.Network` varlink `Describe` method.
 ///
-/// Runs on a blocking thread with a dedicated runtime because the zlink connection
-/// is `!Send` and cannot be held across `await` points in a `Send` future.
+/// No `spawn_blocking` here, unlike the streaming `io.systemd.Metrics.List`
+/// call in `varlink_units`: a single-shot zlink call holds no `!Send` stream
+/// across an await, so it runs on the main runtime like any other future.
 pub async fn get_networkd_state(socket_path: &str) -> anyhow::Result<NetworkdState> {
-    let socket_path = socket_path.to_string();
-    tokio::task::spawn_blocking(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
-        rt.block_on(async move {
-            let mut conn = zlink::unix::connect(&socket_path).await?;
-            let result = conn.describe().await?;
-            match result {
-                Ok(output) => {
-                    let mut interfaces_state = Vec::new();
-                    let mut managed_interfaces: u64 = 0;
-                    for iface in output.interfaces.unwrap_or_default() {
-                        // Only count interfaces that have a network configuration file –
-                        // the same criterion used by the file-based parser.
-                        if iface.network_file.is_none() {
-                            continue;
-                        }
-                        managed_interfaces += 1;
-                        interfaces_state.push(map_interface(&iface));
-                    }
-                    Ok(NetworkdState {
-                        interfaces_state,
-                        managed_interfaces,
-                    })
+    let mut conn = zlink::unix::connect(socket_path).await?;
+    let result = conn.describe().await?;
+    match result {
+        Ok(output) => {
+            let mut interfaces_state = Vec::new();
+            let mut managed_interfaces: u64 = 0;
+            for iface in output.interfaces.unwrap_or_default() {
+                // Only count interfaces that have a network configuration file –
+                // the same criterion used by the file-based parser.
+                if iface.network_file.is_none() {
+                    continue;
                 }
-                Err(e) => Err(anyhow::anyhow!("io.systemd.Network.Describe error: {}", e)),
+                managed_interfaces += 1;
+                interfaces_state.push(map_interface(&iface));
             }
-        })
-    })
-    .await?
+            Ok(NetworkdState {
+                interfaces_state,
+                managed_interfaces,
+            })
+        }
+        Err(e) => Err(anyhow::anyhow!("io.systemd.Network.Describe error: {}", e)),
+    }
 }
 
 #[cfg(test)]

@@ -219,27 +219,26 @@ pub async fn update_machines_stats(
             });
         }
 
-        // The container's PID 1 varlink socket, seen through its leader's procfs
-        // root — same addressing as the units and networkd collectors below.
-        let manager_socket_path = format!(
-            "/proc/{}/root{}",
-            leader_pid,
-            crate::varlink_system::MANAGER_SOCKET_PATH
-        );
+        // One Describe per container, shared by its version and system state
+        // collectors, against the container's PID 1 varlink socket seen through
+        // its leader's procfs root.
+        let manager_describe = config.varlink.enabled.then(|| {
+            crate::varlink_system::shared_describe(format!(
+                "/proc/{}/root{}",
+                leader_pid,
+                crate::varlink_system::MANAGER_SOCKET_PATH
+            ))
+        });
 
         if config.system_state.enabled {
-            let config_clone = Arc::clone(&config);
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
-            let socket_path = manager_socket_path.clone();
+            let describe = manager_describe.clone();
             join_set.spawn(async move {
-                if config_clone.varlink.enabled {
-                    match crate::varlink_system::update_system_stats(
-                        &socket_path,
-                        stats_clone.clone(),
-                    )
-                    .await
+                if let Some(describe) = describe {
+                    match crate::varlink_system::update_system_stats(describe, stats_clone.clone())
+                        .await
                     {
                         Ok(()) => return Ok(()),
                         Err(err) => {
@@ -255,15 +254,13 @@ pub async fn update_machines_stats(
         }
 
         {
-            let config_clone = Arc::clone(&config);
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
-            let socket_path = manager_socket_path.clone();
+            let describe = manager_describe.clone();
             join_set.spawn(async move {
-                if config_clone.varlink.enabled {
-                    match crate::varlink_system::update_version(&socket_path, stats_clone.clone())
-                        .await
+                if let Some(describe) = describe {
+                    match crate::varlink_system::update_version(describe, stats_clone.clone()).await
                     {
                         Ok(()) => return Ok(()),
                         Err(err) => {
