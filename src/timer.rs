@@ -187,7 +187,10 @@ pub async fn collect_all_timers_dbus(
 
     for unit_raw in units {
         let unit: crate::units::ListedUnit = unit_raw.into();
-        if !unit.name.contains(".timer") {
+        if !unit
+            .name
+            .ends_with(crate::unit_constants::SYSTEMD_TIMER_SUFFIX)
+        {
             continue;
         }
         if config.timers.blocklist.contains(&unit.name) {
@@ -294,5 +297,22 @@ mod tests {
 
         assert_eq!(target.collection_timings.per_unit_loop_ms, 3.0);
         assert_eq!(target.collection_timings.timer_dbus_fetches, 0);
+    }
+
+    #[test]
+    fn test_only_timer_units_are_selected() {
+        // Both collection paths pick timers out of a list of every unit, so the
+        // match has to be on the suffix. `.contains(".timer")` also matched
+        // units that merely mention a timer in their name, which then failed a
+        // TimerProxy call and logged an error for a unit that was never a timer.
+        let selects = |name: &str| name.ends_with(crate::unit_constants::SYSTEMD_TIMER_SUFFIX);
+
+        assert!(selects("logrotate.timer"));
+        assert!(selects("systemd-tmpfiles-clean.timer"));
+
+        assert!(!selects("my.timer.service"));
+        assert!(!selects("foo.timers.service"));
+        assert!(!selects("timer.target"));
+        assert!(!selects("dbus-broker.service"));
     }
 }
