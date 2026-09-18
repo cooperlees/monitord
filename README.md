@@ -769,8 +769,8 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 (e.g., older systemd versions).
 
 Each varlink-capable collector (`[units]`, `[networkd]`, `[system-state]`, `[boot]`,
-`[machines]` for container collection) also has its own `varlink` toggle, defaulting to
-true. A collector uses varlink only when both the global switch and its section toggle are
+`[verify]`, `[machines]` for container collection) also has its own `varlink` toggle,
+defaulting to true. A collector uses varlink only when both the global switch and its section toggle are
 true, so collectors can be moved to varlink one at a time by setting a section toggle to
 false. Container collection additionally requires `[machines] varlink`. Timers have no
 toggle of their own: they ride the units path and follow `[units] varlink`.

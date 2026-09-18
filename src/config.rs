@@ -260,11 +260,25 @@ impl Default for BootBlameConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifyConfig {
     pub enabled: bool,
+    /// Use varlink APIs for this collector when the global `[varlink]`
+    /// switch is on. Default true: set false to keep this collector on
+    /// D-Bus while the rest move to varlink.
+    pub varlink: bool,
     pub allowlist: HashSet<String>,
     pub blocklist: HashSet<String>,
+}
+impl Default for VerifyConfig {
+    fn default() -> Self {
+        VerifyConfig {
+            enabled: false,
+            varlink: true,
+            allowlist: HashSet::new(),
+            blocklist: HashSet::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -489,6 +503,9 @@ impl TryFrom<Ini> for Config {
 
         // [verify] section
         config.verify.enabled = read_config_bool(&ini_config, "verify", "enabled")?;
+        if let Some(varlink) = read_config_optional_bool(&ini_config, "verify", "varlink")? {
+            config.verify.varlink = varlink;
+        }
         if let Some(verify_allowlist) = config_map.get("verify.allowlist") {
             config.verify.allowlist = verify_allowlist.keys().map(|s| s.to_string()).collect();
         }
@@ -564,7 +581,7 @@ const KNOWN_SECTION_KEYS: &[(&str, &[&str])] = &[
             "num_slowest_units",
         ],
     ),
-    ("verify", &["enabled"]),
+    ("verify", &["enabled", "varlink"]),
     ("varlink", &["enabled"]),
 ];
 
@@ -763,6 +780,10 @@ foo.service
 [boot.blocklist]
 bar.service
 
+[verify]
+enabled = true
+varlink = false
+
 [varlink]
 enabled = true
 "###;
@@ -782,6 +803,7 @@ output_format = json-flat
         assert!(default_config.system_state.varlink);
         assert!(default_config.machines.varlink);
         assert!(default_config.boot_blame.varlink);
+        assert!(default_config.verify.varlink);
     }
 
     #[test]
@@ -944,6 +966,7 @@ varlink = false
         assert!(parsed_config.system_state.varlink);
         assert!(parsed_config.machines.varlink);
         assert!(parsed_config.boot_blame.varlink);
+        assert!(parsed_config.verify.varlink);
     }
 
     #[test]
@@ -1019,7 +1042,8 @@ varlink = false
                 blocklist: HashSet::from([String::from("bar.service")]),
             },
             verify: VerifyConfig {
-                enabled: false,
+                enabled: true,
+                varlink: false,
                 allowlist: HashSet::new(),
                 blocklist: HashSet::new(),
             },

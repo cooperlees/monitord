@@ -463,7 +463,7 @@ pub async fn stat_collector(
                     locked_machine_stats.clone(),
                     config.verify.allowlist.clone(),
                     config.verify.blocklist.clone(),
-                    config.varlink.enabled,
+                    config.use_varlink(&[config.verify.varlink]),
                 ),
             );
         }
