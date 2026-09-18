@@ -76,11 +76,19 @@ fn should_skip_unit(object_name: &str, config: &crate::config::UnitsConfig) -> b
 ///
 /// `services` is the `[services]` config list: per-service stats are tracked
 /// only for those units, mirroring the D-Bus path.
+///
+/// `has_load_state_totals` says whether this run's metrics include the exact
+/// `UnitsByLoadStateTotal` family. When they do, the per-unit `UnitLoadState`
+/// metrics must not also be counted into the load-state totals, or every unit
+/// would be counted twice; the metric stream has no guaranteed ordering, so
+/// the caller determines this up front rather than relying on which arrives
+/// first.
 pub fn parse_one_metric(
     stats: &mut SystemdUnitStats,
     metric: &ListOutput,
     config: &crate::config::UnitsConfig,
     services: &HashSet<String>,
+    has_load_state_totals: bool,
 ) -> anyhow::Result<()> {
     let metric_name_suffix = metric.name_suffix();
     let object_name = metric.object_name();
@@ -107,13 +115,16 @@ pub fn parse_one_metric(
                 Some(v) => v,
                 None => return Ok(()),
             };
-            // Always count aggregate load state totals, matching D-Bus parse_unit() behaviour
-            // which counts every unit regardless of the state_stats allowlist.
-            match load_state {
-                SystemdUnitLoadState::loaded => stats.loaded_units += 1,
-                SystemdUnitLoadState::masked => stats.masked_units += 1,
-                SystemdUnitLoadState::not_found => stats.not_found_units += 1,
-                _ => {}
+            // Count aggregate load state totals, matching D-Bus parse_unit() behaviour
+            // which counts every unit regardless of the state_stats allowlist. Skipped
+            // when the exact UnitsByLoadStateTotal metric is available instead.
+            if !has_load_state_totals {
+                match load_state {
+                    SystemdUnitLoadState::loaded => stats.loaded_units += 1,
+                    SystemdUnitLoadState::masked => stats.masked_units += 1,
+                    SystemdUnitLoadState::not_found => stats.not_found_units += 1,
+                    _ => {}
+                }
             }
             // Per-unit state tracking is gated by config.
             if !config.state_stats || should_skip_unit(&object_name, config) {
@@ -189,6 +200,34 @@ pub fn parse_one_metric(
                     "target" => stats.target_units = value,
                     "timer" => stats.timer_units = value,
                     _ => debug!("Found unhandled unit type: {:?}", type_str),
+                }
+            }
+        }
+        "UnitsByLoadStateTotal" => {
+            if let Some(load_state_str) = metric.get_field_as_str("load_state") {
+                if !metric.value().is_i64() {
+                    warn!(
+                        "Metric {} has non-integer value: {:?}",
+                        metric.name(),
+                        metric.value()
+                    );
+                    return Ok(());
+                }
+                let value = metric.value_as_int();
+                let value: u64 = match value.try_into() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        warn!("Metric {} has negative value: {}", metric.name(), value);
+                        return Ok(());
+                    }
+                };
+                match load_state_str {
+                    "loaded" => stats.loaded_units = value,
+                    "masked" => stats.masked_units = value,
+                    "not-found" => stats.not_found_units = value,
+                    // The remaining load states (stub, merged, error, bad-setting)
+                    // have no counter, matching the D-Bus path.
+                    _ => debug!("Found unhandled unit load state: {:?}", load_state_str),
                 }
             }
         }
@@ -360,8 +399,11 @@ pub async fn parse_metrics(
     stats.collection_timings.list_units_ms = bulk_fetch_elapsed.as_secs_f64() * 1000.0;
 
     let parse_loop_start = Instant::now();
+    let has_load_state_totals = metrics
+        .iter()
+        .any(|metric| metric.name_suffix() == "UnitsByLoadStateTotal");
     for metric in &metrics {
-        parse_one_metric(stats, metric, config, services)?;
+        parse_one_metric(stats, metric, config, services, has_load_state_totals)?;
     }
     let parse_loop_elapsed = parse_loop_start.elapsed();
     stats.collection_timings.per_unit_loop_ms = parse_loop_elapsed.as_secs_f64() * 1000.0;
@@ -628,7 +670,7 @@ mod tests {
             fields: None,
         };
 
-        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("metric should parse successfully");
 
         assert_eq!(
@@ -655,7 +697,7 @@ mod tests {
             fields: None,
         };
 
-        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("metric should parse successfully");
 
         assert_eq!(
@@ -682,7 +724,7 @@ mod tests {
             fields: None,
         };
 
-        parse_one_metric(&mut stats, &metric, &config, &services)
+        parse_one_metric(&mut stats, &metric, &config, &services, false)
             .expect("metric should parse successfully");
 
         assert_eq!(
@@ -701,7 +743,7 @@ mod tests {
             object: Some("other.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &other_metric, &config, &services)
+        parse_one_metric(&mut stats, &other_metric, &config, &services, false)
             .expect("other_metric should parse successfully");
         assert!(!stats.service_stats.contains_key("other.service"));
     }
@@ -721,7 +763,7 @@ mod tests {
                 serde_json::json!("service"),
             )])),
         };
-        parse_one_metric(&mut stats, &type_metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &type_metric, &config, &HashSet::new(), false)
             .expect("type_metric should parse successfully");
         assert_eq!(stats.service_units, 42);
 
@@ -735,7 +777,7 @@ mod tests {
                 serde_json::json!("active"),
             )])),
         };
-        parse_one_metric(&mut stats, &state_metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &state_metric, &config, &HashSet::new(), false)
             .expect("state_metric should parse successfully");
         assert_eq!(stats.active_units, 10);
 
@@ -749,8 +791,14 @@ mod tests {
                 serde_json::json!("activating"),
             )])),
         };
-        parse_one_metric(&mut stats, &activating_metric, &config, &HashSet::new())
-            .expect("activating_metric should parse successfully");
+        parse_one_metric(
+            &mut stats,
+            &activating_metric,
+            &config,
+            &HashSet::new(),
+            false,
+        )
+        .expect("activating_metric should parse successfully");
         assert_eq!(stats.activating_units, 1);
 
         // Test JobsQueued
@@ -760,7 +808,7 @@ mod tests {
             object: None,
             fields: None,
         };
-        parse_one_metric(&mut stats, &jobs_metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &jobs_metric, &config, &HashSet::new(), false)
             .expect("jobs_metric should parse successfully");
         assert_eq!(stats.jobs_queued, 3);
 
@@ -771,7 +819,7 @@ mod tests {
             object: None,
             fields: None,
         };
-        parse_one_metric(&mut stats, &total_metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &total_metric, &config, &HashSet::new(), false)
             .expect("total_metric should parse successfully");
         assert_eq!(stats.total_units, 196);
     }
@@ -806,7 +854,7 @@ mod tests {
             fields: None,
         };
 
-        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("timestamp metric should parse successfully");
 
         let elapsed = stats
@@ -838,7 +886,7 @@ mod tests {
             fields: None,
         };
 
-        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("zero timestamp should parse successfully");
 
         assert!(stats.unit_states.get("test.service").is_none());
@@ -857,7 +905,7 @@ mod tests {
         let mut config = default_units_config();
         config.state_stats_time_in_state = false;
         let mut stats = SystemdUnitStats::default();
-        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("metric should parse successfully");
         assert!(stats.unit_states.get("test.service").is_none());
 
@@ -865,7 +913,7 @@ mod tests {
         let mut config = default_units_config();
         config.state_stats = false;
         let mut stats = SystemdUnitStats::default();
-        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("metric should parse successfully");
         assert!(stats.unit_states.get("test.service").is_none());
 
@@ -873,7 +921,7 @@ mod tests {
         let mut config = default_units_config();
         config.state_stats_blocklist = HashSet::from(["test.service".to_string()]);
         let mut stats = SystemdUnitStats::default();
-        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("metric should parse successfully");
         assert!(stats.unit_states.get("test.service").is_none());
 
@@ -889,7 +937,7 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &negative, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &negative, &config, &HashSet::new(), false)
             .expect("negative timestamp should parse successfully");
         let null_value = ListOutput {
             name: "io.systemd.Manager.StateChangeTimestamp".to_string(),
@@ -897,7 +945,7 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &null_value, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &null_value, &config, &HashSet::new(), false)
             .expect("null timestamp should parse successfully");
         assert!(stats.unit_states.get("test.service").is_none());
     }
@@ -929,7 +977,7 @@ mod tests {
         ];
 
         for metric in metrics {
-            parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+            parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
                 .expect("metric should parse successfully");
         }
 
@@ -972,7 +1020,7 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new(), false)
             .expect("metric1 should parse successfully");
         assert!(
             !stats.unit_states.contains_key("test.service"),
@@ -988,7 +1036,7 @@ mod tests {
             fields: None,
         };
         let services = HashSet::from(["test2.service".to_string()]);
-        parse_one_metric(&mut stats, &metric2, &config, &services)
+        parse_one_metric(&mut stats, &metric2, &config, &services, false)
             .expect("metric2 should parse successfully");
         assert!(
             !stats.service_stats.contains_key("test2.service"),
@@ -1011,7 +1059,7 @@ mod tests {
                 serde_json::json!("unknown_type"),
             )])),
         };
-        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new(), false)
             .expect("metric1 should parse successfully");
         assert_eq!(stats.service_units, 0);
 
@@ -1022,7 +1070,7 @@ mod tests {
             object: None,
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new(), false)
             .expect("metric2 should parse successfully");
 
         // Non-string field value is ignored
@@ -1035,7 +1083,7 @@ mod tests {
                 serde_json::json!(123),
             )])),
         };
-        parse_one_metric(&mut stats, &metric3, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric3, &config, &HashSet::new(), false)
             .expect("metric3 should parse successfully");
 
         // Unhandled metric name is ignored
@@ -1045,7 +1093,7 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric4, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric4, &config, &HashSet::new(), false)
             .expect("metric4 should parse successfully");
     }
 
@@ -1073,7 +1121,7 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &active_state_metric, &config, &services)
+        parse_one_metric(&mut stats, &active_state_metric, &config, &services, false)
             .expect("active_state_metric should parse successfully");
 
         let load_state_metric = ListOutput {
@@ -1082,7 +1130,7 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &load_state_metric, &config, &services)
+        parse_one_metric(&mut stats, &load_state_metric, &config, &services, false)
             .expect("load_state_metric should parse successfully");
 
         let nrestarts_metric = ListOutput {
@@ -1091,7 +1139,7 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &nrestarts_metric, &config, &services)
+        parse_one_metric(&mut stats, &nrestarts_metric, &config, &services, false)
             .expect("nrestarts_metric should parse successfully");
 
         // Per-unit state data must be absent when state_stats=false, but the
@@ -1116,7 +1164,7 @@ mod tests {
                 serde_json::json!("service"),
             )])),
         };
-        parse_one_metric(&mut stats, &type_metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &type_metric, &config, &HashSet::new(), false)
             .expect("type_metric should parse successfully");
         assert_eq!(stats.service_units, 10);
     }
@@ -1229,7 +1277,7 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new(), false)
             .expect("metric1 should parse successfully");
         assert_eq!(
             stats
@@ -1247,7 +1295,7 @@ mod tests {
             object: Some("test.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new(), false)
             .expect("metric2 should parse successfully");
         assert_eq!(
             stats
@@ -1271,7 +1319,7 @@ mod tests {
             object: Some("broken.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new(), false)
             .expect("metric1 should parse successfully");
 
         // Set load state to loaded
@@ -1281,7 +1329,7 @@ mod tests {
             object: Some("broken.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new(), false)
             .expect("metric2 should parse successfully");
 
         // Should be unhealthy: loaded + failed
@@ -1300,7 +1348,7 @@ mod tests {
             object: Some("healthy.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric3, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric3, &config, &HashSet::new(), false)
             .expect("metric3 should parse successfully");
 
         // Set load state to loaded
@@ -1310,7 +1358,7 @@ mod tests {
             object: Some("healthy.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric4, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric4, &config, &HashSet::new(), false)
             .expect("metric4 should parse successfully");
 
         // Should be healthy: loaded + active
@@ -1343,7 +1391,7 @@ mod tests {
         ];
 
         for metric in &metrics {
-            parse_one_metric(&mut stats, metric, &config, &HashSet::new())
+            parse_one_metric(&mut stats, metric, &config, &HashSet::new(), false)
                 .expect("metric should parse successfully");
         }
 
@@ -1535,7 +1583,7 @@ mod tests {
             object: Some("allowed.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new(), false)
             .expect("metric1 should parse successfully");
         assert!(stats.unit_states.contains_key("allowed.service"));
 
@@ -1546,7 +1594,7 @@ mod tests {
             object: Some("not-allowed.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new(), false)
             .expect("metric2 should parse successfully");
         assert!(!stats.unit_states.contains_key("not-allowed.service"));
     }
@@ -1572,7 +1620,7 @@ mod tests {
             object: Some("blocked.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric1, &config, &HashSet::new(), false)
             .expect("metric1 should parse successfully");
         assert!(!stats.unit_states.contains_key("blocked.service"));
 
@@ -1583,7 +1631,7 @@ mod tests {
             object: Some("ok.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric2, &config, &HashSet::new(), false)
             .expect("metric2 should parse successfully");
         assert!(stats.unit_states.contains_key("ok.service"));
     }
@@ -1609,13 +1657,14 @@ mod tests {
             object: Some("both.service".to_string()),
             fields: None,
         };
-        parse_one_metric(&mut stats, &metric, &config, &HashSet::new())
+        parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("metric should parse successfully");
         assert!(!stats.unit_states.contains_key("both.service"));
     }
 
     #[test]
     fn test_load_state_counts_bypass_allowlist() {
+        // Counting path used when UnitsByLoadStateTotal is absent (systemd v260):
         // loaded_units/masked_units/not_found_units must be counted for every unit,
         // regardless of the state_stats allowlist (matching D-Bus parse_unit() behaviour).
         let config = crate::config::UnitsConfig {
@@ -1660,7 +1709,7 @@ mod tests {
             },
         ];
         for m in metrics {
-            parse_one_metric(&mut stats, &m, &config, &HashSet::new())
+            parse_one_metric(&mut stats, &m, &config, &HashSet::new(), false)
                 .expect("m should parse successfully");
         }
 
@@ -1703,7 +1752,7 @@ mod tests {
             },
         ];
         for m in metrics {
-            parse_one_metric(&mut stats, &m, &config, &HashSet::new())
+            parse_one_metric(&mut stats, &m, &config, &HashSet::new(), false)
                 .expect("m should parse successfully");
         }
 
@@ -1711,5 +1760,56 @@ mod tests {
         assert_eq!(stats.not_found_units, 1);
         // No per-unit state tracking when state_stats=false
         assert_eq!(stats.unit_states.len(), 0);
+    }
+
+    #[test]
+    fn test_units_by_load_state_total() {
+        let mut stats = SystemdUnitStats::default();
+        let config = default_units_config();
+
+        let totals = [
+            ("loaded", 191),
+            ("not-found", 6),
+            ("masked", 2),
+            ("stub", 3),
+        ];
+        for (load_state, count) in totals {
+            let metric = ListOutput {
+                name: "io.systemd.Manager.UnitsByLoadStateTotal".to_string(),
+                value: int_value(count),
+                object: None,
+                fields: Some(std::collections::HashMap::from([(
+                    "load_state".to_string(),
+                    serde_json::json!(load_state),
+                )])),
+            };
+            parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), true)
+                .expect("load state total should parse successfully");
+        }
+
+        assert_eq!(stats.loaded_units, 191);
+        assert_eq!(stats.not_found_units, 6);
+        assert_eq!(stats.masked_units, 2);
+
+        // Per-unit metrics must not add to the totals once the aggregate is in
+        // play, but per-unit state tracking carries on as before.
+        let per_unit = ListOutput {
+            name: "io.systemd.Manager.UnitLoadState".to_string(),
+            value: string_value("loaded"),
+            object: Some("my-service.service".to_string()),
+            fields: None,
+        };
+        parse_one_metric(&mut stats, &per_unit, &config, &HashSet::new(), true)
+            .expect("per-unit load state should parse successfully");
+
+        assert_eq!(stats.loaded_units, 191);
+        assert_eq!(
+            stats
+                .unit_states
+                .get("my-service.service")
+                .expect("my-service.service should have a unit_states entry")
+                .load_state,
+            SystemdUnitLoadState::loaded
+        );
     }
 }

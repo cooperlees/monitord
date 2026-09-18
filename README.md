@@ -17,9 +17,10 @@ monitord ... know how happy your systemd is! 😊
   move off D-Bus for [#37](https://github.com/cooperlees/monitord/issues/37)):
   - Metrics (`io.systemd.Metrics` on `/run/systemd/report/io.systemd.Manager`,
     used today for unit counts/state): v260+; v261+ for `JobsQueued`, the
-    exact `UnitsTotal`, and per-unit `StateChangeTimestamp` (on v260,
-    `total_units` is approximated by summing mapped per-type counts while
-    `jobs_queued` and `time_in_state_usecs` are unavailable)
+    exact `UnitsTotal`, `UnitsByLoadStateTotal`, and per-unit
+    `StateChangeTimestamp` (on v260, `total_units` is approximated by summing
+    mapped per-type counts, load-state totals are counted from per-unit load
+    states, while `jobs_queued` and `time_in_state_usecs` are unavailable)
   - networkd (`io.systemd.Network.Describe`, used today for interface states):
     v257+
   - PID 1 manager (`io.systemd.Manager`/`io.systemd.Unit` on
@@ -762,9 +763,10 @@ automatically falling back to D-Bus or file-based collection when a varlink sock
 
 ### Metrics collected via Varlink
 
-**Units** (`io.systemd.Metrics` — systemd v260+, v261+ for jobs queued, exact totals, and time-in-state):
+**Units** (`io.systemd.Metrics` — systemd v260+, v261+ for jobs queued, exact totals, load-state totals, and time-in-state):
 - Unit counts by type (service, mount, socket, target, device, automount, timer, path, slice, scope)
 - Unit counts by state (activating, active, failed, inactive)
+- Unit counts by load state (`UnitsByLoadStateTotal`, v261+: loaded, masked, not-found; counted from per-unit load states on v260)
 - Exact total unit count (`UnitsTotal`, v261+; approximated from mapped per-type counts on v260)
 - Queued job count (`JobsQueued`, v261+; unavailable (0) on v260)
 - Per-unit active state and load state (with allowlist/blocklist filtering)
