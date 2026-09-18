@@ -79,39 +79,64 @@ pub struct CollectorTiming {
 /// Collectors with no varlink path (`pid1`, `dbus_stats`) and disabled
 /// collectors stay `None` and emit no gauge, so the present gauges are
 /// exactly the enabled set — no separate enabled-collectors counter needed.
-#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
+#[derive(
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+)]
+#[repr(u8)]
 pub enum CollectorTransport {
     #[default]
-    Dbus,
-    Varlink,
+    Dbus = 0,
+    Varlink = 1,
 }
 
 impl CollectorTransport {
     /// Gauge value for flat JSON and metric exporters: 1 when varlink served
     /// the collector, 0 for the D-Bus/file fallback.
+    ///
+    /// The `repr(u8)` discriminants are the gauge values, so every output
+    /// format (json, json-pretty, json-flat) reports the same integer —
+    /// matching the other stat enums (`SystemdSystemState`, the unit state
+    /// enums) rather than serializing as a string in some formats.
     pub fn as_u64(self) -> u64 {
-        match self {
-            CollectorTransport::Varlink => 1,
-            CollectorTransport::Dbus => 0,
-        }
+        self as u64
     }
 }
 
 /// Per-collector transport record for the last collection run.
 ///
 /// Every field is `Some` when its collector ran and `None` when it did not
-/// (disabled in config — or, for boot blame, served from disk cache without
-/// touching any API on a cold start). Absent-when-disabled is what makes the
-/// Grafana adoption ratio work: `count()` over the gauges is the enabled set.
+/// (disabled in config). Absent-when-disabled is what makes the adoption
+/// ratio work: `count()` over the gauges is the enabled set.
+///
+/// NOTE for future collectors: the host `MachineStats` is constructed once
+/// outside the daemon loop, not fresh each iteration — so a collector with
+/// an early-return path that skips its gauge assignment would silently
+/// inherit the previous run's value instead of dropping the gauge. Always
+/// assign on every path, including cache hits and config-disabled fallbacks.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct VarlinkUsage {
     /// Always collected; follows `[system-state] varlink` via the shared
-    /// `Manager.Describe` call.
+    /// `Manager.Describe` call. Normally agrees with `system_state` (one
+    /// call serves both), but persists when `[system-state]` is disabled —
+    /// making it the cheapest varlink canary on such hosts.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<CollectorTransport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_state: Option<CollectorTransport>,
+    /// `Varlink` means the bulk enumeration came from the metrics stream.
+    /// Inside containers this still includes D-Bus calls underneath: the
+    /// timer backfill (`collect_all_timers_dbus`) and the oneshot type
+    /// override, which have no varlink equivalent there (see #211). The host
+    /// varlink path needs neither, so a container `1` involves strictly more
+    /// D-Bus traffic than a host `1` — compare host and container gauges
+    /// separately rather than aggregating them into one adoption ratio.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<CollectorTransport>,
     #[serde(skip_serializing_if = "Option::is_none")]

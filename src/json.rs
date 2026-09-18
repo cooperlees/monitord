@@ -521,13 +521,11 @@ fn flatten_verify_stats(
 ///
 /// Only collectors whose `Option<CollectorTransport>` is `Some` emit a gauge:
 /// disabled collectors (and any re-validation the caller does over the
-/// enabled sections) stay absent, so in Grafana `count()` over
-/// `varlink_usage_*` is the enabled set and `sum() / count()` is the share of
-/// collectors served by varlink this run:
-///
-/// ```promql
-/// sum(varlink_usage) / count(varlink_usage)
-/// ```
+/// enabled sections) stay absent, so `count()` over the `varlink_usage_*`
+/// gauges is the enabled set and `sum() / count()` is the share of
+/// collectors served by varlink this run. Downstream metric consumers (e.g.
+/// monitord-exporter) aggregate the gauges from there; monitord itself only
+/// makes them available in its output formats.
 fn flatten_varlink_usage(
     usage: &crate::VarlinkUsage,
     key_prefix: &str,
@@ -952,6 +950,21 @@ mod tests {
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
         assert_eq!(131, json_flat_map.len());
+    }
+
+    #[test]
+    fn test_collector_transport_serializes_as_integer_everywhere() {
+        // The repr discriminants are the gauge values, so json/json-pretty
+        // report the same integers as json-flat — not strings.
+        let usage = crate::VarlinkUsage {
+            version: Some(crate::CollectorTransport::Varlink),
+            units: Some(crate::CollectorTransport::Dbus),
+            ..Default::default()
+        };
+        let value = serde_json::to_value(&usage).expect("serialize");
+        assert_eq!(value["version"], serde_json::Value::from(1u64));
+        assert_eq!(value["units"], serde_json::Value::from(0u64));
+        assert!(value.get("networkd").is_none());
     }
 
     #[test]

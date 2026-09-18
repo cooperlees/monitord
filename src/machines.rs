@@ -376,16 +376,18 @@ pub async fn update_machines_stats(
                                 err
                             );
                             let container_root = format!("/proc/{}/root", leader_pid);
-                            let result = crate::units::update_unit_stats(
-                                config_clone,
-                                sdc_clone,
-                                stats_clone.clone(),
-                                container_root,
-                            )
-                            .await;
+                            // Set before the call (the lib.rs ordering): if
+                            // the D-Bus collection errors, the gauge still
+                            // says D-Bus rather than going stale or absent.
                             stats_clone.write().await.varlink_usage.units =
                                 Some(crate::CollectorTransport::Dbus);
-                            result
+                            crate::units::update_unit_stats(
+                                config_clone,
+                                sdc_clone,
+                                stats_clone,
+                                container_root,
+                            )
+                            .await
                         }
                     }
                 });
@@ -395,16 +397,18 @@ pub async fn update_machines_stats(
                 let sdc_clone = sdc.clone();
                 let stats_clone = locked_machine_stats.clone();
                 join_set.spawn(async move {
-                    let result = crate::units::update_unit_stats(
-                        config_clone,
-                        sdc_clone,
-                        stats_clone.clone(),
-                        container_root,
-                    )
-                    .await;
+                    // Set before the call (the lib.rs ordering): if the
+                    // collection errors, the gauge still says D-Bus rather
+                    // than going stale or absent.
                     stats_clone.write().await.varlink_usage.units =
                         Some(crate::CollectorTransport::Dbus);
-                    result
+                    crate::units::update_unit_stats(
+                        config_clone,
+                        sdc_clone,
+                        stats_clone,
+                        container_root,
+                    )
+                    .await
                 });
             }
         }

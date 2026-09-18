@@ -447,8 +447,8 @@ clear and consistent when these keys are transformed into Prometheus metric name
   "varlink_usage.networkd": 1,
   "varlink_usage.system_state": 1,
   "varlink_usage.units": 1,
-  "varlink_usage.version": 1,
   "varlink_usage.verify": 1,
+  "varlink_usage.version": 1,
   "verify.failing.device": 43,
   "verify.failing.mount": 15,
   "verify.failing.service": 31,
@@ -476,18 +476,19 @@ last run: `varlink_usage.<collector>` is 1 when the varlink attempt succeeded
 and 0 when the collector fell back to D-Bus (or file-based collection for
 networkd). Collectors with no varlink path (`pid1`, `dbus_stats`) and disabled
 collectors emit no gauge, so the present gauges are exactly the enabled set —
-no separate enabled-collectors counter is needed. In Grafana the fleet-wide
-adoption ratio is:
-
-```promql
-sum(varlink_usage) / count(varlink_usage)
-```
+no separate enabled-collectors counter is needed.
 
 As the systemd under monitord upgrades past each endpoint's minimum version
 (networkd v257+, system state/version v258+, units v260+, unit details v261+),
-collectors silently flip from 0 to 1 with no config change, so this ratio
-climbs over time. Per-container gauges are emitted under
-`machines.<name>.varlink_usage.<collector>`; the host `machines` gauge covers
+collectors silently flip from 0 to 1 with no config change, so watching these
+gauges over time shows varlink adoption climbing across the fleet. Downstream
+consumers such as monitord-exporter can aggregate them (share of collectors
+reporting 1) from there; monitord itself only makes the gauges available in
+its output formats. Per-container gauges are emitted under
+`machines.<name>.varlink_usage.<collector>`; note a container `units` gauge
+of 1 still includes D-Bus calls underneath (the timer backfill and oneshot
+type override, which have no varlink equivalent inside containers), so compare
+host and container gauges separately. The host `machines` gauge covers
 enumeration only and stays 0 until machined grows a varlink List API.
 
 | Field | Meaning |
