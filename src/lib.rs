@@ -23,6 +23,7 @@ pub enum MonitordError {
 }
 
 pub mod boot;
+pub mod cgroup;
 pub mod config;
 pub(crate) mod dbus;
 pub mod dbus_stats;

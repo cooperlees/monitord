@@ -274,11 +274,21 @@ pub const UNIT_FIELD_NAMES: &[&str] = &SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_STATES_FIELD_NAMES: &[&str] = &UnitStates::FIELD_NAMES_AS_ARRAY;
 
 /// Pull out selected systemd service statistics
+///
+/// The seven cgroup-derived fields (`cpuusage_nsec`, `ioread_bytes`,
+/// `ioread_operations`, `memory_current`, `memory_available`, `processes`,
+/// `tasks_current`) come from cgroupfs via `crate::cgroup` (#221), read in
+/// parallel with the remaining D-Bus properties. `fs_root` prefixes the
+/// cgroup mount — empty for the host, `/proc/<leader>/root` for containers.
+/// A cgroup field that cgroupfs has no data for falls back to its D-Bus
+/// property, which is also what covers cgroup v1 hosts (no v2 files → all
+/// fallback, no new failure mode).
 #[tracing::instrument(level = "debug", skip(connection, object_path))]
 async fn parse_service(
     connection: &zbus::Connection,
     name: &str,
     object_path: &OwnedObjectPath,
+    fs_root: &str,
 ) -> Result<ServiceStats, MonitordUnitsError> {
     debug!("Parsing service {} stats", name);
 
@@ -293,59 +303,106 @@ async fn parse_service(
         .build()
         .await?;
 
+    // The cgroup path and main PID gate the filesystem read, so they are
+    // fetched first; everything else joins the cgroup read in one batch.
     // Use tokio::join! without tokio::spawn to avoid per-task allocation overhead.
     // These all share the same D-Bus connection so spawn adds no parallelism benefit.
+    let (control_group, main_pid) = tokio::join!(sp.control_group(), sp.main_pid());
+    let (control_group, main_pid) = (control_group?, main_pid?);
+
+    let cgroup_stats = (!control_group.is_empty()).then(|| {
+        crate::cgroup::read_service_cgroup(
+            fs_root,
+            &control_group,
+            (main_pid != 0).then_some(main_pid),
+        )
+    });
+    let cgroup_stats = async {
+        match cgroup_stats {
+            Some(fut) => Some(fut.await),
+            None => None,
+        }
+    };
+
     let (
         active_enter_timestamp,
         active_exit_timestamp,
-        cpuusage_nsec,
         inactive_exit_timestamp,
+        nrestarts,
+        restart_usec,
+        state_change_timestamp,
+        status_errno,
+        timeout_clean_usec,
+        watchdog_usec,
+        cgroup_stats,
+    ) = tokio::join!(
+        up.active_enter_timestamp(),
+        up.active_exit_timestamp(),
+        up.inactive_exit_timestamp(),
+        sp.nrestarts(),
+        sp.restart_usec(),
+        up.state_change_timestamp(),
+        sp.status_errno(),
+        sp.timeout_clean_usec(),
+        sp.watchdog_usec(),
+        cgroup_stats,
+    );
+
+    let cgroup_stats = cgroup_stats.unwrap_or_default();
+    // Per-field D-Bus fallback for whatever cgroupfs had no data for.
+    // Only missing fields pay for a fallback call; the hot path (cgroup
+    // present, the common case for running services) issues none.
+    let (
+        cpuusage_nsec,
         ioread_bytes,
         ioread_operations,
         memory_current,
         memory_available,
-        nrestarts,
-        processes,
-        restart_usec,
-        state_change_timestamp,
-        status_errno,
         tasks_current,
-        timeout_clean_usec,
-        watchdog_usec,
-    ) = tokio::join!(
-        up.active_enter_timestamp(),
-        up.active_exit_timestamp(),
-        sp.cpuusage_nsec(),
-        up.inactive_exit_timestamp(),
-        sp.ioread_bytes(),
-        sp.ioread_operations(),
-        sp.memory_current(),
-        sp.memory_available(),
-        sp.nrestarts(),
-        sp.get_processes(),
-        sp.restart_usec(),
-        up.state_change_timestamp(),
-        sp.status_errno(),
-        sp.tasks_current(),
-        sp.timeout_clean_usec(),
-        sp.watchdog_usec(),
-    );
+    ) = match (
+        cgroup_stats.cpu_usage_nsec,
+        cgroup_stats.io_read_bytes,
+        cgroup_stats.io_read_operations,
+        cgroup_stats.memory_current,
+        cgroup_stats.memory_available,
+        cgroup_stats.tasks_current,
+    ) {
+        (Some(cpu), Some(rb), Some(ro), Some(mc), Some(ma), Some(tc)) => (cpu, rb, ro, mc, ma, tc),
+        (cpu, rb, ro, mc, ma, tc) => {
+            let (fb_cpu, fb_rb, fb_ro, fb_mc, fb_ma, fb_tc) = tokio::join!(
+                sp.cpuusage_nsec(),
+                sp.ioread_bytes(),
+                sp.ioread_operations(),
+                sp.memory_current(),
+                sp.memory_available(),
+                sp.tasks_current(),
+            );
+            (
+                cpu.unwrap_or(fb_cpu?),
+                rb.unwrap_or(fb_rb?),
+                ro.unwrap_or(fb_ro?),
+                mc.unwrap_or(fb_mc?),
+                ma.unwrap_or(fb_ma?),
+                tc.unwrap_or(fb_tc?),
+            )
+        }
+    };
 
     Ok(ServiceStats {
         active_enter_timestamp: active_enter_timestamp?,
         active_exit_timestamp: active_exit_timestamp?,
-        cpuusage_nsec: cpuusage_nsec?,
+        cpuusage_nsec,
         inactive_exit_timestamp: inactive_exit_timestamp?,
-        ioread_bytes: ioread_bytes?,
-        ioread_operations: ioread_operations?,
-        memory_current: memory_current?,
-        memory_available: memory_available?,
+        ioread_bytes,
+        ioread_operations,
+        memory_current,
+        memory_available,
         nrestarts: nrestarts?,
-        processes: processes?.len().try_into()?,
+        processes: cgroup_stats.processes,
         restart_usec: restart_usec?,
         state_change_timestamp: state_change_timestamp?,
         status_errno: status_errno?,
-        tasks_current: tasks_current?,
+        tasks_current,
         timeout_clean_usec: timeout_clean_usec?,
         watchdog_usec: watchdog_usec?,
     })
@@ -757,6 +814,7 @@ pub async fn parse_unit_state(
         let config = Arc::clone(config);
         let connection = connection.clone();
         let parent_span = parent_span.clone();
+        let fs_root = fs_root.to_string();
         join_set.spawn(async move {
             let _permit = semaphore
                 .acquire()
@@ -790,7 +848,9 @@ pub async fn parse_unit_state(
                 // Collect service stats
                 if config.services.contains(&unit.name) {
                     debug!("Collecting service stats for {:?}", &unit);
-                    match parse_service(&connection, &unit.name, &unit.unit_object_path).await {
+                    match parse_service(&connection, &unit.name, &unit.unit_object_path, &fs_root)
+                        .await
+                    {
                         Ok(service_stats) => outcome.service_stats_entry = Some(service_stats),
                         Err(err) => error!(
                             "Unable to get service stats for {} {}: {:#?}",

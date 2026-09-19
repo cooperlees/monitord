@@ -46,6 +46,46 @@ ALLOWLIST_RENAMES: dict[str, str] = {
 # mapping is shared, so a second would exercise no new code.
 SERVICE_RENAMES: dict[str, str] = {"sshd.service": "dbus-broker.service"}
 
+# Fixture service installed into the container with every accounting switch on
+# plus memory limits, so the cgroupfs reader (#221) is proven against real
+# (non-`[not set]`) values rather than only against unset sentinels. The name
+# must not collide with anything in stock monitord.conf, and it is appended
+# to [services] (not renamed) so dbus-broker stays covered too.
+CGROUP_FIXTURE_SERVICE = "monitord-cgroup-test.service"
+CGROUP_FIXTURE_UNIT = """[Unit]
+Description=monitord cgroupfs fixture: all accounting on plus memory limits
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sleep infinity
+CPUAccounting=yes
+MemoryAccounting=yes
+IOAccounting=yes
+TasksAccounting=yes
+MemoryMax=1G
+MemoryHigh=512M
+"""
+
+# Sentinel D-Bus/systemd uses for "not set" (u64::MAX, see README's "Large
+# u64 values" section). Every cgroup-derived field of the fixture service
+# must differ from it on both paths: the fixture has all accounting on, so a
+# sentinel means the reader (or its fallback) failed to find real data.
+NOT_SET = 18446744073709551615
+
+# The seven ServiceStats fields read from cgroupfs (#221). cpuusage_nsec,
+# memory_current and memory_available stay excluded from the dbus-vs-varlink
+# parity comparison (volatile across the seconds-apart runs) but are asserted
+# present here; the other four are stable and compared by both checks.
+CGROUP_FIELDS: tuple[str, ...] = (
+    "cpuusage_nsec",
+    "memory_current",
+    "memory_available",
+    "tasks_current",
+    "processes",
+    "ioread_bytes",
+    "ioread_operations",
+)
+
 # Real Rawhide units the generated config tracks, and the states the parity
 # comparison assumes. kmod-static-nodes is inactive + oneshot (exercises the
 # oneshot health override); dbus-broker is active (guards the other direction).
@@ -248,6 +288,11 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
             continue
         elif section == "[services]":
             line = SERVICE_RENAMES.get(line.strip(), line)
+            # Track the cgroup fixture alongside the renamed real service:
+            # appending (not renaming) keeps dbus-broker covered too.
+            if line.strip() == "dbus-broker.service":
+                dbus_lines.append(line)
+                line = CGROUP_FIXTURE_SERVICE
         elif section == "[units.state_stats.allowlist]":
             # Tracked per substitution, not by searching the finished config:
             # the fixture units also appear in other sections, so a global
@@ -327,6 +372,64 @@ def assert_fixture_units(container: str) -> None:
                     "fixture unit changed state, type, or disappeared"
                 )
     print(f"PASS: {', '.join(FIXTURE_UNITS)} have expected states")
+
+
+def install_cgroup_fixture(container: str) -> None:
+    step("Installing cgroup fixture service")
+    # Written at test time (not baked into the image) so iterating on the
+    # fixture needs no image rebuild. Installed with all accounting on plus
+    # memory limits, it is the service that proves the cgroupfs reader (#221)
+    # returns real values on both paths.
+    write_container_file(
+        container,
+        f"/etc/systemd/system/{CGROUP_FIXTURE_SERVICE}",
+        CGROUP_FIXTURE_UNIT,
+    )
+    docker_exec(container, "systemctl", "daemon-reload")
+    docker_exec(container, "systemctl", "start", CGROUP_FIXTURE_SERVICE)
+    state = docker_exec(
+        container, "systemctl", "is-active", CGROUP_FIXTURE_SERVICE
+    ).strip()
+    if state != "active":
+        raise SystemExit(f"FAIL: {CGROUP_FIXTURE_SERVICE} is {state!r}, not active")
+    print(f"PASS: {CGROUP_FIXTURE_SERVICE} active")
+
+
+def assert_cgroup_fixture_values(outputs: dict[str, Stats]) -> None:
+    step("Asserting cgroup fixture reports real values on both paths")
+    # The parity comparison proves the two paths agree; this proves they
+    # agree on something real. With all accounting on, every cgroup-derived
+    # field must be populated — a NOT_SET sentinel means the cgroupfs reader
+    # found nothing and its fallback (D-Bus props / Unit.List reply) did not
+    # cover it either. `sleep infinity` is one single-threaded process doing
+    # no IO, so processes/tasks are exactly 1 and the IO counters exactly 0;
+    # cpu/memory just need to be present (volatile across runs).
+    expected_exact: dict[str, int] = {
+        "processes": 1,
+        "tasks_current": 1,
+        "ioread_bytes": 0,
+        "ioread_operations": 0,
+    }
+    for path_name, stats in outputs.items():
+        for field in CGROUP_FIELDS:
+            key = f"monitord.services.{CGROUP_FIXTURE_SERVICE}.{field}"
+            value = stats.get(key, "<missing>")
+            if field in expected_exact:
+                if value != expected_exact[field]:
+                    raise SystemExit(
+                        f"FAIL: {path_name}: {key}={value!r}, "
+                        f"expected {expected_exact[field]!r}"
+                    )
+            elif not isinstance(value, int) or value == NOT_SET:
+                raise SystemExit(
+                    f"FAIL: {path_name}: {key}={value!r} — "
+                    "expected a real cgroupfs value, not [not set]"
+                )
+        shown = ", ".join(
+            f"{f}={stats[f'monitord.services.{CGROUP_FIXTURE_SERVICE}.{f}']}"
+            for f in CGROUP_FIELDS
+        )
+        print(f"PASS: {path_name}: {shown}")
 
 
 def run_monitord(container: str, config_path: str) -> tuple[Stats, str]:
@@ -579,6 +682,7 @@ def main() -> None:
 
     generate_configs(repo, args.container)
     assert_fixture_units(args.container)
+    install_cgroup_fixture(args.container)
 
     step("Running monitord on both paths")
     varlink_stats, varlink_log = run_monitord(args.container, VARLINK_CONF)
@@ -588,6 +692,7 @@ def main() -> None:
     assert_varlink_usage({"varlink": varlink_stats, "dbus": dbus_stats})
     assert_verify_enumeration_parity(dbus_log, varlink_log)
     assert_time_in_state({"varlink": varlink_stats, "dbus": dbus_stats})
+    assert_cgroup_fixture_values({"varlink": varlink_stats, "dbus": dbus_stats})
     compare_outputs(dbus_stats, varlink_stats)
     print(f"\nContainer {args.container} left running; --fresh recreates it.")
 
