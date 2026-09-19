@@ -372,8 +372,8 @@ pub async fn update_machines_stats(
                         }
                         Err(err) => {
                             warn!(
-                                "Varlink units stats failed, falling back to D-Bus: {:?}",
-                                err
+                                "Varlink units stats failed for container {}, falling back to D-Bus: {:?}",
+                                machine_name, err
                             );
                             let container_root = format!("/proc/{}/root", leader_pid);
                             // Set before the call (the lib.rs ordering): if

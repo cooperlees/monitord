@@ -300,7 +300,7 @@ class FindFallbacksTest(unittest.TestCase):
     def test_fallback_line_detected(self) -> None:
         log = (
             "I0918 monitord: starting\n"
-            "W0918 src/lib.rs:348] Varlink units stats failed, "
+            "W0918 src/machines.rs:375] Varlink units stats failed for container demo, "
             "falling back to D-Bus: Os { code: 2 }\n"
         )
         self.assertEqual(len(vit.find_fallbacks(log)), 1)
