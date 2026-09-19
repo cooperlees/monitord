@@ -19,7 +19,6 @@
 //! have returned. Those defaults are asserted in the tests.
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 use tracing::debug;
 
@@ -96,11 +95,15 @@ pub fn is_oneshot(output: &ListOutput) -> bool {
 
 /// Map a `Unit.List` reply onto `ServiceStats`.
 ///
-/// `processes` comes from the unit's cgroup rather than the reply — systemd
-/// exposes no per-cgroup process count over varlink (tracked in #37).
-pub fn map_service_stats(output: &ListOutput, processes: u32) -> ServiceStats {
+/// The seven cgroup-derived fields come from `cgroup` (read from cgroupfs
+/// via `crate::cgroup`, #221) rather than the reply: `Unit.List`'s
+/// `runtime.CGroup` only carries values when the matching accounting option
+/// is on, while the files are always there when the controller is enabled.
+/// A cgroup field with no filesystem data falls back to the reply value,
+/// defaulting to UNSET when the reply omits it too.
+pub fn map_service_stats(output: &ListOutput, cgroup: &crate::cgroup::CgroupStats) -> ServiceStats {
     let runtime = output.runtime.as_ref();
-    let cgroup = runtime.and_then(|runtime| runtime.cgroup.as_ref());
+    let cgroup_reply = runtime.and_then(|runtime| runtime.cgroup.as_ref());
     let service_runtime = runtime.and_then(|runtime| runtime.service.as_ref());
     let service_context = output
         .context
@@ -116,33 +119,32 @@ pub fn map_service_stats(output: &ListOutput, processes: u32) -> ServiceStats {
             .unwrap_or(0)
     };
 
+    // cgroupfs first, reply as fallback, UNSET when neither has data:
+    // systemd omits reply fields when the matching accounting option is off,
+    // and the D-Bus properties then read `[not set]` (u64::MAX). Answering 0
+    // would report a service as using no memory rather than as unmeasured.
+    let reply =
+        |pick: fn(&crate::varlink::unit::CGroupRuntime) -> Option<u64>| cgroup_reply.and_then(pick);
+    let or_reply = |fs: Option<u64>, reply: Option<u64>| fs.or(reply).unwrap_or(UNSET);
     ServiceStats {
         active_enter_timestamp: realtime(|runtime| runtime.active_enter_timestamp),
         active_exit_timestamp: realtime(|runtime| runtime.active_exit_timestamp),
-        // Every cgroup counter defaults to UNSET, not 0: systemd omits these
-        // when the matching accounting option is off, and the D-Bus properties
-        // then read `[not set]` (u64::MAX). Answering 0 would report a service
-        // as using no memory rather than as unmeasured.
-        cpuusage_nsec: cgroup
-            .and_then(|cgroup| cgroup.cpu_usage_nsec)
-            .unwrap_or(UNSET),
+        cpuusage_nsec: or_reply(cgroup.cpu_usage_nsec, reply(|cgroup| cgroup.cpu_usage_nsec)),
         inactive_exit_timestamp: realtime(|runtime| runtime.inactive_exit_timestamp),
-        ioread_bytes: cgroup
-            .and_then(|cgroup| cgroup.io_read_bytes)
-            .unwrap_or(UNSET),
-        ioread_operations: cgroup
-            .and_then(|cgroup| cgroup.io_read_operations)
-            .unwrap_or(UNSET),
-        memory_available: cgroup
-            .and_then(|cgroup| cgroup.memory_available)
-            .unwrap_or(UNSET),
-        memory_current: cgroup
-            .and_then(|cgroup| cgroup.memory_current)
-            .unwrap_or(UNSET),
+        ioread_bytes: or_reply(cgroup.io_read_bytes, reply(|cgroup| cgroup.io_read_bytes)),
+        ioread_operations: or_reply(
+            cgroup.io_read_operations,
+            reply(|cgroup| cgroup.io_read_operations),
+        ),
+        memory_available: or_reply(
+            cgroup.memory_available,
+            reply(|cgroup| cgroup.memory_available),
+        ),
+        memory_current: or_reply(cgroup.memory_current, reply(|cgroup| cgroup.memory_current)),
         nrestarts: service_runtime
             .and_then(|service| service.n_restarts)
             .unwrap_or(0),
-        processes,
+        processes: cgroup.processes,
         restart_usec: service_context
             .and_then(|service| service.restart_usec)
             .unwrap_or(0),
@@ -150,9 +152,7 @@ pub fn map_service_stats(output: &ListOutput, processes: u32) -> ServiceStats {
         status_errno: service_runtime
             .and_then(|service| service.status_errno)
             .unwrap_or(0),
-        tasks_current: cgroup
-            .and_then(|cgroup| cgroup.tasks_current)
-            .unwrap_or(UNSET),
+        tasks_current: or_reply(cgroup.tasks_current, reply(|cgroup| cgroup.tasks_current)),
         // Under context.Exec, not context.Service as the D-Bus property name
         // suggests. Defaults to infinity, which D-Bus reports as u64::MAX.
         timeout_clean_usec: output
@@ -237,6 +237,12 @@ pub fn map_timer_stats(output: &ListOutput, triggered: Option<&ListOutput>) -> T
 /// in children would be undercounted by reading only its own `cgroup.procs`.
 /// The main PID is folded in the same way systemd does, since it can sit
 /// outside the cgroup. `fs_root` prefixes the cgroup mount for containers.
+/// Count the processes in a unit's cgroup, including nested ones.
+///
+/// Thin wrapper over `crate::cgroup::read_service_cgroup` for callers that
+/// already hold a `Unit.List` reply: the cgroup path and main PID come from
+/// the reply, and only the process count is returned. Units with no cgroup
+/// path in the reply count 0.
 pub async fn count_cgroup_processes(fs_root: &str, output: &ListOutput) -> u32 {
     let runtime = output.runtime.as_ref();
     let Some(cgroup_path) = runtime
@@ -245,35 +251,13 @@ pub async fn count_cgroup_processes(fs_root: &str, output: &ListOutput) -> u32 {
     else {
         return 0;
     };
-
-    let mut pids: HashSet<u32> = HashSet::new();
-    let mut directories = vec![format!("{}/sys/fs/cgroup{}", fs_root, cgroup_path)];
-    while let Some(directory) = directories.pop() {
-        match tokio::fs::read_to_string(format!("{directory}/cgroup.procs")).await {
-            Ok(contents) => {
-                pids.extend(contents.lines().filter_map(|line| line.parse::<u32>().ok()))
-            }
-            Err(err) => debug!("Unable to read {}/cgroup.procs: {:?}", directory, err),
-        }
-        let Ok(mut entries) = tokio::fs::read_dir(&directory).await else {
-            continue;
-        };
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            if entry.file_type().await.is_ok_and(|kind| kind.is_dir()) {
-                directories.push(entry.path().to_string_lossy().into_owned());
-            }
-        }
-    }
-
-    if let Some(main_pid) = runtime
+    let main_pid = runtime
         .and_then(|runtime| runtime.service.as_ref())
         .and_then(|service| service.main_pid.as_ref())
-        .and_then(|process| process.pid)
-    {
-        pids.insert(main_pid);
-    }
-
-    pids.len() as u32
+        .and_then(|process| process.pid);
+    crate::cgroup::read_service_cgroup(fs_root, cgroup_path, main_pid)
+        .await
+        .processes
 }
 
 #[cfg(test)]
@@ -362,14 +346,25 @@ mod tests {
                     timer: None,
                 }),
             ),
-            2,
+            // cgroupfs has fresher data than the reply for these three; the
+            // rest fall back to the reply values above.
+            &crate::cgroup::CgroupStats {
+                cpu_usage_nsec: Some(90_000_000),
+                memory_current: Some(4_000_000),
+                tasks_current: Some(3),
+                processes: 3,
+                ..Default::default()
+            },
         );
 
         assert_eq!(stats.active_enter_timestamp, 1_789_701_442_296_989);
-        assert_eq!(stats.cpuusage_nsec, 86_690_000);
-        assert_eq!(stats.memory_current, 3_457_024);
-        assert_eq!(stats.tasks_current, 2);
-        assert_eq!(stats.processes, 2);
+        // cgroupfs wins where it has data…
+        assert_eq!(stats.cpuusage_nsec, 90_000_000);
+        assert_eq!(stats.memory_current, 4_000_000);
+        assert_eq!(stats.tasks_current, 3);
+        assert_eq!(stats.processes, 3);
+        // …and the reply covers the rest.
+        assert_eq!(stats.memory_available, 7_619_899_392);
         assert_eq!(stats.restart_usec, 100_000);
         // Real, and emitted once a unit has actually left the active state.
         assert_eq!(stats.active_exit_timestamp, 1_789_701_442_280_000);
@@ -480,7 +475,7 @@ mod tests {
         // Everything absent must land on the D-Bus defaults rather than zeroing
         // the unset sentinels. A service with accounting off reports [not set]
         // over D-Bus, so reporting 0 bytes of memory would be a fabrication.
-        let stats = map_service_stats(&output(None, None), 0);
+        let stats = map_service_stats(&output(None, None), &crate::cgroup::CgroupStats::default());
         assert_eq!(stats.ioread_bytes, u64::MAX);
         assert_eq!(stats.ioread_operations, u64::MAX);
         assert_eq!(stats.timeout_clean_usec, u64::MAX);
@@ -491,5 +486,30 @@ mod tests {
         // These two genuinely default to zero over D-Bus.
         assert_eq!(stats.watchdog_usec, 0);
         assert_eq!(stats.active_enter_timestamp, 0);
+    }
+
+    #[test]
+    fn test_map_service_stats_cgroupfs_only_no_reply() {
+        // A reply with no CGroup section (accounting off, pre-v261, or an
+        // inactive unit) still reports everything cgroupfs could read.
+        let stats = map_service_stats(
+            &output(None, None),
+            &crate::cgroup::CgroupStats {
+                cpu_usage_nsec: Some(1_000),
+                memory_current: Some(2_000),
+                memory_available: Some(3_000),
+                tasks_current: Some(1),
+                processes: 1,
+                io_read_bytes: Some(0),
+                io_read_operations: Some(0),
+            },
+        );
+        assert_eq!(stats.cpuusage_nsec, 1_000);
+        assert_eq!(stats.memory_current, 2_000);
+        assert_eq!(stats.memory_available, 3_000);
+        assert_eq!(stats.tasks_current, 1);
+        assert_eq!(stats.processes, 1);
+        assert_eq!(stats.ioread_bytes, 0);
+        assert_eq!(stats.ioread_operations, 0);
     }
 }

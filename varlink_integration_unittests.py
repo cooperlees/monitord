@@ -66,6 +66,13 @@ class BuildCiConfigsTest(unittest.TestCase):
         self.assertIn("dbus-broker.service", services)
         self.assertNotIn("sshd.service", services)
 
+    def test_services_section_tracks_cgroup_fixture(self) -> None:
+        # The all-accounting-on fixture proves the cgroupfs reader (#221)
+        # against real values; it rides along dbus-broker, not instead of it.
+        services = section_body(self.dbus_conf, "[services]")
+        self.assertIn(vit.CGROUP_FIXTURE_SERVICE, services)
+        self.assertIn("dbus-broker.service", services)
+
     def test_timers_allowlist_emptied(self) -> None:
         self.assertNotIn("fstrim.timer", self.dbus_conf)
 
