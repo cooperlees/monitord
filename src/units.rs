@@ -274,11 +274,23 @@ pub const UNIT_FIELD_NAMES: &[&str] = &SystemdUnitStats::FIELD_NAMES_AS_ARRAY;
 pub const UNIT_STATES_FIELD_NAMES: &[&str] = &UnitStates::FIELD_NAMES_AS_ARRAY;
 
 /// Pull out selected systemd service statistics
+///
+/// The seven cgroup-derived fields (`cpuusage_nsec`, `ioread_bytes`,
+/// `ioread_operations`, `memory_current`, `memory_available`, `processes`,
+/// `tasks_current`) come from cgroupfs via `crate::cgroup` (#221), read in
+/// parallel with the remaining D-Bus properties. `fs_root` prefixes the
+/// cgroup mount — empty for the host, `/proc/<leader>/root` for containers.
+/// `host_memory` is read once per collection cycle in `parse_unit_state` and
+/// shared by every unit. A cgroup field that cgroupfs has no data for falls
+/// back to its D-Bus property, which is also what covers cgroup v1 hosts
+/// (no v2 files → all fallback, no new failure mode).
 #[tracing::instrument(level = "debug", skip(connection, object_path))]
 async fn parse_service(
     connection: &zbus::Connection,
     name: &str,
     object_path: &OwnedObjectPath,
+    fs_root: &str,
+    host_memory: Option<crate::cgroup::HostMemory>,
 ) -> Result<ServiceStats, MonitordUnitsError> {
     debug!("Parsing service {} stats", name);
 
@@ -293,59 +305,134 @@ async fn parse_service(
         .build()
         .await?;
 
+    // The cgroup path gates the filesystem read; the main and control PIDs
+    // are folded into the process count the way `GetProcesses` does (both
+    // can sit outside the cgroup).
     // Use tokio::join! without tokio::spawn to avoid per-task allocation overhead.
     // These all share the same D-Bus connection so spawn adds no parallelism benefit.
+    let (control_group, main_pid, control_pid) =
+        tokio::join!(sp.control_group(), sp.main_pid(), sp.control_pid());
+    let (control_group, main_pid, control_pid) = (control_group?, main_pid?, control_pid?);
+    let mut extra_pids = Vec::with_capacity(2);
+    for pid in [main_pid, control_pid] {
+        if pid != 0 {
+            extra_pids.push(pid);
+        }
+    }
+
+    // The filesystem read joins the remaining D-Bus properties in one batch,
+    // so cgroupfs IO never serializes behind IPC. An empty cgroup path
+    // (inactive unit) short-circuits inside `read_service_cgroup` and every
+    // field below falls back, exactly like an unreadable cgroup.
+    let cgroup_stats =
+        crate::cgroup::read_service_cgroup(fs_root, &control_group, &extra_pids, host_memory);
+
     let (
         active_enter_timestamp,
         active_exit_timestamp,
-        cpuusage_nsec,
         inactive_exit_timestamp,
+        nrestarts,
+        restart_usec,
+        state_change_timestamp,
+        status_errno,
+        timeout_clean_usec,
+        watchdog_usec,
+        cgroup_stats,
+    ) = tokio::join!(
+        up.active_enter_timestamp(),
+        up.active_exit_timestamp(),
+        up.inactive_exit_timestamp(),
+        sp.nrestarts(),
+        sp.restart_usec(),
+        up.state_change_timestamp(),
+        sp.status_errno(),
+        sp.timeout_clean_usec(),
+        sp.watchdog_usec(),
+        cgroup_stats,
+    );
+
+    // Per-field D-Bus fallback for whatever cgroupfs had no data for: only
+    // missing fields pay for a fallback call, in the same single batch — so
+    // the hot path (cgroup present, the common case for running services)
+    // issues none, and a property that errors only fails its own field via
+    // the `?` below rather than the whole service (matching how a missing
+    // cgroup file behaves).
+    let (
+        cpuusage_nsec,
         ioread_bytes,
         ioread_operations,
         memory_current,
         memory_available,
-        nrestarts,
-        processes,
-        restart_usec,
-        state_change_timestamp,
-        status_errno,
         tasks_current,
-        timeout_clean_usec,
-        watchdog_usec,
     ) = tokio::join!(
-        up.active_enter_timestamp(),
-        up.active_exit_timestamp(),
-        sp.cpuusage_nsec(),
-        up.inactive_exit_timestamp(),
-        sp.ioread_bytes(),
-        sp.ioread_operations(),
-        sp.memory_current(),
-        sp.memory_available(),
-        sp.nrestarts(),
-        sp.get_processes(),
-        sp.restart_usec(),
-        up.state_change_timestamp(),
-        sp.status_errno(),
-        sp.tasks_current(),
-        sp.timeout_clean_usec(),
-        sp.watchdog_usec(),
+        async {
+            match cgroup_stats.cpu_usage_nsec {
+                Some(value) => Ok(value),
+                None => sp.cpuusage_nsec().await,
+            }
+        },
+        async {
+            match cgroup_stats.io_read_bytes {
+                Some(value) => Ok(value),
+                None => sp.ioread_bytes().await,
+            }
+        },
+        async {
+            match cgroup_stats.io_read_operations {
+                Some(value) => Ok(value),
+                None => sp.ioread_operations().await,
+            }
+        },
+        async {
+            match cgroup_stats.memory_current {
+                Some(value) => Ok(value),
+                None => sp.memory_current().await,
+            }
+        },
+        async {
+            match cgroup_stats.memory_available {
+                Some(value) => Ok(value),
+                None => sp.memory_available().await,
+            }
+        },
+        async {
+            match cgroup_stats.tasks_current {
+                Some(value) => Ok(value),
+                None => sp.tasks_current().await,
+            }
+        },
+    );
+    let (
+        cpuusage_nsec,
+        ioread_bytes,
+        ioread_operations,
+        memory_current,
+        memory_available,
+        tasks_current,
+    ) = (
+        cpuusage_nsec?,
+        ioread_bytes?,
+        ioread_operations?,
+        memory_current?,
+        memory_available?,
+        tasks_current?,
     );
 
     Ok(ServiceStats {
         active_enter_timestamp: active_enter_timestamp?,
         active_exit_timestamp: active_exit_timestamp?,
-        cpuusage_nsec: cpuusage_nsec?,
+        cpuusage_nsec,
         inactive_exit_timestamp: inactive_exit_timestamp?,
-        ioread_bytes: ioread_bytes?,
-        ioread_operations: ioread_operations?,
-        memory_current: memory_current?,
-        memory_available: memory_available?,
+        ioread_bytes,
+        ioread_operations,
+        memory_current,
+        memory_available,
         nrestarts: nrestarts?,
-        processes: processes?.len().try_into()?,
+        processes: cgroup_stats.processes,
         restart_usec: restart_usec?,
         state_change_timestamp: state_change_timestamp?,
         status_errno: status_errno?,
-        tasks_current: tasks_current?,
+        tasks_current,
         timeout_clean_usec: timeout_clean_usec?,
         watchdog_usec: watchdog_usec?,
     })
@@ -751,12 +838,17 @@ pub async fn parse_unit_state(
     // attaching this as the explicit parent below, every `unit_collect` span
     // becomes its own unrelated root trace instead of a child of this collector.
     let parent_span = tracing::Span::current();
+    // Host-wide memory numbers for the `memory_available` fold, read once
+    // per collection cycle and shared by every unit (rather than once per
+    // service inside `parse_service`).
+    let host_memory = crate::cgroup::read_host_memory().await;
     let mut join_set: JoinSet<PerUnitOutcome> = JoinSet::new();
     for unit in listed_units {
         let semaphore = Arc::clone(&semaphore);
         let config = Arc::clone(config);
         let connection = connection.clone();
         let parent_span = parent_span.clone();
+        let fs_root = fs_root.to_string();
         join_set.spawn(async move {
             let _permit = semaphore
                 .acquire()
@@ -790,7 +882,15 @@ pub async fn parse_unit_state(
                 // Collect service stats
                 if config.services.contains(&unit.name) {
                     debug!("Collecting service stats for {:?}", &unit);
-                    match parse_service(&connection, &unit.name, &unit.unit_object_path).await {
+                    match parse_service(
+                        &connection,
+                        &unit.name,
+                        &unit.unit_object_path,
+                        &fs_root,
+                        host_memory,
+                    )
+                    .await
+                    {
                         Ok(service_stats) => outcome.service_stats_entry = Some(service_stats),
                         Err(err) => error!(
                             "Unable to get service stats for {} {}: {:#?}",

@@ -706,7 +706,9 @@ pub async fn apply_unit_details(
     let fetch_start = Instant::now();
     let mut lookup = crate::varlink_unit::UnitLookup::connect(socket_path).await?;
 
-    let mut service_stats: HashMap<String, crate::units::ServiceStats> = HashMap::new();
+    // Phase 1: resolve every wanted service over varlink (sequential — PID 1
+    // serves these one at a time) and remember the replies with live cgroups.
+    let mut service_outputs: Vec<(String, crate::varlink::unit::ListOutput)> = Vec::new();
     for name in &config.services {
         let Some(output) = lookup.get(name).await? else {
             continue;
@@ -714,10 +716,55 @@ pub async fn apply_unit_details(
         // Cloned so the cache entry stays available to the oneshot pass below.
         let output = output.clone();
         require_unit_context(name, &output)?;
-        let processes = crate::varlink_unit::count_cgroup_processes(fs_root, &output).await;
+        service_outputs.push((name.clone(), output));
+    }
+
+    // Phase 2: read every service's cgroup files concurrently. No IPC here,
+    // just local filesystem reads, so all units go out in one batch.
+    // `host_memory` is read once here and shared by every service rather
+    // than once per service inside the reader.
+    let host_memory = crate::cgroup::read_host_memory().await;
+    let service_cgroups =
+        futures_util::future::join_all(service_outputs.iter().map(|(_, output)| {
+            let cgroup_path = output
+                .runtime
+                .as_ref()
+                .and_then(|runtime| runtime.cgroup.as_ref())
+                .and_then(|cgroup| cgroup.path.as_deref())
+                .unwrap_or("");
+            // Main + control PIDs, folded into the process count the way
+            // `GetProcesses` does (both can sit outside the cgroup).
+            let service = output
+                .runtime
+                .as_ref()
+                .and_then(|runtime| runtime.service.as_ref());
+            let pid = |pick: fn(
+                &crate::varlink::unit::ServiceRuntime,
+            ) -> Option<&crate::varlink::unit::ProcessId>| {
+                service.and_then(pick).and_then(|process| process.pid)
+            };
+            // An empty cgroup path (inactive unit) short-circuits inside
+            // `read_service_cgroup`, with every field falling back to the
+            // reply values inside `map_service_stats`.
+            let extra_pids: Vec<u32> = [
+                pid(|service| service.main_pid.as_ref()),
+                pid(|service| service.control_pid.as_ref()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            async move {
+                crate::cgroup::read_service_cgroup(fs_root, cgroup_path, &extra_pids, host_memory)
+                    .await
+            }
+        }))
+        .await;
+
+    let mut service_stats: HashMap<String, crate::units::ServiceStats> = HashMap::new();
+    for ((name, output), cgroup) in service_outputs.into_iter().zip(service_cgroups) {
         service_stats.insert(
-            name.clone(),
-            crate::varlink_unit::map_service_stats(&output, processes),
+            name,
+            crate::varlink_unit::map_service_stats(&output, &cgroup),
         );
     }
 

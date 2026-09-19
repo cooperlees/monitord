@@ -162,6 +162,11 @@ pub struct ServiceRuntime {
     /// Main process of the service, if it has one.
     #[serde(rename = "MainPID")]
     pub main_pid: Option<ProcessId>,
+    /// Control process (ExecStartPre/ExecReload/ExecStop/…), if one is
+    /// running. Folded into the process count the way `GetProcesses` does,
+    /// since it can sit outside the cgroup.
+    #[serde(rename = "ControlPID")]
+    pub control_pid: Option<ProcessId>,
     /// errno-style status reported by the service via sd_notify.
     #[serde(rename = "StatusErrno")]
     pub status_errno: Option<i32>,

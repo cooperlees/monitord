@@ -778,7 +778,7 @@ When an individual collector fails (e.g., networkd not running, D-Bus timeout), 
 
 **Large u64 values (18446744073709551615) in output**
 
-These represent `u64::MAX` and mean "not available" or "not tracked" for that metric. This is how systemd reports fields that are unsupported or not configured for the unit (e.g., `memory_available` when `MemoryMax=` is not set).
+These represent `u64::MAX` and mean "not available" or "not tracked" for that metric. This is how systemd reports fields that are unsupported or not configured for the unit. The cgroup-derived service fields report `u64::MAX` only when neither cgroupfs nor the IPC fallback has data (e.g. `ioread_bytes` with the `io` controller disabled); `memory_available` in particular is computed even without limits, as host `MemAvailable`.
 
 ## Library API
 
@@ -807,18 +807,17 @@ systemd Dbus APIs are in use in the following modules:
   - `UnitProxy::state_change_timestamp_monotonic()`
 - units
   - `ManagerProxy::list_units()` - Main counting of unit stats
-  - `ServiceProxy::cpuusage_nsec()`
-  - `ServiceProxy::ioread_bytes()`
-  - `ServiceProxy::ioread_operations()`
-  - `ServiceProxy::memory_current()`
-  - `ServiceProxy::memory_available()`
+  - `ServiceProxy::control_group()` + `ServiceProxy::main_pid()` + `ServiceProxy::control_pid()` - Locate the unit's cgroup and fold PIDs living outside it into the process count, the way `GetProcesses` does
   - `ServiceProxy::nrestarts()`
-  - `ServiceProxy::get_processes()`
   - `ServiceProxy::restart_usec()`
   - `ServiceProxy::status_errno()`
-  - `ServiceProxy::tasks_current()`
   - `ServiceProxy::timeout_clean_usec()`
   - `ServiceProxy::watchdog_usec()`
+  - Per-service cgroup accounting (`cpuusage_nsec`, `ioread_bytes`, `ioread_operations`,
+    `memory_current`, `memory_available`, `tasks_current`, process count) is read from
+    cgroupfs (`cpu.stat`, `memory.current`/`max`/`high`, `pids.current`, `io.stat`,
+    `cgroup.procs`) instead of the `ServiceProxy` properties / `get_processes()`.
+    Each field falls back to its D-Bus property when cgroupfs has no data (e.g. cgroup v1 hosts)
   - `UnitProxy::active_enter_timestamp`
   - `UnitProxy::active_exit_timestamp`
   - `UnitProxy::inactive_exit_timestamp()`
@@ -868,7 +867,7 @@ toggle of their own: they ride the units path and follow `[units] varlink`.
 - Per-unit health status (computed from active + load state)
 - Per-service restart counts (`nrestarts`)
 - Per-service errno status (`StatusErrno`, v261+; unavailable (0) on v260)
-- Full per-service stats for units in `[services]` via `io.systemd.Unit.List` (systemd v261+): CPU, memory, tasks, process count, timestamps and timeouts, matching what the D-Bus path reports. Unavailable counters are reported as `u64::MAX`, exactly as the D-Bus properties do when accounting is disabled
+- Full per-service stats for units in `[services]` via `io.systemd.Unit.List` (systemd v261+): timestamps, restart/timeout/watchdog settings from the reply, and CPU, memory, tasks, IO plus process count read from cgroupfs (same reader as the D-Bus path, so both agree). A field with no cgroupfs data falls back to the reply's `runtime.CGroup` value, defaulting to `u64::MAX` when the reply omits it too
 - Per-timer stats via `io.systemd.Unit.List` (systemd v261+): accuracy, delays, next elapse, last trigger, and the triggered unit's state change — no D-Bus backfill
 - Falls back to D-Bus collection if the socket is unavailable
 
