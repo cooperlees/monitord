@@ -280,15 +280,17 @@ pub const UNIT_STATES_FIELD_NAMES: &[&str] = &UnitStates::FIELD_NAMES_AS_ARRAY;
 /// `tasks_current`) come from cgroupfs via `crate::cgroup` (#221), read in
 /// parallel with the remaining D-Bus properties. `fs_root` prefixes the
 /// cgroup mount — empty for the host, `/proc/<leader>/root` for containers.
-/// A cgroup field that cgroupfs has no data for falls back to its D-Bus
-/// property, which is also what covers cgroup v1 hosts (no v2 files → all
-/// fallback, no new failure mode).
+/// `host_memory` is read once per collection cycle in `parse_unit_state` and
+/// shared by every unit. A cgroup field that cgroupfs has no data for falls
+/// back to its D-Bus property, which is also what covers cgroup v1 hosts
+/// (no v2 files → all fallback, no new failure mode).
 #[tracing::instrument(level = "debug", skip(connection, object_path))]
 async fn parse_service(
     connection: &zbus::Connection,
     name: &str,
     object_path: &OwnedObjectPath,
     fs_root: &str,
+    host_memory: Option<crate::cgroup::HostMemory>,
 ) -> Result<ServiceStats, MonitordUnitsError> {
     debug!("Parsing service {} stats", name);
 
@@ -305,16 +307,11 @@ async fn parse_service(
 
     // The cgroup path gates the filesystem read; the main and control PIDs
     // are folded into the process count the way `GetProcesses` does (both
-    // can sit outside the cgroup). `host_memory` is read once per
-    // collection cycle (see `parse_unit_state`) and shared by every unit.
+    // can sit outside the cgroup).
     // Use tokio::join! without tokio::spawn to avoid per-task allocation overhead.
     // These all share the same D-Bus connection so spawn adds no parallelism benefit.
-    let (control_group, main_pid, control_pid, host_memory) = tokio::join!(
-        sp.control_group(),
-        sp.main_pid(),
-        sp.control_pid(),
-        crate::cgroup::read_host_memory(),
-    );
+    let (control_group, main_pid, control_pid) =
+        tokio::join!(sp.control_group(), sp.main_pid(), sp.control_pid());
     let (control_group, main_pid, control_pid) = (control_group?, main_pid?, control_pid?);
     let mut extra_pids = Vec::with_capacity(2);
     for pid in [main_pid, control_pid] {
@@ -841,6 +838,10 @@ pub async fn parse_unit_state(
     // attaching this as the explicit parent below, every `unit_collect` span
     // becomes its own unrelated root trace instead of a child of this collector.
     let parent_span = tracing::Span::current();
+    // Host-wide memory numbers for the `memory_available` fold, read once
+    // per collection cycle and shared by every unit (rather than once per
+    // service inside `parse_service`).
+    let host_memory = crate::cgroup::read_host_memory().await;
     let mut join_set: JoinSet<PerUnitOutcome> = JoinSet::new();
     for unit in listed_units {
         let semaphore = Arc::clone(&semaphore);
@@ -881,8 +882,14 @@ pub async fn parse_unit_state(
                 // Collect service stats
                 if config.services.contains(&unit.name) {
                     debug!("Collecting service stats for {:?}", &unit);
-                    match parse_service(&connection, &unit.name, &unit.unit_object_path, &fs_root)
-                        .await
+                    match parse_service(
+                        &connection,
+                        &unit.name,
+                        &unit.unit_object_path,
+                        &fs_root,
+                        host_memory,
+                    )
+                    .await
                     {
                         Ok(service_stats) => outcome.service_stats_entry = Some(service_stats),
                         Err(err) => error!(
