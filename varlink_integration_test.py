@@ -403,12 +403,13 @@ def assert_cgroup_fixture_values(outputs: dict[str, Stats]) -> None:
     # found nothing and its fallback (D-Bus props / Unit.List reply) did not
     # cover it either. `sleep infinity` is one single-threaded process doing
     # no IO, so processes/tasks are exactly 1 and the IO counters exactly 0;
-    # cpu/memory just need to be present (volatile across runs).
+    # cpu/memory/IO just need to be present, not [not set] (volatile across
+    # runs — and the execve can charge first-touch page-cache misses to the
+    # fixture's cgroup on a cold container, so the IO counters are not
+    # exactly deterministic either).
     expected_exact: dict[str, int] = {
         "processes": 1,
         "tasks_current": 1,
-        "ioread_bytes": 0,
-        "ioread_operations": 0,
     }
     for path_name, stats in outputs.items():
         for field in CGROUP_FIELDS:

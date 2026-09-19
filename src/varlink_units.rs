@@ -721,26 +721,41 @@ pub async fn apply_unit_details(
 
     // Phase 2: read every service's cgroup files concurrently. No IPC here,
     // just local filesystem reads, so all units go out in one batch.
+    // `host_memory` is read once here and shared by every service rather
+    // than once per service inside the reader.
+    let host_memory = crate::cgroup::read_host_memory().await;
     let service_cgroups =
         futures_util::future::join_all(service_outputs.iter().map(|(_, output)| {
             let cgroup_path = output
                 .runtime
                 .as_ref()
                 .and_then(|runtime| runtime.cgroup.as_ref())
-                .and_then(|cgroup| cgroup.path.as_deref());
-            let main_pid = output
+                .and_then(|cgroup| cgroup.path.as_deref())
+                .unwrap_or("");
+            // Main + control PIDs, folded into the process count the way
+            // `GetProcesses` does (both can sit outside the cgroup).
+            let service = output
                 .runtime
                 .as_ref()
-                .and_then(|runtime| runtime.service.as_ref())
-                .and_then(|service| service.main_pid.as_ref())
-                .and_then(|process| process.pid);
+                .and_then(|runtime| runtime.service.as_ref());
+            let pid = |pick: fn(
+                &crate::varlink::unit::ServiceRuntime,
+            ) -> Option<&crate::varlink::unit::ProcessId>| {
+                service.and_then(pick).and_then(|process| process.pid)
+            };
+            // An empty cgroup path (inactive unit) short-circuits inside
+            // `read_service_cgroup`, with every field falling back to the
+            // reply values inside `map_service_stats`.
+            let extra_pids: Vec<u32> = [
+                pid(|service| service.main_pid.as_ref()),
+                pid(|service| service.control_pid.as_ref()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
             async move {
-                match cgroup_path {
-                    Some(path) => crate::cgroup::read_service_cgroup(fs_root, path, main_pid).await,
-                    // No cgroup (e.g. an inactive unit): all fields fall back
-                    // to the reply values inside `map_service_stats`.
-                    None => crate::cgroup::CgroupStats::default(),
-                }
+                crate::cgroup::read_service_cgroup(fs_root, cgroup_path, &extra_pids, host_memory)
+                    .await
             }
         }))
         .await;

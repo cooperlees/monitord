@@ -303,26 +303,32 @@ async fn parse_service(
         .build()
         .await?;
 
-    // The cgroup path and main PID gate the filesystem read, so they are
-    // fetched first; everything else joins the cgroup read in one batch.
+    // The cgroup path gates the filesystem read; the main and control PIDs
+    // are folded into the process count the way `GetProcesses` does (both
+    // can sit outside the cgroup). `host_memory` is read once per
+    // collection cycle (see `parse_unit_state`) and shared by every unit.
     // Use tokio::join! without tokio::spawn to avoid per-task allocation overhead.
     // These all share the same D-Bus connection so spawn adds no parallelism benefit.
-    let (control_group, main_pid) = tokio::join!(sp.control_group(), sp.main_pid());
-    let (control_group, main_pid) = (control_group?, main_pid?);
-
-    let cgroup_stats = (!control_group.is_empty()).then(|| {
-        crate::cgroup::read_service_cgroup(
-            fs_root,
-            &control_group,
-            (main_pid != 0).then_some(main_pid),
-        )
-    });
-    let cgroup_stats = async {
-        match cgroup_stats {
-            Some(fut) => Some(fut.await),
-            None => None,
+    let (control_group, main_pid, control_pid, host_memory) = tokio::join!(
+        sp.control_group(),
+        sp.main_pid(),
+        sp.control_pid(),
+        crate::cgroup::read_host_memory(),
+    );
+    let (control_group, main_pid, control_pid) = (control_group?, main_pid?, control_pid?);
+    let mut extra_pids = Vec::with_capacity(2);
+    for pid in [main_pid, control_pid] {
+        if pid != 0 {
+            extra_pids.push(pid);
         }
-    };
+    }
+
+    // The filesystem read joins the remaining D-Bus properties in one batch,
+    // so cgroupfs IO never serializes behind IPC. An empty cgroup path
+    // (inactive unit) short-circuits inside `read_service_cgroup` and every
+    // field below falls back, exactly like an unreadable cgroup.
+    let cgroup_stats =
+        crate::cgroup::read_service_cgroup(fs_root, &control_group, &extra_pids, host_memory);
 
     let (
         active_enter_timestamp,
@@ -348,10 +354,12 @@ async fn parse_service(
         cgroup_stats,
     );
 
-    let cgroup_stats = cgroup_stats.unwrap_or_default();
-    // Per-field D-Bus fallback for whatever cgroupfs had no data for.
-    // Only missing fields pay for a fallback call; the hot path (cgroup
-    // present, the common case for running services) issues none.
+    // Per-field D-Bus fallback for whatever cgroupfs had no data for: only
+    // missing fields pay for a fallback call, in the same single batch — so
+    // the hot path (cgroup present, the common case for running services)
+    // issues none, and a property that errors only fails its own field via
+    // the `?` below rather than the whole service (matching how a missing
+    // cgroup file behaves).
     let (
         cpuusage_nsec,
         ioread_bytes,
@@ -359,34 +367,59 @@ async fn parse_service(
         memory_current,
         memory_available,
         tasks_current,
-    ) = match (
-        cgroup_stats.cpu_usage_nsec,
-        cgroup_stats.io_read_bytes,
-        cgroup_stats.io_read_operations,
-        cgroup_stats.memory_current,
-        cgroup_stats.memory_available,
-        cgroup_stats.tasks_current,
-    ) {
-        (Some(cpu), Some(rb), Some(ro), Some(mc), Some(ma), Some(tc)) => (cpu, rb, ro, mc, ma, tc),
-        (cpu, rb, ro, mc, ma, tc) => {
-            let (fb_cpu, fb_rb, fb_ro, fb_mc, fb_ma, fb_tc) = tokio::join!(
-                sp.cpuusage_nsec(),
-                sp.ioread_bytes(),
-                sp.ioread_operations(),
-                sp.memory_current(),
-                sp.memory_available(),
-                sp.tasks_current(),
-            );
-            (
-                cpu.unwrap_or(fb_cpu?),
-                rb.unwrap_or(fb_rb?),
-                ro.unwrap_or(fb_ro?),
-                mc.unwrap_or(fb_mc?),
-                ma.unwrap_or(fb_ma?),
-                tc.unwrap_or(fb_tc?),
-            )
-        }
-    };
+    ) = tokio::join!(
+        async {
+            match cgroup_stats.cpu_usage_nsec {
+                Some(value) => Ok(value),
+                None => sp.cpuusage_nsec().await,
+            }
+        },
+        async {
+            match cgroup_stats.io_read_bytes {
+                Some(value) => Ok(value),
+                None => sp.ioread_bytes().await,
+            }
+        },
+        async {
+            match cgroup_stats.io_read_operations {
+                Some(value) => Ok(value),
+                None => sp.ioread_operations().await,
+            }
+        },
+        async {
+            match cgroup_stats.memory_current {
+                Some(value) => Ok(value),
+                None => sp.memory_current().await,
+            }
+        },
+        async {
+            match cgroup_stats.memory_available {
+                Some(value) => Ok(value),
+                None => sp.memory_available().await,
+            }
+        },
+        async {
+            match cgroup_stats.tasks_current {
+                Some(value) => Ok(value),
+                None => sp.tasks_current().await,
+            }
+        },
+    );
+    let (
+        cpuusage_nsec,
+        ioread_bytes,
+        ioread_operations,
+        memory_current,
+        memory_available,
+        tasks_current,
+    ) = (
+        cpuusage_nsec?,
+        ioread_bytes?,
+        ioread_operations?,
+        memory_current?,
+        memory_available?,
+        tasks_current?,
+    );
 
     Ok(ServiceStats {
         active_enter_timestamp: active_enter_timestamp?,

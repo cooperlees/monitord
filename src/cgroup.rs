@@ -12,7 +12,7 @@
 //! | `memory_current` | `memory.current` |
 //! | `memory_available` | `min(memory.max, memory.high) − memory.current`, minimized over the slice walk (see below) |
 //! | `tasks_current` | `pids.current` |
-//! | `processes` | recursive `cgroup.procs` walk + main PID fold-in |
+//! | `processes` | recursive `cgroup.procs` walk + main/control PID fold-in |
 //! | `ioread_bytes` | `io.stat` → `rbytes` summed over devices |
 //! | `ioread_operations` | `io.stat` → `rios` summed over devices |
 //!
@@ -43,13 +43,15 @@
 //!
 //! ## Why hand-rolled instead of a cgroupfs crate
 //!
-//! The ecosystem crates (`cgroups-rs` and friends) are synchronous —
-//! `read_to_string` on cgroupfs is fast, but blocking the tokio runtime for
-//! every service on every cycle is exactly what this collector avoids. An
-//! async wrapper would just be `spawn_blocking` around the same file reads
-//! below, plus another dependency and more binary size, against the embedded
-//! goal. So: `tokio::fs` reads issued together with `tokio::join!`, zero new
-//! dependencies, cgroup v2 only.
+//! The ecosystem crates are all synchronous: `cgroups-rs` (kata, the most
+//! downloaded), Meta's `cgroupfs` (the closest miss — fd-based `openat`
+//! reads), and youki's `libcgroups` are `std::fs` under the hood and would
+//! need `spawn_blocking` around the same file reads below, plus extra
+//! dependencies (`nix`, `serde`, `oci-spec`, …) and more binary size,
+//! against the embedded goal. None of them models `memory_available`
+//! either — that is a systemd concept, not a kernel file, and it is where
+//! most of this module's complexity lives. So: `tokio::fs` reads issued
+//! together with `tokio::join!`, zero new dependencies, cgroup v2 only.
 //!
 //! ## `fs_root` and containers
 //!
@@ -69,7 +71,11 @@
 //! `GetProcesses` returns for a dead unit. Callers keep their existing
 //! fallback (D-Bus props on the D-Bus path, the `Unit.List` reply on the
 //! varlink path) for fields that come back `None`, which is also what covers
-//! cgroup v1 hosts: no v2 files → all `None` → fallback, no new failure mode.
+//! cgroup v1 hosts: no v2 files → all `None` → fallback, no new failure
+//! mode. `memory_available` included: the host-`MemAvailable` root level
+//! only binds when the unit's own level was actually readable, so a missing
+//! cgroup reports `None` there like everywhere else instead of silently
+//! answering host memory.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -97,8 +103,9 @@ pub struct CgroupStats {
     pub memory_available: Option<u64>,
     /// `pids.current` verbatim.
     pub tasks_current: Option<u64>,
-    /// Recursive `cgroup.procs` walk with the main PID folded in the way
-    /// systemd does (it can sit outside the cgroup).
+    /// Recursive `cgroup.procs` walk with the main and control PIDs folded in
+    /// the way systemd's `GetProcesses` does (both can sit outside the
+    /// cgroup).
     pub processes: u32,
     /// `io.stat` → `rbytes` summed over all devices. `Some(0)` when the file
     /// exists but is empty (controller enabled, no IO yet — D-Bus reports `0`
@@ -108,17 +115,28 @@ pub struct CgroupStats {
     pub io_read_operations: Option<u64>,
 }
 
-/// Sentinel both collectors use for "no data", matching the D-Bus `[not set]`
-/// encoding (`u64::MAX`, rendered as `18446744073709551615` in JSON).
-pub const UNSET: u64 = u64::MAX;
+/// Host-wide memory numbers, read once per collection cycle and shared by
+/// every service's `memory_available` fold: `(MemTotal, host used bytes)`.
+/// See `read_host_memory` for the semantics.
+pub type HostMemory = (u64, u64);
 
 /// Read every cgroup accounting file for one service in a single parallel
 /// batch.
 ///
 /// `cgroup_path` is the unit's cgroup relative to the mount, e.g.
 /// `/system.slice/chrony.service` (the `ControlGroup` D-Bus property or
-/// `runtime.CGroup.Path` from `Unit.List`). `main_pid` folds the main process
-/// in the way systemd does, since it can sit outside the cgroup.
+/// `runtime.CGroup.Path` from `Unit.List`). `extra_pids` folds the main and
+/// control PIDs in the way systemd's `GetProcesses` does, since both can sit
+/// outside the cgroup (e.g. during `ExecStartPre`/`ExecReload`/`ExecStop`).
+/// `host_memory` is the cycle-shared `read_host_memory()` result; `None`
+/// (unreadable `/proc/meminfo`) leaves `memory_available` at `None`.
+///
+/// An empty `cgroup_path` (inactive unit with no cgroup) short-circuits to
+/// `CgroupStats::default()` without touching the filesystem: without this
+/// guard the walk would start at the mount root itself and count every PID
+/// on the box. Every field but `processes` (which is `0`) comes back `None`
+/// so the caller's IPC fallback takes over, like any other unreadable
+/// cgroup.
 ///
 /// The unit-level file reads run concurrently via `tokio::join!`, and callers
 /// join this future with their in-flight D-Bus/varlink calls, so filesystem
@@ -126,17 +144,25 @@ pub const UNSET: u64 = u64::MAX;
 pub async fn read_service_cgroup(
     fs_root: &str,
     cgroup_path: &str,
-    main_pid: Option<u32>,
+    extra_pids: &[u32],
+    host_memory: Option<HostMemory>,
 ) -> CgroupStats {
+    if cgroup_path.is_empty() || cgroup_path == "/" {
+        return CgroupStats::default();
+    }
     let dir = format!("{fs_root}/sys/fs/cgroup{cgroup_path}");
     let dir = dir.as_str();
 
-    let (cpu, memory_current, tasks, io_stat, processes) = tokio::join!(
+    // The unit's own `memory.current` is read once here and handed to the
+    // ancestor walk below, which would otherwise re-read the same file for
+    // its level-0 triple.
+    let (cpu, memory_current, tasks, io_stat, processes, levels) = tokio::join!(
         async { read_file(dir, "cpu.stat").await },
         async { read_file(dir, "memory.current").await },
         async { read_file(dir, "pids.current").await },
         async { read_file(dir, "io.stat").await },
-        async { count_processes(dir, main_pid).await },
+        async { count_processes(dir, extra_pids).await },
+        async { read_ancestor_levels(fs_root, cgroup_path).await },
     );
 
     let cpu_usage_nsec = cpu.as_deref().and_then(parse_cpu_stat);
@@ -151,10 +177,17 @@ pub async fn read_service_cgroup(
     };
 
     // `memory_available` needs the ancestor chain as well (`memory.max` /
-    // `memory.high` at every level up to the mount root). The walk is cheap
-    // (a few small files up a shallow tree) and runs only for the units in
-    // `[services]`.
-    let memory_available = read_memory_available(fs_root, cgroup_path).await;
+    // `memory.high` at every level up to the mount root). The walk ran in
+    // the batch above; the fold only applies when the unit's own level was
+    // actually readable — otherwise there is no cgroup v2 here (v1 host,
+    // stopped unit) and the caller's IPC fallback takes over, like every
+    // other field, instead of silently reporting host `MemAvailable`.
+    let memory_available = match (levels.first(), host_memory) {
+        (Some(first), Some(root)) if first.current.is_some() => {
+            fold_memory_available(&levels, root, memory_current)
+        }
+        _ => None,
+    };
 
     CgroupStats {
         cpu_usage_nsec,
@@ -208,8 +241,8 @@ fn parse_memory_limit(contents: &str) -> Option<u64> {
     trimmed.parse().ok()
 }
 
-/// Extract a `key value` field from cgroup keyed files (`cpu.stat` uses
-/// `usage_usec 123`, `io.stat` uses `rbytes=123` — hence the two prefixes).
+/// Extract a `key value` field from space-separated cgroup keyed files
+/// (`cpu.stat` uses `usage_usec 123`).
 fn keyed_u64(contents: &str, key: &str) -> Option<u64> {
     let prefix = format!("{key} ");
     contents
@@ -263,25 +296,44 @@ struct MemoryLevel {
 ///
 /// `levels` runs from the unit's own cgroup up to (excluding) the filesystem
 /// root; `root` is the always-constrained top (`MemTotal`, host used bytes).
-/// Levels with no limit are skipped; a level whose current is unreadable
-/// reuses the deeper level's current. Returns `None` only when nothing was
-/// readable at all — in practice the root level always binds, so this is
-/// `Some` whenever `/proc/meminfo` parses.
-fn fold_memory_available(levels: &[MemoryLevel], root: (u64, u64)) -> Option<u64> {
+/// `unit_current` is the unit's own freshly-read `memory.current`, which
+/// takes precedence over whatever the walk stored for level 0 (same file,
+/// one read instead of two). Levels with no limit are skipped; a level
+/// whose current is unreadable reuses the deeper level's current, exactly
+/// like systemd's "previous current propagates as lower bound" — including
+/// level 0 with an unreadable current, which contributes `limit − 0`.
+/// Returns `None` only when nothing was readable at all — in practice the
+/// root level always binds, so this is `Some` whenever `/proc/meminfo`
+/// parses.
+fn fold_memory_available(
+    levels: &[MemoryLevel],
+    root: (u64, u64),
+    unit_current: Option<u64>,
+) -> Option<u64> {
     let mut available = u64::MAX;
+    // systemd initialises `current = 0`, so a limit with no readable current
+    // anywhere constrains by the full limit rather than being skipped.
     let mut current_fallback: Option<u64> = None;
-    for level in levels {
-        if let Some(current) = level.current {
+    for (index, level) in levels.iter().enumerate() {
+        // Level 0 prefers the join!-batch read over the walk's own copy.
+        let current = if index == 0 {
+            unit_current.or(level.current)
+        } else {
+            level.current
+        };
+        if let Some(current) = current {
             current_fallback = Some(current);
         }
         let Some(limit) = level.limit else {
             continue;
         };
-        // current_fallback is Some here whenever any level so far (including
-        // this one) had a readable current; without one there is nothing to
-        // subtract from, so the level contributes no constraint.
         if let Some(current) = current_fallback {
             available = available.min(limit.saturating_sub(current));
+            if available == 0 {
+                break;
+            }
+        } else {
+            available = available.min(limit);
             if available == 0 {
                 break;
             }
@@ -294,6 +346,9 @@ fn fold_memory_available(levels: &[MemoryLevel], root: (u64, u64)) -> Option<u64
 
 /// Read the host root-slice level: `(MemTotal, host used bytes)`.
 ///
+/// Async (`tokio::fs`) so it never blocks the runtime; read once per
+/// collection cycle and shared by every service (see `HostMemory`).
+///
 /// Mirrors systemd's root-slice handling exactly: the limit is
 /// `physical_memory()` (== `MemTotal`; verified `sysinfo.totalram` matches
 /// it byte-exact on this kernel) and the current is `procfs_memory_get_used()`
@@ -305,14 +360,21 @@ fn fold_memory_available(levels: &[MemoryLevel], root: (u64, u64)) -> Option<u64
 /// Both numbers come from the host `/proc/meminfo` even for container reads:
 /// a container's PID 1 computes the same two numbers from the same host
 /// `/proc`.
-fn read_host_memory() -> Option<(u64, u64)> {
-    let contents = std::fs::read_to_string("/proc/meminfo").ok()?;
+/// Read `/proc/meminfo` once per collection cycle; see `HostMemory`.
+pub async fn read_host_memory() -> Option<HostMemory> {
+    let contents = tokio::fs::read_to_string("/proc/meminfo").await.ok()?;
     let mut total = None;
     let mut available = None;
     for line in contents.lines() {
-        let (key, rest) = line.split_once(':')?;
+        // Skip — don't bail on — lines systemd wouldn't recognise either:
+        // `procfs_memory_get()` does `else continue` here.
+        let Some((key, rest)) = line.split_once(':') else {
+            continue;
+        };
         // Values are in kB: `MemTotal:       11984296 kB`.
-        let value: u64 = rest.split_whitespace().next()?.parse().ok()?;
+        let Ok(value) = rest.split_whitespace().next().unwrap_or("").parse::<u64>() else {
+            continue;
+        };
         match key {
             "MemTotal" => total = value.checked_mul(1024),
             "MemAvailable" => available = value.checked_mul(1024),
@@ -331,17 +393,6 @@ fn read_host_memory() -> Option<(u64, u64)> {
     }
 }
 
-/// Compute `memory_available` for one service: read the unit's `memory.max` /
-/// `memory.high` / `memory.current`, walk the ancestor slices up to (but not
-/// past) the `fs_root`-prefixed mount root collecting the same triple, and
-/// fold with the host root level.
-///
-/// The walk stops at the prefixed root rather than continuing into host
-/// parents: a container's systemd only sees its own slice chain. Ancestor
-/// directories are derived by popping path components, so a `..` in a hostile
-/// `cgroup_path` cannot escape the mount — it just yields nonexistent
-/// directories whose files read as absent.
-///
 /// One level's `memory.max` / `memory.high` / `memory.current` triple.
 ///
 /// The level limit is `min(max, high)` where "max" or an absent file counts
@@ -369,15 +420,23 @@ async fn read_memory_level(dir: &str) -> MemoryLevel {
     }
 }
 
-async fn read_memory_available(fs_root: &str, cgroup_path: &str) -> Option<u64> {
+/// Read the unit's ancestor-slice `memory.max` / `memory.high` /
+/// `memory.current` triples for the `memory_available` fold, up to (but not
+/// past) the `fs_root`-prefixed mount root (`/system.slice/foo` ->
+/// `/system.slice`).
+///
+/// The walk stops at the prefixed root rather than continuing into host
+/// parents: a container's systemd only sees its own slice chain. systemd
+/// never consults the mount root's own files either — `-​-.slice` is
+/// special-cased to physical memory — so the cycle-shared host root level
+/// substitutes for it, which also avoids expected-miss log noise for files
+/// that never exist there. Ancestor directories are derived by popping path
+/// components, so a `..` in a hostile `cgroup_path` cannot escape the
+/// mount — it just yields nonexistent directories whose files read as
+/// absent. Levels are read sequentially (shallow tree, tiny files); the
+/// whole walk joins the unit-level batch in `read_service_cgroup`.
+async fn read_ancestor_levels(fs_root: &str, cgroup_path: &str) -> Vec<MemoryLevel> {
     let mount = format!("{fs_root}/sys/fs/cgroup");
-    // The unit's directory plus each ancestor slice up to (excluding) the
-    // mount root (`/system.slice/foo` -> `/system.slice`). The walk stops
-    // there rather than continuing into host parents: a container's systemd
-    // only sees its own slice chain. systemd never consults the mount root's
-    // own files either — `-​-.slice` is special-cased to physical memory —
-    // so the host root level folded in below substitutes for it, which also
-    // avoids expected-miss log noise for files that never exist there.
     let mut levels = Vec::new();
     let mut relative: &Path = Path::new(cgroup_path);
     loop {
@@ -392,18 +451,17 @@ async fn read_memory_available(fs_root: &str, cgroup_path: &str) -> Option<u64> 
             _ => break,
         }
     }
-    let root = read_host_memory()?;
-    fold_memory_available(&levels, root)
+    levels
 }
 
 /// Count processes in a unit's cgroup, including nested ones.
 ///
 /// systemd's `GetProcesses` walks the whole subtree — a service that delegates
 /// its cgroup and puts workers in children would be undercounted by reading
-/// only its own `cgroup.procs`. The main PID is folded in the same way systemd
-/// does, since it can sit outside the cgroup. `dir` is the already-prefixed
-/// absolute cgroup directory.
-async fn count_processes(dir: &str, main_pid: Option<u32>) -> u32 {
+/// only its own `cgroup.procs`. `extra_pids` (main + control PID) are folded
+/// in the same way systemd does, since both can sit outside the cgroup.
+/// `dir` is the already-prefixed absolute cgroup directory.
+async fn count_processes(dir: &str, extra_pids: &[u32]) -> u32 {
     let mut pids: HashSet<u32> = HashSet::new();
     let mut directories = vec![dir.to_string()];
     while let Some(directory) = directories.pop() {
@@ -423,9 +481,7 @@ async fn count_processes(dir: &str, main_pid: Option<u32>) -> u32 {
         }
     }
 
-    if let Some(main_pid) = main_pid {
-        pids.insert(main_pid);
-    }
+    pids.extend(extra_pids.iter().copied());
 
     pids.len() as u32
 }
@@ -492,7 +548,7 @@ mod tests {
         // (MemTotal, used = MemTotal − MemAvailable.)
         let root = (12_271_919_104, 8_474_013_504);
         assert_eq!(
-            fold_memory_available(&levels, root),
+            fold_memory_available(&levels, root, Some(1_368_064)),
             Some(536_870_912 - 1_368_064)
         );
     }
@@ -513,7 +569,10 @@ mod tests {
             },
         ];
         let root = (12_271_919_104, 3_761_983_488);
-        assert_eq!(fold_memory_available(&levels, root), Some(8_509_935_616));
+        assert_eq!(
+            fold_memory_available(&levels, root, Some(4_227_072)),
+            Some(8_509_935_616)
+        );
     }
 
     #[test]
@@ -530,7 +589,10 @@ mod tests {
             },
         ];
         let root = (12_271_919_104, 3_761_983_488);
-        assert_eq!(fold_memory_available(&levels, root), Some(10_000_000));
+        assert_eq!(
+            fold_memory_available(&levels, root, Some(1_000_000)),
+            Some(10_000_000)
+        );
     }
 
     #[test]
@@ -541,7 +603,7 @@ mod tests {
             current: Some(2_000),
         }];
         let root = (12_271_919_104, 3_761_983_488);
-        assert_eq!(fold_memory_available(&levels, root), Some(0));
+        assert_eq!(fold_memory_available(&levels, root, Some(2_000)), Some(0));
     }
 
     /// Build a fake cgroup tree under a temp dir shaped like
@@ -581,10 +643,50 @@ mod tests {
         (tmp, root)
     }
 
+    #[test]
+    fn test_fold_memory_available_prefers_fresh_unit_current() {
+        // The join!-batch read (fresher) wins over the walk's level-0 copy.
+        let levels = vec![MemoryLevel {
+            limit: Some(536_870_912),
+            current: Some(1_000_000),
+        }];
+        let root = (12_271_919_104, 3_761_983_488);
+        assert_eq!(
+            fold_memory_available(&levels, root, Some(1_368_064)),
+            Some(536_870_912 - 1_368_064)
+        );
+        // …while a missing batch read falls back to the walk's copy.
+        assert_eq!(
+            fold_memory_available(&levels, root, None),
+            Some(536_870_912 - 1_000_000)
+        );
+    }
+
+    #[test]
+    fn test_fold_memory_available_unreadable_current_constrains_in_full() {
+        // systemd initialises `current = 0`: a limit with no readable
+        // current anywhere constrains by the full limit (LESS_BY(limit, 0)),
+        // rather than the level being skipped.
+        let levels = vec![MemoryLevel {
+            limit: Some(100_000_000),
+            current: None,
+        }];
+        // The host root (netting to 8_509_935_616) binds above the unit
+        // limit, so the unit's full limit wins.
+        let root = (12_271_919_104, 3_761_983_488);
+        assert_eq!(
+            fold_memory_available(&levels, root, None),
+            Some(100_000_000)
+        );
+    }
+
     #[tokio::test]
     async fn test_read_service_cgroup_from_fake_tree() {
         let (_tmp, root) = fake_tree().await;
-        let stats = read_service_cgroup(&root, "/system.slice/fake.service", Some(103)).await;
+        // `Some` host memory so the root level binds above the unit limit.
+        let host = read_host_memory().await;
+        assert!(host.is_some());
+        let stats = read_service_cgroup(&root, "/system.slice/fake.service", &[103], host).await;
         assert_eq!(stats.cpu_usage_nsec, Some(8_864_000));
         assert_eq!(stats.memory_current, Some(1_368_064));
         assert_eq!(stats.tasks_current, Some(2));
@@ -602,23 +704,35 @@ mod tests {
         let tmp = tempfile::tempdir().expect("temp dir");
         let root = tmp.path().to_str().unwrap().to_string();
         std::fs::create_dir_all(format!("{root}/sys/fs/cgroup")).unwrap();
-        let stats = read_service_cgroup(&root, "/system.slice/gone.service", None).await;
-        // No cgroup at all: every gauge is "no data", zero processes.
-        assert_eq!(
-            stats,
-            CgroupStats {
-                cpu_usage_nsec: None,
-                memory_current: None,
-                // …except memory_available, whose root level always binds via
-                // the host /proc/meminfo.
-                memory_available: stats.memory_available,
-                tasks_current: None,
-                processes: 0,
-                io_read_bytes: None,
-                io_read_operations: None,
-            }
-        );
-        assert!(stats.memory_available.is_some());
+        // No cgroup at all, and no host memory either: every gauge is "no
+        // data" — including memory_available, whose host-MemAvailable root
+        // level must not bind without a readable unit level (cgroup v1 host,
+        // stopped unit: the caller's IPC fallback takes over instead).
+        let stats = read_service_cgroup(&root, "/system.slice/gone.service", &[], None).await;
+        assert_eq!(stats, CgroupStats::default());
+    }
+
+    #[tokio::test]
+    async fn test_read_service_cgroup_empty_path_reads_nothing() {
+        let (_tmp, root) = fake_tree().await;
+        // An inactive unit has no cgroup: default (all-None, 0 processes)
+        // without touching the filesystem — in particular the walk must not
+        // start at the mount root and count every PID on the box.
+        let stats = read_service_cgroup(&root, "", &[], Some((1, 0))).await;
+        assert_eq!(stats, CgroupStats::default());
+        let stats = read_service_cgroup(&root, "/", &[], Some((1, 0))).await;
+        assert_eq!(stats, CgroupStats::default());
+    }
+
+    #[tokio::test]
+    async fn test_read_service_cgroup_folds_in_control_pid() {
+        let (_tmp, root) = fake_tree().await;
+        // cgroup.procs across the subtree (100, 101, 102) + main PID 103 +
+        // control PID 104, both sitting outside the cgroup — the way
+        // GetProcesses counts them during ExecReload/ExecStop.
+        let stats =
+            read_service_cgroup(&root, "/system.slice/fake.service", &[103, 104], None).await;
+        assert_eq!(stats.processes, 5);
     }
 
     #[tokio::test]
@@ -628,7 +742,7 @@ mod tests {
             "{root}/sys/fs/cgroup/system.slice/fake.service/io.stat"
         ))
         .unwrap();
-        let stats = read_service_cgroup(&root, "/system.slice/fake.service", None).await;
+        let stats = read_service_cgroup(&root, "/system.slice/fake.service", &[], None).await;
         // Absent file (controller not enabled) is "no data", distinct from
         // the present-but-empty zero.
         assert_eq!(stats.io_read_bytes, None);

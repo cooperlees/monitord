@@ -807,7 +807,7 @@ systemd Dbus APIs are in use in the following modules:
   - `UnitProxy::state_change_timestamp_monotonic()`
 - units
   - `ManagerProxy::list_units()` - Main counting of unit stats
-  - `ServiceProxy::control_group()` + `ServiceProxy::main_pid()` - Locate the unit's cgroup for the cgroupfs read below
+  - `ServiceProxy::control_group()` + `ServiceProxy::main_pid()` + `ServiceProxy::control_pid()` - Locate the unit's cgroup and fold PIDs living outside it into the process count, the way `GetProcesses` does
   - `ServiceProxy::nrestarts()`
   - `ServiceProxy::restart_usec()`
   - `ServiceProxy::status_errno()`

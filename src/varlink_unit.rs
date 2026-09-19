@@ -230,36 +230,6 @@ pub fn map_timer_stats(output: &ListOutput, triggered: Option<&ListOutput>) -> T
     }
 }
 
-/// Count the processes in a unit's cgroup, including nested ones.
-///
-/// The D-Bus path counts what `GetProcesses` returns, and systemd walks the
-/// whole subtree there — a service that delegates its cgroup and puts workers
-/// in children would be undercounted by reading only its own `cgroup.procs`.
-/// The main PID is folded in the same way systemd does, since it can sit
-/// outside the cgroup. `fs_root` prefixes the cgroup mount for containers.
-/// Count the processes in a unit's cgroup, including nested ones.
-///
-/// Thin wrapper over `crate::cgroup::read_service_cgroup` for callers that
-/// already hold a `Unit.List` reply: the cgroup path and main PID come from
-/// the reply, and only the process count is returned. Units with no cgroup
-/// path in the reply count 0.
-pub async fn count_cgroup_processes(fs_root: &str, output: &ListOutput) -> u32 {
-    let runtime = output.runtime.as_ref();
-    let Some(cgroup_path) = runtime
-        .and_then(|runtime| runtime.cgroup.as_ref())
-        .and_then(|cgroup| cgroup.path.as_deref())
-    else {
-        return 0;
-    };
-    let main_pid = runtime
-        .and_then(|runtime| runtime.service.as_ref())
-        .and_then(|service| service.main_pid.as_ref())
-        .and_then(|process| process.pid);
-    crate::cgroup::read_service_cgroup(fs_root, cgroup_path, main_pid)
-        .await
-        .processes
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,6 +310,7 @@ mod tests {
                     }),
                     service: Some(ServiceRuntime {
                         main_pid: None,
+                        control_pid: None,
                         status_errno: Some(0),
                         n_restarts: Some(0),
                     }),
