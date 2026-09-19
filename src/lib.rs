@@ -281,18 +281,39 @@ fn spawn_timed<F>(
     );
 }
 
-/// Reuse an existing D-Bus connection or create a new system bus connection.
-async fn get_or_create_dbus_connection(
-    config: &config::Config,
-    maybe_connection: Option<zbus::Connection>,
+/// Lazily-created system bus connection shared by every collector that
+/// needs D-Bus.
+///
+/// The cell starts empty (or seeded from `maybe_connection` for library
+/// callers) and is only connected on first use, so a run whose enabled
+/// collectors all succeed over varlink/fs/procfs never touches the bus at
+/// all — the prerequisite for the zero-D-Bus claim in #37. Concurrent
+/// first-users race `get_or_try_init`, but `zbus::Connection` is cheap to
+/// clone, so losers drop their spare and everyone shares one connection.
+/// A failed connect is not cached: the next caller retries rather than
+/// inheriting the error.
+type DbusCell = Arc<tokio::sync::OnceCell<zbus::Connection>>;
+
+/// Resolve the shared D-Bus connection, connecting on first use.
+///
+/// Only called on D-Bus code paths (varlink/fs-first collectors reach here
+/// solely through their fallbacks), so a missing bus surfaces as that
+/// collector's ordinary error — logged per-collector, never fatal to the
+/// run. Daemon-mode reuse is preserved: the same connection serves every
+/// cycle until a failed cycle drops it (see below).
+async fn dbus_connection(
+    cell: &DbusCell,
+    dbus_timeout: u64,
 ) -> Result<zbus::Connection, MonitordError> {
-    match maybe_connection {
-        Some(conn) => Ok(conn),
-        None => Ok(zbus::connection::Builder::system()?
-            .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
+    cell.get_or_try_init(|| async {
+        zbus::connection::Builder::system()?
+            .method_timeout(std::time::Duration::from_secs(dbus_timeout))
             .build()
-            .await?),
-    }
+            .await
+    })
+    .await
+    .cloned()
+    .map_err(MonitordError::ZbusError)
 }
 
 /// Main statistic collection function running what's required by configuration in parallel
@@ -319,7 +340,14 @@ pub async fn stat_collector(
     let cached_machine_connections: Arc<tokio::sync::Mutex<machines::MachineConnections>> =
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", &config.monitord.dbus_address);
-    let sdc = get_or_create_dbus_connection(&config, maybe_connection).await?;
+    // Seeded when the library caller passes a connection, otherwise
+    // connected lazily by the first collector that needs the bus.
+    let dbus_cell: DbusCell = Arc::new(tokio::sync::OnceCell::new());
+    if let Some(conn) = maybe_connection {
+        // Seeding cannot fail: a fresh cell is always empty.
+        let _ = dbus_cell.set(conn);
+    }
+    let dbus_timeout = config.monitord.dbus_timeout;
     let mut join_set: tokio::task::JoinSet<TimedCollectorOutput> = tokio::task::JoinSet::new();
     let mut had_error;
 
@@ -350,7 +378,7 @@ pub async fn stat_collector(
 
         // Always collect systemd version
         {
-            let sdc_clone = sdc.clone();
+            let dbus_cell = Arc::clone(&dbus_cell);
             let stats_clone = locked_machine_stats.clone();
             let describe = manager_describe.clone();
             spawn_timed(&mut join_set, "version", collect_start_time, async move {
@@ -368,7 +396,8 @@ pub async fn stat_collector(
                     }
                 }
                 stats_clone.write().await.varlink_usage.version = Some(CollectorTransport::Dbus);
-                crate::system::update_version(sdc_clone, stats_clone.clone()).await
+                let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
+                crate::system::update_version(conn, stats_clone.clone()).await
             });
         }
 
@@ -385,7 +414,7 @@ pub async fn stat_collector(
         // Run networkd collector if enabled
         if config.networkd.enabled {
             let config_clone = Arc::clone(&config);
-            let sdc_clone = sdc.clone();
+            let dbus_cell = Arc::clone(&dbus_cell);
             let stats_clone = locked_machine_stats.clone();
             spawn_timed(&mut join_set, "networkd", collect_start_time, async move {
                 if config_clone.use_varlink(&[config_clone.networkd.varlink]) {
@@ -407,10 +436,11 @@ pub async fn stat_collector(
                     }
                 }
                 stats_clone.write().await.varlink_usage.networkd = Some(CollectorTransport::Dbus);
+                let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
                 crate::networkd::update_networkd_stats(
                     config_clone.networkd.link_state_dir.clone(),
                     None,
-                    sdc_clone,
+                    conn,
                     stats_clone,
                 )
                 .await
@@ -419,7 +449,7 @@ pub async fn stat_collector(
 
         // Run system running (SystemState) state collector
         if config.system_state.enabled {
-            let sdc_clone = sdc.clone();
+            let dbus_cell = Arc::clone(&dbus_cell);
             let stats_clone = locked_machine_stats.clone();
             let describe = manager_describe.clone();
             spawn_timed(
@@ -449,7 +479,8 @@ pub async fn stat_collector(
                     }
                     stats_clone.write().await.varlink_usage.system_state =
                         Some(CollectorTransport::Dbus);
-                    crate::system::update_system_stats(sdc_clone, stats_clone.clone()).await
+                    let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
+                    crate::system::update_system_stats(conn, stats_clone.clone()).await
                 },
             );
         }
@@ -457,7 +488,7 @@ pub async fn stat_collector(
         // Run service collectors if there are services listed in config
         if config.units.enabled {
             let config_clone = Arc::clone(&config);
-            let sdc_clone = sdc.clone();
+            let dbus_cell = Arc::clone(&dbus_cell);
             let stats_clone = locked_machine_stats.clone();
             spawn_timed(&mut join_set, "units", collect_start_time, async move {
                 if config_clone.use_varlink(&[config_clone.units.varlink]) {
@@ -491,9 +522,10 @@ pub async fn stat_collector(
                                 );
                                 stats_clone.write().await.varlink_usage.units =
                                     Some(CollectorTransport::Dbus);
+                                let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
                                 return crate::units::update_unit_stats(
                                     config_clone,
-                                    sdc_clone,
+                                    conn,
                                     stats_clone,
                                     String::new(),
                                 )
@@ -517,7 +549,8 @@ pub async fn stat_collector(
                     }
                 }
                 stats_clone.write().await.varlink_usage.units = Some(CollectorTransport::Dbus);
-                crate::units::update_unit_stats(config_clone, sdc_clone, stats_clone, String::new())
+                let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
+                crate::units::update_unit_stats(config_clone, conn, stats_clone, String::new())
                     .await
             });
         }
@@ -525,7 +558,7 @@ pub async fn stat_collector(
         if config.machines.enabled {
             let stats_clone = locked_machine_stats.clone();
             let config_clone = Arc::clone(&config);
-            let sdc_clone = sdc.clone();
+            let dbus_cell = Arc::clone(&dbus_cell);
             let monitord_stats_clone = locked_monitord_stats.clone();
             let connections_clone = cached_machine_connections.clone();
             spawn_timed(&mut join_set, "machines", collect_start_time, async move {
@@ -533,9 +566,10 @@ pub async fn stat_collector(
                 // List API yet (see #37). Per-container collection
                 // records its own transports on the machine stats.
                 stats_clone.write().await.varlink_usage.machines = Some(CollectorTransport::Dbus);
+                let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
                 crate::machines::update_machines_stats(
                     config_clone,
-                    sdc_clone,
+                    conn,
                     monitord_stats_clone,
                     connections_clone,
                 )
@@ -544,44 +578,50 @@ pub async fn stat_collector(
         }
 
         if config.dbus_stats.enabled {
+            let dbus_cell = Arc::clone(&dbus_cell);
+            let config_clone = Arc::clone(&config);
+            let stats_clone = locked_machine_stats.clone();
             spawn_timed(
                 &mut join_set,
                 "dbus_stats",
                 collect_start_time,
-                crate::dbus_stats::update_dbus_stats(
-                    Arc::clone(&config),
-                    sdc.clone(),
-                    locked_machine_stats.clone(),
-                ),
+                async move {
+                    let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
+                    crate::dbus_stats::update_dbus_stats(config_clone, conn, stats_clone).await
+                },
             );
         }
 
         if config.boot_blame.enabled {
+            let dbus_cell = Arc::clone(&dbus_cell);
+            let config_clone = Arc::clone(&config);
+            let stats_clone = locked_machine_stats.clone();
             spawn_timed(
                 &mut join_set,
                 "boot_blame",
                 collect_start_time,
-                crate::boot::update_boot_blame_stats(
-                    Arc::clone(&config),
-                    sdc.clone(),
-                    locked_machine_stats.clone(),
-                ),
+                async move {
+                    let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
+                    crate::boot::update_boot_blame_stats(config_clone, conn, stats_clone).await
+                },
             );
         }
 
         if config.verify.enabled {
-            spawn_timed(
-                &mut join_set,
-                "verify",
-                collect_start_time,
+            let dbus_cell = Arc::clone(&dbus_cell);
+            let config_clone = Arc::clone(&config);
+            let stats_clone = locked_machine_stats.clone();
+            spawn_timed(&mut join_set, "verify", collect_start_time, async move {
+                let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
                 crate::verify::update_verify_stats(
-                    sdc.clone(),
-                    locked_machine_stats.clone(),
-                    config.verify.allowlist.clone(),
-                    config.verify.blocklist.clone(),
-                    config.use_varlink(&[config.verify.varlink]),
-                ),
-            );
+                    conn,
+                    stats_clone,
+                    config_clone.verify.allowlist.clone(),
+                    config_clone.verify.blocklist.clone(),
+                    config_clone.use_varlink(&[config_clone.verify.varlink]),
+                )
+                .await
+            });
         }
 
         if join_set.len() == 1 {
@@ -678,7 +718,15 @@ pub async fn stat_collector(
         ))
         .await;
     }
-    Ok(if had_error { None } else { Some(sdc) })
+    // A failed cycle drops the shared connection so the next cycle (or the
+    // next library caller) reconnects instead of reusing a broken bus;
+    // a clean cycle hands it back for reuse.
+    let conn = if had_error {
+        None
+    } else {
+        dbus_cell.get().cloned()
+    };
+    Ok(conn)
 }
 
 #[cfg(test)]
