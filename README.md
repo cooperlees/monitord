@@ -758,7 +758,7 @@ You can now log into the container to build + run tests and run the binary now a
 
 **"Connection refused" or D-Bus connection errors**
 
-The system bus connection is created lazily: monitord starts fine without a bus as long as no enabled collector needs D-Bus (varlink/fs/procfs paths never connect). A collector that does need it — including any varlink fallback — reports its own per-collector error and the run continues with the remaining collectors. If a D-Bus collector is failing, ensure the system D-Bus daemon is running and the socket exists at `/run/dbus/system_bus_socket`. If using a custom address, set `dbus_address` in `[monitord]` config. Increase `dbus_timeout` if running on slow systems.
+The system bus connection is created lazily: monitord starts fine without a bus as long as no enabled collector needs D-Bus. Collectors served entirely over varlink, cgroupfs, state files or procfs never connect. One exception: the networkd collector reads interface state *files* but still needs the bus for the ifindex→name map (`Manager.ListLinks`) when no name map is supplied, so an enabled networkd collector without varlink requires D-Bus even though it parses files. A collector that does need the bus — including any varlink fallback — reports its own per-collector error and the run continues with the remaining collectors. If a D-Bus collector is failing, ensure the system D-Bus daemon is running and the socket exists at `/run/dbus/system_bus_socket`. If using a custom address, set `dbus_address` in `[monitord]` config. Increase `dbus_timeout` if running on slow systems.
 
 **Empty or missing networkd metrics**
 

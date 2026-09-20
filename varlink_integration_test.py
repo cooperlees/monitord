@@ -433,6 +433,42 @@ def assert_cgroup_fixture_values(outputs: dict[str, Stats]) -> None:
         print(f"PASS: {path_name}: {shown}")
 
 
+def assert_dead_bus_run(container: str) -> None:
+    step("Asserting a varlink-only run survives a dead bus (lazy D-Bus)")
+    # The headline claim of lazy D-Bus: with the bus pointed at a socket
+    # that does not exist, every enabled collector must still succeed —
+    # varlink/fs/procfs paths never connect — and the run must exit 0.
+    # Only collectors with a varlink or non-D-Bus path are enabled here:
+    # networkd goes file-based but needs ListLinks for the ifindex map,
+    # machines/dbus_stats are D-Bus-only by design, and verify's
+    # `systemd-analyze` subprocess talks to the bus itself.
+    dead_conf = (
+        docker_exec(container, "cat", VARLINK_CONF)
+        .replace(
+            "dbus_address = unix:path=/run/dbus/system_bus_socket",
+            "dbus_address = unix:path=/nonexistent/monitord-test-bus",
+        )
+        .replace("[networkd]\nenabled = true", "[networkd]\nenabled = false")
+        .replace("[verify]\nenabled = true", "[verify]\nenabled = false")
+        .replace("[machines]\nenabled = true", "[machines]\nenabled = false")
+    )
+    dead_path = "/tmp/monitord-dead-bus-ci.conf"
+    write_container_file(container, dead_path, dead_conf)
+    stats, _log = run_monitord(container, dead_path)
+    failures = [
+        key.removesuffix(".success")
+        for key, value in stats.items()
+        if key.startswith("monitord.collector_timings.")
+        and key.endswith(".success")
+        and value != 1
+    ]
+    if failures:
+        raise SystemExit(
+            f"FAIL: dead-bus run had failing collectors: {sorted(failures)}"
+        )
+    print("PASS: dead-bus run exited 0 with every enabled collector at success=1")
+
+
 def run_monitord(container: str, config_path: str) -> tuple[Stats, str]:
     """Run monitord in the container, returning its parsed stats and its log.
 
@@ -695,6 +731,7 @@ def main() -> None:
     assert_time_in_state({"varlink": varlink_stats, "dbus": dbus_stats})
     assert_cgroup_fixture_values({"varlink": varlink_stats, "dbus": dbus_stats})
     compare_outputs(dbus_stats, varlink_stats)
+    assert_dead_bus_run(args.container)
     print(f"\nContainer {args.container} left running; --fresh recreates it.")
 
 

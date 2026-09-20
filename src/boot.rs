@@ -267,10 +267,15 @@ async fn collect_boot_blame_dbus(
     Ok(unit_times.into_iter().collect())
 }
 
-/// Update boot blame statistics with the N slowest units at boot
+/// Update boot blame statistics with the N slowest units at boot.
+///
+/// Takes the shared D-Bus cell rather than a connection: cache hits and the
+/// varlink path return without ever connecting, so a bus-less host only
+/// pays for D-Bus when it actually collects over D-Bus.
 pub async fn update_boot_blame_stats(
     config: Arc<Config>,
-    connection: zbus::Connection,
+    dbus: crate::DbusCell,
+    dbus_timeout: u64,
     machine_stats: Arc<RwLock<MachineStats>>,
 ) -> Result<()> {
     debug!("Starting boot blame stats collection");
@@ -315,7 +320,8 @@ pub async fn update_boot_blame_stats(
                                 maybe_boot_id = Some(boot_id);
                                 return collect_and_cache(
                                     &config,
-                                    &connection,
+                                    &dbus,
+                                    dbus_timeout,
                                     machine_stats,
                                     maybe_boot_id,
                                 )
@@ -342,7 +348,7 @@ pub async fn update_boot_blame_stats(
         }
     }
 
-    collect_and_cache(&config, &connection, machine_stats, maybe_boot_id).await
+    collect_and_cache(&config, &dbus, dbus_timeout, machine_stats, maybe_boot_id).await
 }
 
 /// Collect boot blame over whichever transport applies, record it, and write
@@ -350,7 +356,8 @@ pub async fn update_boot_blame_stats(
 /// replay an honest gauge instead of going absent).
 async fn collect_and_cache(
     config: &Arc<Config>,
-    connection: &zbus::Connection,
+    dbus: &crate::DbusCell,
+    dbus_timeout: u64,
     machine_stats: Arc<RwLock<MachineStats>>,
     maybe_boot_id: Option<String>,
 ) -> Result<()> {
@@ -368,15 +375,21 @@ async fn collect_and_cache(
                     "Varlink boot blame failed, falling back to D-Bus: {:?}",
                     err
                 );
+                let connection = crate::dbus_connection(dbus, dbus_timeout)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("D-Bus connection error: {:?}", e))?;
                 (
-                    collect_boot_blame_dbus(config, connection).await?,
+                    collect_boot_blame_dbus(config, &connection).await?,
                     crate::CollectorTransport::Dbus,
                 )
             }
         }
     } else {
+        let connection = crate::dbus_connection(dbus, dbus_timeout)
+            .await
+            .map_err(|e| anyhow::anyhow!("D-Bus connection error: {:?}", e))?;
         (
-            collect_boot_blame_dbus(config, connection).await?,
+            collect_boot_blame_dbus(config, &connection).await?,
             crate::CollectorTransport::Dbus,
         )
     };
