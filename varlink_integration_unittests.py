@@ -37,6 +37,9 @@ enabled = false
 [verify.allowlist]
 # example.service
 
+[machines.allowlist]
+fedora38
+
 [varlink]
 enabled = false
 """
@@ -132,8 +135,11 @@ class BuildCiConfigsTest(unittest.TestCase):
         # A monitord.conf whose allowlist stops naming the units we rename would
         # silently produce a config tracking no units at all.
         with self.assertRaises(SystemExit) as caught:
-            vit.build_ci_configs("[units.state_stats.allowlist]\nfoo.service\n")
-        self.assertIn("state_stats.allowlist", str(caught.exception))
+            vit.build_ci_configs(
+                "[units.state_stats.allowlist]\nfoo.service\n\n"
+                "[machines.allowlist]\ntestbox\n"
+            )
+        self.assertIn("dbus-broker.service", str(caught.exception))
 
     def test_fixture_units_named_elsewhere_do_not_count(self) -> None:
         # The fixture units also appear in other sections, so confirming the
@@ -151,11 +157,20 @@ class BuildCiConfigsTest(unittest.TestCase):
         # the parity comparison comes down to diffing a run against itself.
         conf = (
             "[units.state_stats.allowlist]\nchrony.service\nsshd.service\n\n"
+            "[machines.allowlist]\nfedora38\n\n"
             "[varlink]\nenabled = true\n"
         )
         with self.assertRaises(SystemExit) as caught:
             vit.build_ci_configs(conf)
         self.assertIn("varlink", str(caught.exception))
+
+    def test_machines_allowlist_points_at_fixture(self) -> None:
+        # Stock monitord.conf names machines that do not exist here; the CI
+        # configs must track the nspawn fixture instead, or the machine
+        # fetch-counter assertions would cover an empty machine set.
+        allowlist = section_body(self.dbus_conf, "[machines.allowlist]")
+        self.assertIn(vit.MACHINE_FIXTURE_NAME, allowlist)
+        self.assertNotIn("fedora38", allowlist)
 
 
 class DiffOutputsTest(unittest.TestCase):
@@ -304,13 +319,23 @@ class VarlinkUsageTest(unittest.TestCase):
 
 
 class FindFallbacksTest(unittest.TestCase):
-    def test_fallback_line_detected(self) -> None:
+    def test_host_fallback_line_detected(self) -> None:
         log = (
             "I0918 monitord: starting\n"
-            "W0918 src/machines.rs:375] Varlink units stats failed for container demo, "
+            "W0918 src/lib.rs:512] Varlink units stats failed, "
             "falling back to D-Bus: Os { code: 2 }\n"
         )
         self.assertEqual(len(vit.find_fallbacks(log)), 1)
+
+    def test_container_fallback_lines_excluded(self) -> None:
+        # Container fallbacks are expected behind #211 and pinned by
+        # assert_machine_fetch_counters; only host fallbacks fail the run.
+        log = (
+            "I0918 monitord: starting\n"
+            "W0918 src/varlink_fallback.rs:66] Varlink container demo units failed, "
+            "falling back to D-Bus: Os { code: 2 }\n"
+        )
+        self.assertEqual(vit.find_fallbacks(log), [])
 
     def test_clean_log_has_no_fallbacks(self) -> None:
         self.assertEqual(vit.find_fallbacks("I0918 monitord: starting\n"), [])
