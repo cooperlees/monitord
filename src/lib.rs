@@ -462,6 +462,7 @@ pub async fn stat_collector(
                 crate::networkd::update_networkd_stats(
                     config_clone.networkd.link_state_dir.clone(),
                     None,
+                    std::path::PathBuf::from("/sys"),
                     conn,
                     stats_clone,
                 )

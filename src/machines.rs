@@ -218,9 +218,15 @@ pub async fn update_machines_stats(
                 }
                 stats_clone.write().await.varlink_usage.networkd =
                     Some(crate::CollectorTransport::Dbus);
+                // Container sysfs, not the host's: the ifindex map must
+                // reflect the container's interfaces. Its link state dir
+                // is still the host config value — unchanged behaviour.
+                let container_sysfs =
+                    std::path::PathBuf::from(format!("/proc/{leader_pid}/root/sys"));
                 crate::networkd::update_networkd_stats(
                     config_clone.networkd.link_state_dir.clone(),
                     None,
+                    container_sysfs,
                     sdc_clone,
                     stats_clone,
                 )

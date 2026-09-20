@@ -122,6 +122,8 @@ FIXTURE_UNITS: dict[str, dict[str, str]] = {
 
 # Keys excluded from the parity comparison:
 #   monitord.pid1.*             procfs values, change between sequential runs
+#   machines.*.pid1.*           same, inside containers (fd counts move as
+#                               connections come and go between the runs)
 #   stat_collection_run_time_ms end-to-end wall time, also varies
 #   collector_timings.*         per-collector wall times, vary between runs
 #   collection_timings.*        inner units phase timings vary between runs, and
@@ -141,6 +143,7 @@ FIXTURE_UNITS: dict[str, dict[str, str]] = {
 #                               process/task counts and the unset sentinels.
 EXCLUDED_KEY_PARTS: tuple[str, ...] = (
     "monitord.pid1.",
+    ".pid1.",
     "stat_collection_run_time_ms",
     "collector_timings.",
     "collection_timings.",
@@ -641,7 +644,7 @@ def assert_dead_bus_run(container: str) -> None:
     # that does not exist, every enabled collector must still succeed —
     # varlink/fs/procfs paths never connect — and the run must exit 0.
     # Only collectors with a varlink or non-D-Bus path are enabled here:
-    # networkd goes file-based but needs ListLinks for the ifindex map,
+    # networkd goes file-based with its ifindex map from sysfs (no bus),
     # machines/dbus_stats are D-Bus-only by design, and verify's
     # `systemd-analyze` subprocess talks to the bus itself.
     dead_conf = (
@@ -650,7 +653,6 @@ def assert_dead_bus_run(container: str) -> None:
             "dbus_address = unix:path=/run/dbus/system_bus_socket",
             "dbus_address = unix:path=/nonexistent/monitord-test-bus",
         )
-        .replace("[networkd]\nenabled = true", "[networkd]\nenabled = false")
         .replace("[verify]\nenabled = true", "[verify]\nenabled = false")
         .replace("[machines]\nenabled = true", "[machines]\nenabled = false")
         # no_fallback=true turns every fallback into a loud failure, so
