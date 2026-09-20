@@ -10,7 +10,7 @@ use std::num::TryFromIntError;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use tokio::sync::RwLock;
 use tracing::debug;
 use zbus::zvariant::ObjectPath;
@@ -277,6 +277,7 @@ pub async fn update_boot_blame_stats(
     dbus: crate::DbusCell,
     dbus_timeout: u64,
     machine_stats: Arc<RwLock<MachineStats>>,
+    no_fallback: bool,
 ) -> Result<()> {
     debug!("Starting boot blame stats collection");
 
@@ -322,6 +323,7 @@ pub async fn update_boot_blame_stats(
                                     &config,
                                     &dbus,
                                     dbus_timeout,
+                                    no_fallback,
                                     machine_stats,
                                     maybe_boot_id,
                                 )
@@ -348,7 +350,15 @@ pub async fn update_boot_blame_stats(
         }
     }
 
-    collect_and_cache(&config, &dbus, dbus_timeout, machine_stats, maybe_boot_id).await
+    collect_and_cache(
+        &config,
+        &dbus,
+        dbus_timeout,
+        no_fallback,
+        machine_stats,
+        maybe_boot_id,
+    )
+    .await
 }
 
 /// Collect boot blame over whichever transport applies, record it, and write
@@ -358,6 +368,7 @@ async fn collect_and_cache(
     config: &Arc<Config>,
     dbus: &crate::DbusCell,
     dbus_timeout: u64,
+    no_fallback: bool,
     machine_stats: Arc<RwLock<MachineStats>>,
     maybe_boot_id: Option<String>,
 ) -> Result<()> {
@@ -371,13 +382,17 @@ async fn collect_and_cache(
         {
             Ok(stats) => (stats, crate::CollectorTransport::Varlink),
             Err(err) => {
-                tracing::warn!(
-                    "Varlink boot blame failed, falling back to D-Bus: {:?}",
-                    err
-                );
+                // Plain `?`: NoFallbackError already renders the full
+                // explanation via Display; `{:?}` would dump the struct.
+                crate::varlink_fallback::report_varlink_failure(
+                    no_fallback,
+                    "boot blame",
+                    "D-Bus",
+                    err,
+                )?;
                 let connection = crate::dbus_connection(dbus, dbus_timeout)
                     .await
-                    .map_err(|e| anyhow::anyhow!("D-Bus connection error: {:?}", e))?;
+                    .map_err(|e| anyhow!("D-Bus connection error: {:?}", e))?;
                 (
                     collect_boot_blame_dbus(config, &connection).await?,
                     crate::CollectorTransport::Dbus,
@@ -387,7 +402,7 @@ async fn collect_and_cache(
     } else {
         let connection = crate::dbus_connection(dbus, dbus_timeout)
             .await
-            .map_err(|e| anyhow::anyhow!("D-Bus connection error: {:?}", e))?;
+            .map_err(|e| anyhow!("D-Bus connection error: {:?}", e))?;
         (
             collect_boot_blame_dbus(config, &connection).await?,
             crate::CollectorTransport::Dbus,

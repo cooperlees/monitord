@@ -287,6 +287,12 @@ pub struct VarlinkConfig {
     /// has its own `varlink` opt-out; a collector uses varlink only when
     /// both this and its section toggle are true.
     pub enabled: bool,
+    /// Forbid every varlink fallback: any varlink failure is a hard error
+    /// instead of falling back to D-Bus (or files for networkd). Off by
+    /// default; enable in CI to prove a collector set is varlink-clean
+    /// rather than silently D-Bus-served. See `crate::varlink_fallback`
+    /// for the shared enforcement point.
+    pub no_fallback: bool,
 }
 
 /// Config struct
@@ -515,6 +521,19 @@ impl TryFrom<Ini> for Config {
 
         // [varlink] section
         config.varlink.enabled = read_config_bool(&ini_config, "varlink", "enabled")?;
+        if let Some(no_fallback) = read_config_optional_bool(&ini_config, "varlink", "no_fallback")?
+        {
+            config.varlink.no_fallback = no_fallback;
+        }
+        // no_fallback only fires inside varlink code paths, so with the
+        // master switch off it is a silent no-op: warn rather than let a
+        // fully green all-D-Bus run pose as varlink-clean.
+        if config.varlink.no_fallback && !config.varlink.enabled {
+            warn!(
+                "[varlink] no_fallback=true has no effect while [varlink] enabled=false; \
+                 collectors will use D-Bus without a word"
+            );
+        }
 
         for entry in unknown_config_entries(&config_map) {
             warn!("Ignoring {entry}; check for a typo'd key or section");
@@ -582,7 +601,7 @@ const KNOWN_SECTION_KEYS: &[(&str, &[&str])] = &[
         ],
     ),
     ("verify", &["enabled", "varlink"]),
-    ("varlink", &["enabled"]),
+    ("varlink", &["enabled", "no_fallback"]),
 ];
 
 /// Sections whose entries are data (unit/machine names), not fixed keys.
@@ -786,6 +805,7 @@ varlink = false
 
 [varlink]
 enabled = true
+no_fallback = true
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -936,6 +956,40 @@ key = value
     }
 
     #[test]
+    fn test_no_fallback_parses_and_defaults_off() {
+        // Explicit true parses; absence keeps the derived Default (false),
+        // so stock configs without the key behave exactly as before.
+        let on = r###"
+[monitord]
+output_format = json
+
+[varlink]
+enabled = true
+no_fallback = true
+"###;
+        let mut f = NamedTempFile::new().expect("tempfile");
+        f.write_all(on.as_bytes()).expect("write");
+        let mut ini = Ini::new();
+        ini.load(f.path()).expect("load");
+        let parsed: Config = ini.try_into().expect("parse");
+        assert!(parsed.varlink.no_fallback);
+
+        let off = r###"
+[monitord]
+output_format = json
+
+[varlink]
+enabled = true
+"###;
+        let mut f = NamedTempFile::new().expect("tempfile");
+        f.write_all(off.as_bytes()).expect("write");
+        let mut ini = Ini::new();
+        ini.load(f.path()).expect("load");
+        let parsed: Config = ini.try_into().expect("parse");
+        assert!(!parsed.varlink.no_fallback);
+    }
+
+    #[test]
     fn test_per_section_varlink_toggle_defaults_and_override() {
         // Only [units] opts out; every other section keeps the default true,
         // so collectors can move to varlink one at a time.
@@ -1047,7 +1101,10 @@ varlink = false
                 allowlist: HashSet::new(),
                 blocklist: HashSet::new(),
             },
-            varlink: VarlinkConfig { enabled: true },
+            varlink: VarlinkConfig {
+                enabled: true,
+                no_fallback: true,
+            },
         };
 
         let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");

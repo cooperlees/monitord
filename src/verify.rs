@@ -221,6 +221,7 @@ pub async fn update_verify_stats(
     allowlist: HashSet<String>,
     blocklist: HashSet<String>,
     varlink_enabled: bool,
+    no_fallback: bool,
 ) -> anyhow::Result<()> {
     let verify_stats = if varlink_enabled {
         match crate::varlink_verify::list_unit_names(crate::varlink_verify::METRICS_SOCKET_PATH)
@@ -235,10 +236,12 @@ pub async fn update_verify_stats(
                     .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?
             }
             Err(err) => {
-                tracing::warn!(
-                    "Varlink verify enumeration failed, falling back to D-Bus: {:?}",
-                    err
-                );
+                crate::varlink_fallback::report_varlink_failure(
+                    no_fallback,
+                    "verify",
+                    "D-Bus",
+                    err,
+                )?;
                 locked_machine_stats.write().await.varlink_usage.verify =
                     Some(crate::CollectorTransport::Dbus);
                 let connection = crate::dbus_connection(&dbus, dbus_timeout).await?;
