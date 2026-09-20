@@ -681,7 +681,19 @@ def assert_dead_bus_run(container: str) -> None:
         raise SystemExit(
             f"FAIL: dead-bus run had failing collectors: {sorted(failures)}"
         )
-    print("PASS: dead-bus run exited 0 with every enabled collector at success=1")
+    # The file fallback is the path under test here (varlink would prove
+    # nothing about it), so the run must actually have collected
+    # interfaces — an empty-but-successful collection would pass above
+    # while proving nothing.
+    managed = stats.get("monitord.networkd.managed_interfaces", 0)
+    if not isinstance(managed, int) or managed < 1:
+        raise SystemExit(
+            f"FAIL: dead-bus run collected no networkd interfaces: {managed!r}"
+        )
+    print(
+        "PASS: dead-bus run exited 0 with every enabled collector at success=1 "
+        f"({managed} networkd interfaces via the file path)"
+    )
 
 
 def run_monitord(container: str, config_path: str) -> tuple[Stats, str]:

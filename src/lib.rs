@@ -22,6 +22,17 @@ pub enum MonitordError {
     ZbusError(#[from] zbus::Error),
 }
 
+impl MonitordError {
+    /// Unwrap the inner zbus error. Exhaustive today: connection setup is
+    /// the only thing that produces this error, so there is exactly one
+    /// variant to unwrap.
+    pub fn into_zbus(self) -> zbus::Error {
+        match self {
+            MonitordError::ZbusError(inner) => inner,
+        }
+    }
+}
+
 pub mod boot;
 pub mod cgroup;
 pub mod config;
@@ -458,12 +469,15 @@ pub async fn stat_collector(
                     }
                 }
                 stats_clone.write().await.varlink_usage.networkd = Some(CollectorTransport::Dbus);
-                let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
+                // No eager connect: the cell flows into the collector and
+                // is resolved only if sysfs yields no usable map — the
+                // same lazy pattern as boot_blame.
                 crate::networkd::update_networkd_stats(
                     config_clone.networkd.link_state_dir.clone(),
                     None,
                     std::path::PathBuf::from("/sys"),
-                    conn,
+                    dbus_cell,
+                    dbus_timeout,
                     stats_clone,
                 )
                 .await

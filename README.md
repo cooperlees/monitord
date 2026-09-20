@@ -758,7 +758,7 @@ You can now log into the container to build + run tests and run the binary now a
 
 **"Connection refused" or D-Bus connection errors**
 
-The system bus connection is created lazily: monitord starts fine without a bus as long as no enabled collector needs D-Bus. Collectors served entirely over varlink, cgroupfs, state files or procfs never connect. One exception: the networkd collector reads interface state *files* but still needs the bus for the ifindex→name map (`Manager.ListLinks`) when no name map is supplied, so an enabled networkd collector without varlink requires D-Bus even though it parses files. A collector that does need the bus — including any varlink fallback — reports its own per-collector error and the run continues with the remaining collectors. If a D-Bus collector is failing, ensure the system D-Bus daemon is running and the socket exists at `/run/dbus/system_bus_socket`. If using a custom address, set `dbus_address` in `[monitord]` config. Increase `dbus_timeout` if running on slow systems.
+The system bus connection is created lazily: monitord starts fine without a bus as long as no enabled collector needs D-Bus. Collectors served entirely over varlink, cgroupfs, state files, sysfs or procfs never connect — the networkd file fallback maps ifindexes to names via `/sys/class/net/*/ifindex` and only reaches for `Manager.ListLinks` when sysfs yields nothing usable. A collector that does need the bus — including any varlink fallback — reports its own per-collector error and the run continues with the remaining collectors. If a D-Bus collector is failing, ensure the system D-Bus daemon is running and the socket exists at `/run/dbus/system_bus_socket`. If using a custom address, set `dbus_address` in `[monitord]` config. Increase `dbus_timeout` if running on slow systems.
 
 **Empty or missing networkd metrics**
 
@@ -794,8 +794,9 @@ systemd Dbus APIs are in use in the following modules:
   - `ManagerProxy::list_machines()`
   - Can do most other calls then on the machine's systemd/dbus
 - networkd
-  - `ManagerProxy::list_links()`
-  - Interface state files at `/run/systemd/netif/links` are used by default; the varlink
+  - `ManagerProxy::list_links()` — last resort only, when sysfs yields no usable ifindex map
+  - Interface state files at `/run/systemd/netif/links` are used by default, with the
+    ifindex→name map read from `/sys/class/net/*/ifindex` (no D-Bus); the varlink
     `io.systemd.Network.Describe` API can be enabled instead (see below)
 - system
   - `ManagerProxy::get_version()`
