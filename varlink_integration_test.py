@@ -35,6 +35,28 @@ VARLINK_CONF = "/tmp/monitord-varlink-ci.conf"
 
 Stats = dict[str, Any]
 
+# nspawn fixture machine booted inside the test container so the machines
+# module has a real container to collect from. The name must match the
+# [machines.allowlist] entry install_machine_fixture writes (stock
+# monitord.conf names units that do not exist here, so the config is
+# rewritten the same way [services] already is for the cgroup fixture).
+MACHINE_FIXTURE_NAME = "testbox"
+# The fixture machine boots a pinned Fedora release, not Rawhide: Rawhide has
+# no stable repo snapshot to install from (only the rolling `rawhide` repo),
+# so a Rawhide installroot silently tracks whatever Rawhide is that day and
+# ages out immediately. A pinned release installs from versioned repos and
+# only needs a bump when it goes EOL — pick the newest stable at the time.
+MACHINE_FIXTURE_RELEASEVER = "44"
+# gpgcheck=0 because the Rawhide image carries Rawhide's key, not the
+# release key — acceptable inside this throwaway privileged test
+# container, do not copy this stanza anywhere it matters.
+MACHINE_FIXTURE_REPO = """[fedora44]
+name=Fedora 44 - x86_64
+metalink=https://mirrors.fedoraproject.org/metalink?repo=fedora-44&arch=x86_64
+enabled=1
+gpgcheck=0
+"""
+
 # Stock monitord.conf tracks units that do not exist in a Rawhide container.
 ALLOWLIST_RENAMES: dict[str, str] = {
     "chrony.service": "kmod-static-nodes.service",
@@ -268,7 +290,7 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
     output, so they are stable across the seconds-apart runs.
     """
     dbus_lines: list[str] = []
-    renamed: set[str] = set()
+    renamed: dict[str, str] = {}
     section = ""
     for line in conf_text.splitlines():
         if line.startswith("["):
@@ -293,6 +315,15 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
             if line.strip() == "dbus-broker.service":
                 dbus_lines.append(line)
                 line = CGROUP_FIXTURE_SERVICE
+        elif section == "[machines.allowlist]":
+            # Stock monitord.conf names machines that do not exist here;
+            # point the allowlist at the nspawn fixture instead. Tracked
+            # the same way as the state_stats allowlist below: a global
+            # search would still pass with an empty allowlist and the
+            # machine assertions would silently cover nothing.
+            if line.strip() == "fedora38":
+                line = MACHINE_FIXTURE_NAME
+                renamed[MACHINE_FIXTURE_NAME] = "[machines.allowlist]"
         elif section == "[units.state_stats.allowlist]":
             # Tracked per substitution, not by searching the finished config:
             # the fixture units also appear in other sections, so a global
@@ -301,7 +332,7 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
             replacement = ALLOWLIST_RENAMES.get(line.strip())
             if replacement is not None:
                 line = replacement
-                renamed.add(replacement)
+                renamed[replacement] = "[units.state_stats.allowlist]"
         elif section == "[timers.allowlist]" and line.strip() == "fstrim.timer":
             continue
         elif section == "[boot]" and line.strip() == "enabled = false":
@@ -319,11 +350,16 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
             line = "enabled = true"
         dbus_lines.append(line)
 
-    missing = set(ALLOWLIST_RENAMES.values()) - renamed
+    # renamed maps name -> section, so the message says which section to
+    # go fix for each missing name — not just the successfully tracked ones.
+    wanted: dict[str, str] = {v: "[units.state_stats.allowlist]" for v in ALLOWLIST_RENAMES.values()}
+    wanted[MACHINE_FIXTURE_NAME] = "[machines.allowlist]"
+    missing = {name: wanted[name] for name in sorted(set(wanted) - set(renamed))}
     if missing:
+        detail = ", ".join(f"{name} ({section})" for name, section in missing.items())
         raise SystemExit(
-            "FAIL: [units.state_stats.allowlist] in monitord.conf no longer names "
-            f"the units this test renames, so nothing tracks {sorted(missing)}"
+            "FAIL: monitord.conf no longer names the units/machines this test renames, "
+            f"so nothing tracks them (missing: {detail})"
         )
 
     varlink_lines: list[str] = []
@@ -372,6 +408,86 @@ def assert_fixture_units(container: str) -> None:
                     "fixture unit changed state, type, or disappeared"
                 )
     print(f"PASS: {', '.join(FIXTURE_UNITS)} have expected states")
+
+
+def install_machine_fixture(container: str) -> None:
+    step("Booting nspawn fixture machine")
+    # A real container for the machines module to collect from, so the
+    # machine fetch-counter assertions below pin actual D-Bus traffic
+    # instead of asserting on an empty machine set. Built from the host's
+    # own Rawhide root (no image rebuild), booted with PrivateUsers=no so
+    # the host can read its cgroup tree via /proc/<leader>/root. Kept
+    # minimal on purpose: every unit inside it multiplies the D-Bus calls
+    # the assertions count.
+    # systemd-nspawn/machinectl come from the systemd-container package,
+    # baked into the image (Dockerfile) — fail loudly here rather than
+    # halfway through the install if a stale image predates it.
+    docker_exec(container, "test", "-x", "/usr/bin/systemd-nspawn")
+    root = f"/var/lib/machines/{MACHINE_FIXTURE_NAME}"
+    # Pinned-release repos (see MACHINE_FIXTURE_RELEASEVER): --use-host-config
+    # would pull the Rawhide repo definition instead, so write a dedicated
+    # repo file and point dnf at a conf dir containing only it.
+    write_container_file(container, "/tmp/fixture44.repo", MACHINE_FIXTURE_REPO)
+    try:
+        docker_exec(
+            container,
+            "dnf",
+            f"--releasever={MACHINE_FIXTURE_RELEASEVER}",
+            "--setopt=reposdir=/tmp",
+            "--installroot=" + root,
+            "install", "-y", "systemd",
+        )
+    except SystemExit:
+        # A generic dnf failure here almost always means the pinned
+        # release went EOL and its metalink stopped resolving — bump
+        # MACHINE_FIXTURE_RELEASEVER rather than debugging dnf.
+        raise SystemExit(
+            f"FAIL: fixture root install failed — if Fedora "
+            f"{MACHINE_FIXTURE_RELEASEVER} is EOL, bump "
+            "MACHINE_FIXTURE_RELEASEVER"
+        ) from None
+    docker_exec(container, "mkdir", "-p", "/etc/systemd/nspawn")
+    write_container_file(
+        container,
+        f"/etc/systemd/nspawn/{MACHINE_FIXTURE_NAME}.nspawn",
+        "[Exec]\nPrivateUsers=no\n",
+    )
+    # --keep-unit dies with the exec session, and a second boot fails
+    # while the first tree is busy: shut down any leftover instance, then
+    # boot detached under a transient unit so it survives this exec call.
+    # Terminate/reset tolerate absence: on a fresh container there is
+    # nothing to clean up yet.
+    subprocess.run(
+        ["docker", "exec", container, "machinectl", "terminate", MACHINE_FIXTURE_NAME],
+        capture_output=True,
+    )
+    # Drop the previous boot's transient unit too, or systemd-run refuses
+    # to reuse the name ("was already loaded or has a fragment file").
+    # `stop` clears the failed state with it, so no bare `reset-failed`
+    # (which would reset every failed unit in the container) is needed.
+    # Both tolerate absence: on a fresh container there is nothing to
+    # clean up yet.
+    subprocess.run(
+        ["docker", "exec", container, "systemctl", "stop", f"nspawn-{MACHINE_FIXTURE_NAME}"],
+        capture_output=True,
+    )
+    docker_exec(
+        container,
+        "systemd-run",
+        "--unit", f"nspawn-{MACHINE_FIXTURE_NAME}",
+        "--property=Type=notify",
+        "systemd-nspawn",
+        f"--machine={MACHINE_FIXTURE_NAME}",
+        "-D", root,
+        "--boot",
+    )
+    for poll in range(1, 31):
+        listed = docker_exec(container, "machinectl", "list")
+        if MACHINE_FIXTURE_NAME in listed:
+            print(f"machine {MACHINE_FIXTURE_NAME} registered after {poll} polls")
+            return
+        time.sleep(3)
+    raise SystemExit(f"FAIL: machine {MACHINE_FIXTURE_NAME} never registered")
 
 
 def install_cgroup_fixture(container: str) -> None:
@@ -431,6 +547,92 @@ def assert_cgroup_fixture_values(outputs: dict[str, Stats]) -> None:
             for f in CGROUP_FIELDS
         )
         print(f"PASS: {path_name}: {shown}")
+
+
+# The three per-scope D-Bus fetch counters every collection (host or
+# machine) emits. Hoisted so both the presence guard and the value pins
+# below check the same set — a renamed counter must fail loudly, not pass
+# vacuously over a partial set.
+FETCH_COUNTERS: tuple[str, ...] = (
+    "service_dbus_fetches",
+    "state_dbus_fetches",
+    "timer_dbus_fetches",
+)
+
+# Exact per-transport container traffic, filmed live (host 0/0/0, container
+# 1/2/1 on both paths). Exact match, not a lower bound: upward drift (more
+# D-Bus as collectors move around) is the likelier regression, and if #211
+# is ever fixed upstream these move toward zero — update them then.
+EXPECTED_MACHINE_FETCHES: dict[str, int] = {
+    "service_dbus_fetches": 1,
+    "state_dbus_fetches": 2,
+    "timer_dbus_fetches": 1,
+}
+
+
+def fetch_counters(stats: Stats, prefix: str, machine: str) -> dict[str, int]:
+    """Return the `*_dbus_fetches` counters under one key prefix.
+
+    Fails loudly unless all three counters are present: a missing counter
+    means the scope was not collected at all, and asserting on a partial
+    set would pass vacuously.
+    """
+    counters = {
+        key.split(".")[-1]: value
+        for key, value in stats.items()
+        if key.startswith(prefix) and key.endswith("_dbus_fetches")
+    }
+    if set(counters) != set(FETCH_COUNTERS):
+        raise SystemExit(
+            f"FAIL: {machine} is missing fetch counters "
+            f"(found: {sorted(counters)}) — not collected?"
+        )
+    return counters
+
+
+def machine_fetch_counters(stats: Stats, machine: str) -> dict[str, int]:
+    """Return the per-machine `*_dbus_fetches` counters for one machine."""
+    return fetch_counters(
+        stats, f"monitord.machines.{machine}.collection_timings.", machine
+    )
+
+
+def assert_machine_fetch_counters(dbus_stats: Stats, varlink_stats: Stats) -> None:
+    step("Asserting machine fetch counters")
+    # The host varlink run must be D-Bus-free (zero fetches), while the
+    # container behind #211 cannot use varlink IPC at all: its timer
+    # backfill and oneshot type override are D-Bus by necessity, and the
+    # full D-Bus path additionally spends per-service fetches. The
+    # assertion pins the current split per transport so a regression —
+    # host-side D-Bus creeping back in, or container calls silently
+    # disappearing along with their data — fails loudly instead of
+    # drifting. If #211 is ever fixed upstream these numbers move toward
+    # zero; update them then, not before.
+    machine = MACHINE_FIXTURE_NAME
+    dbus = machine_fetch_counters(dbus_stats, machine)
+    varlink = machine_fetch_counters(varlink_stats, machine)
+    print(f"dbus path machine counters: {dbus}")
+    print(f"varlink path machine counters: {varlink}")
+    # Same presence guard as the machine counters: an empty dict would
+    # make any() vacuously False and print a PASS over nothing.
+    host = fetch_counters(varlink_stats, "monitord.collection_timings.", "host")
+    if any(value != 0 for value in host.values()):
+        raise SystemExit(
+            f"FAIL: host varlink run is not D-Bus-free: {host} "
+            "(see #37; containers are pinned separately below)"
+        )
+    print(f"PASS: host varlink run is D-Bus-free {host}")
+    # The container cannot avoid D-Bus (see #211), so its traffic is
+    # pinned exactly: drift in either direction fails, since upward drift
+    # (more D-Bus as collectors move) is the likelier regression and zero
+    # would mean the data went missing, not that the bus went quiet.
+    for path_name, counters in (("dbus", dbus), ("varlink", varlink)):
+        if counters != EXPECTED_MACHINE_FETCHES:
+            raise SystemExit(
+                f"FAIL: {path_name} path machine counters drifted: "
+                f"{counters} != {EXPECTED_MACHINE_FETCHES}"
+            )
+    print(f"PASS: container D-Bus traffic pinned (dbus={dbus}, varlink={varlink})")
 
 
 def assert_dead_bus_run(container: str) -> None:
@@ -506,8 +708,19 @@ def run_monitord(container: str, config_path: str) -> tuple[Stats, str]:
 
 
 def find_fallbacks(log: str) -> list[str]:
-    """Return log lines where a collector fell back off varlink to D-Bus."""
-    return [line for line in log.splitlines() if "falling back" in line]
+    """Return log lines where a host collector fell back off varlink.
+
+    Container fallbacks (`Varlink container <name> ...`) are excluded: the
+    container behind #211 cannot use varlink IPC at all, so its D-Bus
+    traffic is expected and pinned separately by
+    `assert_machine_fetch_counters`. Only a host-side fallback makes the
+    parity comparison pass vacuously.
+    """
+    return [
+        line
+        for line in log.splitlines()
+        if "falling back" in line and "Varlink container " not in line
+    ]
 
 
 def assert_no_varlink_fallback(log: str) -> None:
@@ -519,6 +732,14 @@ def assert_no_varlink_fallback(log: str) -> None:
     if fallbacks:
         print("\n".join(fallbacks))
         raise SystemExit("FAIL: varlink run fell back to D-Bus (see above)")
+    # The container filter above must actually be doing something: #211
+    # guarantees the container falls back, so a log with no container
+    # lines means the phrasing changed and the filter is silently dead.
+    if not any("Varlink container " in line for line in log.splitlines()):
+        raise SystemExit(
+            "FAIL: no container fallback lines in the log — the "
+            "find_fallbacks filter may have stopped matching"
+        )
     print("PASS: no collector fell back to D-Bus")
 
 
@@ -731,8 +952,27 @@ def main() -> None:
     generate_configs(repo, args.container)
     assert_fixture_units(args.container)
     install_cgroup_fixture(args.container)
+    install_machine_fixture(args.container)
 
     step("Running monitord on both paths")
+    # The fixture machine boots asynchronously: wait until monitord
+    # actually collects it before the measured runs, or the machine
+    # assertions would cover an empty set. Polls the varlink config run
+    # (cheapest signal: the machine key set appears in the JSON).
+    for poll in range(1, 20):
+        probe, _ = run_monitord(args.container, VARLINK_CONF)
+        if any(
+            key.startswith(f"monitord.machines.{MACHINE_FIXTURE_NAME}.")
+            for key in probe
+        ):
+            print(f"fixture machine collected after {poll} polls")
+            break
+        print(f"Waiting for fixture machine collection ({poll}/20)...")
+        time.sleep(3)
+    else:
+        raise SystemExit(
+            f"FAIL: fixture machine {MACHINE_FIXTURE_NAME} never collected"
+        )
     varlink_stats, varlink_log = run_monitord(args.container, VARLINK_CONF)
     dbus_stats, dbus_log = run_monitord(args.container, DBUS_CONF)
 
@@ -742,6 +982,7 @@ def main() -> None:
     assert_time_in_state({"varlink": varlink_stats, "dbus": dbus_stats})
     assert_cgroup_fixture_values({"varlink": varlink_stats, "dbus": dbus_stats})
     compare_outputs(dbus_stats, varlink_stats)
+    assert_machine_fetch_counters(dbus_stats, varlink_stats)
     assert_dead_bus_run(args.container)
     print(f"\nContainer {args.container} left running; --fresh recreates it.")
 
