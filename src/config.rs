@@ -287,6 +287,12 @@ pub struct VarlinkConfig {
     /// has its own `varlink` opt-out; a collector uses varlink only when
     /// both this and its section toggle are true.
     pub enabled: bool,
+    /// Forbid every varlink fallback: any varlink failure is a hard error
+    /// instead of falling back to D-Bus (or files for networkd). Off by
+    /// default; enable in CI to prove a collector set is varlink-clean
+    /// rather than silently D-Bus-served. See `crate::varlink_fallback`
+    /// for the shared enforcement point.
+    pub no_fallback: bool,
 }
 
 /// Config struct
@@ -515,6 +521,10 @@ impl TryFrom<Ini> for Config {
 
         // [varlink] section
         config.varlink.enabled = read_config_bool(&ini_config, "varlink", "enabled")?;
+        if let Some(no_fallback) = read_config_optional_bool(&ini_config, "varlink", "no_fallback")?
+        {
+            config.varlink.no_fallback = no_fallback;
+        }
 
         for entry in unknown_config_entries(&config_map) {
             warn!("Ignoring {entry}; check for a typo'd key or section");
@@ -582,7 +592,7 @@ const KNOWN_SECTION_KEYS: &[(&str, &[&str])] = &[
         ],
     ),
     ("verify", &["enabled", "varlink"]),
-    ("varlink", &["enabled"]),
+    ("varlink", &["enabled", "no_fallback"]),
 ];
 
 /// Sections whose entries are data (unit/machine names), not fixed keys.
@@ -786,6 +796,7 @@ varlink = false
 
 [varlink]
 enabled = true
+no_fallback = true
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -1047,7 +1058,10 @@ varlink = false
                 allowlist: HashSet::new(),
                 blocklist: HashSet::new(),
             },
-            varlink: VarlinkConfig { enabled: true },
+            varlink: VarlinkConfig {
+                enabled: true,
+                no_fallback: true,
+            },
         };
 
         let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");

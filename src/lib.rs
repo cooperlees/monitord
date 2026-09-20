@@ -38,6 +38,7 @@ pub mod unit_constants;
 pub mod units;
 pub mod varlink;
 pub mod varlink_boot;
+pub mod varlink_fallback;
 pub mod varlink_networkd;
 pub mod varlink_system;
 pub mod varlink_unit;
@@ -393,6 +394,7 @@ pub async fn stat_collector(
             let dbus_cell = Arc::clone(&dbus_cell);
             let stats_clone = locked_machine_stats.clone();
             let describe = manager_describe.clone();
+            let no_fallback = config.varlink.no_fallback;
             spawn_timed(&mut join_set, "version", collect_start_time, async move {
                 if let Some(describe) = describe {
                     match crate::varlink_system::update_version(describe, stats_clone.clone()).await
@@ -403,7 +405,12 @@ pub async fn stat_collector(
                             return Ok(());
                         }
                         Err(err) => {
-                            warn!("Varlink version failed, falling back to D-Bus: {:?}", err);
+                            crate::varlink_fallback::report_varlink_failure(
+                                no_fallback,
+                                "version",
+                                "D-Bus",
+                                err,
+                            )?;
                         }
                     }
                 }
@@ -428,6 +435,7 @@ pub async fn stat_collector(
             let config_clone = Arc::clone(&config);
             let dbus_cell = Arc::clone(&dbus_cell);
             let stats_clone = locked_machine_stats.clone();
+            let no_fallback = config.varlink.no_fallback;
             spawn_timed(&mut join_set, "networkd", collect_start_time, async move {
                 if config_clone.use_varlink(&[config_clone.networkd.varlink]) {
                     let socket_path = crate::varlink_networkd::NETWORK_SOCKET_PATH.to_string();
@@ -440,10 +448,12 @@ pub async fn stat_collector(
                             return Ok(());
                         }
                         Err(err) => {
-                            warn!(
-                                "Varlink networkd stats failed, falling back to file-based: {:?}",
-                                err
-                            );
+                            crate::varlink_fallback::report_varlink_failure(
+                                no_fallback,
+                                "networkd",
+                                "file-based",
+                                err,
+                            )?;
                         }
                     }
                 }
@@ -464,6 +474,7 @@ pub async fn stat_collector(
             let dbus_cell = Arc::clone(&dbus_cell);
             let stats_clone = locked_machine_stats.clone();
             let describe = manager_describe.clone();
+            let no_fallback = config.varlink.no_fallback;
             spawn_timed(
                 &mut join_set,
                 "system_state",
@@ -482,10 +493,12 @@ pub async fn stat_collector(
                                 return Ok(());
                             }
                             Err(err) => {
-                                warn!(
-                                    "Varlink system state failed, falling back to D-Bus: {:?}",
-                                    err
-                                );
+                                crate::varlink_fallback::report_varlink_failure(
+                                    no_fallback,
+                                    "system state",
+                                    "D-Bus",
+                                    err,
+                                )?;
                             }
                         }
                     }
@@ -502,6 +515,7 @@ pub async fn stat_collector(
             let config_clone = Arc::clone(&config);
             let dbus_cell = Arc::clone(&dbus_cell);
             let stats_clone = locked_machine_stats.clone();
+            let no_fallback = config.varlink.no_fallback;
             spawn_timed(&mut join_set, "units", collect_start_time, async move {
                 if config_clone.use_varlink(&[config_clone.units.varlink]) {
                     let socket_path = crate::varlink_units::METRICS_SOCKET_PATH.to_string();
@@ -528,10 +542,12 @@ pub async fn stat_collector(
                             )
                             .await
                             {
-                                warn!(
-                                    "Varlink unit details failed, falling back to D-Bus: {:?}",
-                                    err
-                                );
+                                crate::varlink_fallback::report_varlink_failure(
+                                    no_fallback,
+                                    "unit details",
+                                    "D-Bus",
+                                    err,
+                                )?;
                                 stats_clone.write().await.varlink_usage.units =
                                     Some(CollectorTransport::Dbus);
                                 let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
@@ -553,10 +569,12 @@ pub async fn stat_collector(
                             return Ok(());
                         }
                         Err(err) => {
-                            warn!(
-                                "Varlink units stats failed, falling back to D-Bus: {:?}",
-                                err
-                            );
+                            crate::varlink_fallback::report_varlink_failure(
+                                no_fallback,
+                                "units",
+                                "D-Bus",
+                                err,
+                            )?;
                         }
                     }
                 }
@@ -616,11 +634,13 @@ pub async fn stat_collector(
                 "boot_blame",
                 collect_start_time,
                 async move {
+                    let no_fallback = config_clone.varlink.no_fallback;
                     crate::boot::update_boot_blame_stats(
                         config_clone,
                         dbus_cell,
                         dbus_timeout,
                         stats_clone,
+                        no_fallback,
                     )
                     .await
                 },
@@ -639,6 +659,7 @@ pub async fn stat_collector(
                     config_clone.verify.allowlist.clone(),
                     config_clone.verify.blocklist.clone(),
                     config_clone.use_varlink(&[config_clone.verify.varlink]),
+                    config_clone.varlink.no_fallback,
                 )
                 .await
             });

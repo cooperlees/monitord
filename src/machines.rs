@@ -188,6 +188,7 @@ pub async fn update_machines_stats(
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
+            let no_fallback = config_clone.varlink.no_fallback;
             join_set.spawn(async move {
                 if config_clone
                     .use_varlink(&[config_clone.machines.varlink, config_clone.networkd.varlink])
@@ -206,10 +207,12 @@ pub async fn update_machines_stats(
                             return Ok(());
                         }
                         Err(err) => {
-                            warn!(
-                                "Varlink networkd stats failed for container {}, falling back to file-based: {:?}",
-                                machine_name, err
-                            );
+                            crate::varlink_fallback::report_varlink_failure(
+                                no_fallback,
+                                &format!("container {machine_name} networkd"),
+                                "file-based",
+                                err,
+                            )?;
                         }
                     }
                 }
@@ -242,6 +245,7 @@ pub async fn update_machines_stats(
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
+            let no_fallback = config.varlink.no_fallback;
             let describe = manager_describe.clone();
             join_set.spawn(async move {
                 if let Some(describe) = describe {
@@ -254,10 +258,12 @@ pub async fn update_machines_stats(
                             return Ok(());
                         }
                         Err(err) => {
-                            warn!(
-                                "Varlink system state failed for container {}, falling back to D-Bus: {:?}",
-                                machine_name, err
-                            );
+                            crate::varlink_fallback::report_varlink_failure(
+                                no_fallback,
+                                &format!("container {machine_name} system state"),
+                                "D-Bus",
+                                err,
+                            )?;
                         }
                     }
                 }
@@ -271,6 +277,7 @@ pub async fn update_machines_stats(
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
+            let no_fallback = config.varlink.no_fallback;
             let describe = manager_describe.clone();
             join_set.spawn(async move {
                 if let Some(describe) = describe {
@@ -282,10 +289,12 @@ pub async fn update_machines_stats(
                             return Ok(());
                         }
                         Err(err) => {
-                            warn!(
-                                "Varlink version failed for container {}, falling back to D-Bus: {:?}",
-                                machine_name, err
-                            );
+                            crate::varlink_fallback::report_varlink_failure(
+                                no_fallback,
+                                &format!("container {machine_name} version"),
+                                "D-Bus",
+                                err,
+                            )?;
                         }
                     }
                 }
@@ -300,6 +309,7 @@ pub async fn update_machines_stats(
                 let config_clone = Arc::clone(&config);
                 let sdc_clone = sdc.clone();
                 let stats_clone = locked_machine_stats.clone();
+                let no_fallback = config_clone.varlink.no_fallback;
                 let machine_name = machine.clone();
                 let container_socket_path = format!(
                     "/proc/{}/root{}",
@@ -371,10 +381,12 @@ pub async fn update_machines_stats(
                             Ok(())
                         }
                         Err(err) => {
-                            warn!(
-                                "Varlink units stats failed for container {}, falling back to D-Bus: {:?}",
-                                machine_name, err
-                            );
+                            crate::varlink_fallback::report_varlink_failure(
+                                no_fallback,
+                                &format!("container {machine_name} units"),
+                                "D-Bus",
+                                err,
+                            )?;
                             let container_root = format!("/proc/{}/root", leader_pid);
                             // Set before the call (the lib.rs ordering): if
                             // the D-Bus collection errors, the gauge still
