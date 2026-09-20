@@ -411,6 +411,10 @@ def install_machine_fixture(container: str) -> None:
     # the host can read its cgroup tree via /proc/<leader>/root. Kept
     # minimal on purpose: every unit inside it multiplies the D-Bus calls
     # the assertions count.
+    # systemd-nspawn/machinectl come from the systemd-container package,
+    # baked into the image (Dockerfile) — fail loudly here rather than
+    # halfway through the install if a stale image predates it.
+    docker_exec(container, "test", "-x", "/usr/bin/systemd-nspawn")
     root = f"/var/lib/machines/{MACHINE_FIXTURE_NAME}"
     # Pinned-release repos (see MACHINE_FIXTURE_RELEASEVER): --use-host-config
     # would pull the Rawhide repo definition instead, so write a dedicated
