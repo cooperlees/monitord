@@ -1172,7 +1172,7 @@ in the container to run monitord and test.</p>
 </ul>
 <h2>Troubleshooting</h2>
 <p><strong>"Connection refused" or D-Bus connection errors</strong></p>
-<p>Ensure the system D-Bus daemon is running and the socket exists at <code>/run/dbus/system_bus_socket</code>. If using a custom address, set <code>dbus_address</code> in <code>[monitord]</code> config. Increase <code>dbus_timeout</code> if running on slow systems.</p>
+<p>The system bus connection is created lazily: monitord starts fine without a bus as long as no enabled collector needs D-Bus. Collectors served entirely over varlink, cgroupfs, state files, sysfs or procfs never connect — the networkd file fallback maps ifindexes to names via <code>/sys/class/net/*/ifindex</code> and only reaches for <code>Manager.ListLinks</code> when sysfs yields nothing usable. A collector that does need the bus — including any varlink fallback — reports its own per-collector error and the run continues with the remaining collectors. If a D-Bus collector is failing, ensure the system D-Bus daemon is running and the socket exists at <code>/run/dbus/system_bus_socket</code>. If using a custom address, set <code>dbus_address</code> in <code>[monitord]</code> config. Increase <code>dbus_timeout</code> if running on slow systems.</p>
 <p><strong>Empty or missing networkd metrics</strong></p>
 <p>systemd-networkd must be installed and running (<code>systemctl start systemd-networkd</code>). If networkd is not in use on your system, disable the collector with <code>enabled = false</code> in <code>[networkd]</code>.</p>
 <p><strong>Permission denied for D-Bus stats</strong></p>
@@ -1182,7 +1182,7 @@ in the container to run monitord and test.</p>
 <p><strong>Collector errors don't crash monitord</strong></p>
 <p>When an individual collector fails (e.g., networkd not running, D-Bus timeout), monitord logs a warning and continues with the remaining collectors. Check stderr output or increase the log level (<code>-l debug</code>) to see which collectors had issues.</p>
 <p><strong>Large u64 values (18446744073709551615) in output</strong></p>
-<p>These represent <code>u64::MAX</code> and mean "not available" or "not tracked" for that metric. This is how systemd reports fields that are unsupported or not configured for the unit (e.g., <code>memory_available</code> when <code>MemoryMax=</code> is not set).</p>
+<p>These represent <code>u64::MAX</code> and mean "not available" or "not tracked" for that metric. This is how systemd reports fields that are unsupported or not configured for the unit. The cgroup-derived service fields report <code>u64::MAX</code> only when neither cgroupfs nor the IPC fallback has data (e.g. <code>ioread_bytes</code> with the <code>io</code> controller disabled); <code>memory_available</code> in particular is computed even without limits, as host <code>MemAvailable</code>.</p>
 <h2>Library API</h2>
 <p>monitord can be used as a Rust library. See the full API documentation at <a href="https://monitord.xyz/monitord/index.html">monitord.xyz</a>.</p>
 <h2>DBus</h2>
@@ -1193,8 +1193,9 @@ in the container to run monitord and test.</p>
 <li><code>ManagerProxy::list_machines()</code></li>
 <li>Can do most other calls then on the machine's systemd/dbus</li>
 <li>networkd</li>
-<li><code>ManagerProxy::list_links()</code></li>
-<li>Interface state files at <code>/run/systemd/netif/links</code> are used by default; the varlink
+<li><code>ManagerProxy::list_links()</code> — last resort only, when sysfs yields no usable ifindex map</li>
+<li>Interface state files at <code>/run/systemd/netif/links</code> are used by default, with the
+    ifindex→name map read from <code>/sys/class/net/*/ifindex</code> (no D-Bus); the varlink
     <code>io.systemd.Network.Describe</code> API can be enabled instead (see below)</li>
 <li>system</li>
 <li><code>ManagerProxy::get_version()</code></li>
@@ -1206,18 +1207,17 @@ in the container to run monitord and test.</p>
 <li><code>UnitProxy::state_change_timestamp_monotonic()</code></li>
 <li>units</li>
 <li><code>ManagerProxy::list_units()</code> - Main counting of unit stats</li>
-<li><code>ServiceProxy::cpuusage_nsec()</code></li>
-<li><code>ServiceProxy::ioread_bytes()</code></li>
-<li><code>ServiceProxy::ioread_operations()</code></li>
-<li><code>ServiceProxy::memory_current()</code></li>
-<li><code>ServiceProxy::memory_available()</code></li>
+<li><code>ServiceProxy::control_group()</code> + <code>ServiceProxy::main_pid()</code> + <code>ServiceProxy::control_pid()</code> - Locate the unit's cgroup and fold PIDs living outside it into the process count, the way <code>GetProcesses</code> does</li>
 <li><code>ServiceProxy::nrestarts()</code></li>
-<li><code>ServiceProxy::get_processes()</code></li>
 <li><code>ServiceProxy::restart_usec()</code></li>
 <li><code>ServiceProxy::status_errno()</code></li>
-<li><code>ServiceProxy::tasks_current()</code></li>
 <li><code>ServiceProxy::timeout_clean_usec()</code></li>
 <li><code>ServiceProxy::watchdog_usec()</code></li>
+<li>Per-service cgroup accounting (<code>cpuusage_nsec</code>, <code>ioread_bytes</code>, <code>ioread_operations</code>,
+    <code>memory_current</code>, <code>memory_available</code>, <code>tasks_current</code>, process count) is read from
+    cgroupfs (<code>cpu.stat</code>, <code>memory.current</code>/<code>max</code>/<code>high</code>, <code>pids.current</code>, <code>io.stat</code>,
+    <code>cgroup.procs</code>) instead of the <code>ServiceProxy</code> properties / <code>get_processes()</code>.
+    Each field falls back to its D-Bus property when cgroupfs has no data (e.g. cgroup v1 hosts)</li>
 <li><code>UnitProxy::active_enter_timestamp</code></li>
 <li><code>UnitProxy::active_exit_timestamp</code></li>
 <li><code>UnitProxy::inactive_exit_timestamp()</code></li>
@@ -1237,6 +1237,16 @@ enabled = true
 <p>When varlink is enabled, monitord will attempt to collect stats via the varlink APIs first,
 automatically falling back to D-Bus or file-based collection when a varlink socket is unavailable
 (e.g., older systemd versions).</p>
+<p>Set <code>no_fallback = true</code> alongside it to turn any varlink failure into a loud per-collector
+error instead of falling back. That is a verification mode for proving a collector set is
+varlink-clean in CI — not a hardening flag: tripped collectors still report <code>success=0</code> in
+<code>collector_timings</code> and the run exits 0 (per-collector failures are deliberately non-fatal,
+especially in daemon mode), so CI must assert on the <code>success</code> gauges, not the exit status.
+<code>no_fallback</code> only fires inside varlink code paths, so it has no effect while <code>[varlink]
+enabled=false</code> (a warning is logged) or on collectors with no varlink path at all (<code>[dbus]</code>
+stats, <code>machines</code> enumeration). Partial varlink data that parses with warnings (e.g. a
+skipped metric) is not a fallback either — pair <code>no_fallback</code> with the completeness
+assertions, not as a substitute for them.</p>
 <p>Each varlink-capable collector (<code>[units]</code>, <code>[networkd]</code>, <code>[system-state]</code>, <code>[boot]</code>,
 <code>[verify]</code>, <code>[machines]</code> for container collection) also has its own <code>varlink</code> toggle,
 defaulting to true. A collector uses varlink only when both the global switch and its section toggle are
@@ -1257,7 +1267,7 @@ toggle of their own: they ride the units path and follow <code>[units] varlink</
 - Per-unit health status (computed from active + load state)
 - Per-service restart counts (<code>nrestarts</code>)
 - Per-service errno status (<code>StatusErrno</code>, v261+; unavailable (0) on v260)
-- Full per-service stats for units in <code>[services]</code> via <code>io.systemd.Unit.List</code> (systemd v261+): CPU, memory, tasks, process count, timestamps and timeouts, matching what the D-Bus path reports. Unavailable counters are reported as <code>u64::MAX</code>, exactly as the D-Bus properties do when accounting is disabled
+- Full per-service stats for units in <code>[services]</code> via <code>io.systemd.Unit.List</code> (systemd v261+): timestamps, restart/timeout/watchdog settings from the reply, and CPU, memory, tasks, IO plus process count read from cgroupfs (same reader as the D-Bus path, so both agree). A field with no cgroupfs data falls back to the reply's <code>runtime.CGroup</code> value, defaulting to <code>u64::MAX</code> when the reply omits it too
 - Per-timer stats via <code>io.systemd.Unit.List</code> (systemd v261+): accuracy, delays, next elapse, last trigger, and the triggered unit's state change — no D-Bus backfill
 - Falls back to D-Bus collection if the socket is unavailable</p>
 <p><strong>System state and version</strong> (<code>io.systemd.Manager.Describe</code> — systemd v258+):

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["read_host_memory","read_service_cgroup"],"struct":["CgroupStats"],"type":["HostMemory"]};

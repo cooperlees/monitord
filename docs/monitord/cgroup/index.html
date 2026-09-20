@@ -1,0 +1,71 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="cgroup module"><title>monitord::cgroup - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module cgroup</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../monitord/index.html">monitord</a><span class="version">0.27.1</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module cgroup</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#cgroup-module" title="cgroup module">cgroup module</a><ul><li><a href="#memory_available-semantics" title="`memory_available` semantics"><code>memory_available</code> semantics</a></li><li><a href="#why-hand-rolled-instead-of-a-cgroupfs-crate" title="Why hand-rolled instead of a cgroupfs crate">Why hand-rolled instead of a cgroupfs crate</a></li><li><a href="#fs_root-and-containers" title="`fs_root` and containers"><code>fs_root</code> and containers</a></li><li><a href="#failure-semantics" title="Failure semantics">Failure semantics</a></li></ul></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#functions" title="Functions">Functions</a></li><li><a href="#types" title="Type Aliases">Type Aliases</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate monitord</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">monitord</a></div><h1>Module <span>cgroup</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/monitord/cgroup.rs.html#1-753">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="cgroup-module"><a class="doc-anchor" href="#cgroup-module">§</a>cgroup module</h2>
+<p>Per-service cgroup accounting read straight from cgroupfs instead of D-Bus
+or varlink (issue #221, unblocking the zero-D-Bus goal in #37).</p>
+<p>Seven <code>ServiceStats</code> fields describe a service’s cgroup, and every one of
+them is a plain cgroup v2 file the kernel already exposes:</p>
+<div><table><thead><tr><th><code>ServiceStats</code> field</th><th>cgroupfs source</th></tr></thead><tbody>
+<tr><td><code>cpuusage_nsec</code></td><td><code>cpu.stat</code> → <code>usage_usec</code> × 1000</td></tr>
+<tr><td><code>memory_current</code></td><td><code>memory.current</code></td></tr>
+<tr><td><code>memory_available</code></td><td><code>min(memory.max, memory.high) − memory.current</code>, minimized over the slice walk (see below)</td></tr>
+<tr><td><code>tasks_current</code></td><td><code>pids.current</code></td></tr>
+<tr><td><code>processes</code></td><td>recursive <code>cgroup.procs</code> walk + main/control PID fold-in</td></tr>
+<tr><td><code>ioread_bytes</code></td><td><code>io.stat</code> → <code>rbytes</code> summed over devices</td></tr>
+<tr><td><code>ioread_operations</code></td><td><code>io.stat</code> → <code>rios</code> summed over devices</td></tr>
+</tbody></table>
+</div>
+<p>systemd itself reads these files directly (<code>src/core/cgroup.c</code>:
+<code>unit_get_cpu_usage_raw</code>, <code>unit_get_memory_accounting</code>,
+<code>unit_get_memory_available</code>, <code>unit_get_tasks_current</code>,
+<code>unit_get_io_accounting_raw</code>; D-Bus getters in <code>src/core/dbus-unit.c</code>
+answer <code>u64::MAX</code> when the read fails). There is no accounting API
+underneath to depend on — the accounting flags only control whether the
+controller is enabled, which is itself visible as file presence. Dropping
+the dependency on per-unit accounting flags being enabled is an explicit
+goal of #221.</p>
+<h3 id="memory_available-semantics"><a class="doc-anchor" href="#memory_available-semantics">§</a><code>memory_available</code> semantics</h3>
+<p>Replicates <code>unit_get_memory_available()</code>: walk the unit’s cgroup directory
+up through each ancestor slice to the filesystem root; at every level that
+sets <code>memory.max</code> or <code>memory.high</code>, compute <code>min(max, high) − current</code> with
+that level’s own <code>memory.current</code>, and take the minimum. The root level
+(the <code>-​-.slice</code> equivalent) is always constrained: its limit is host
+physical memory (<code>MemTotal</code> from <code>/proc/meminfo</code>) and its current is host
+memory pressure — which works out byte-exact to <code>MemAvailable</code> from
+<code>/proc/meminfo</code> (verified live: D-Bus <code>MemoryAvailable</code> for a limitless
+service equalled <code>MemAvailable</code> exactly). A unit with no limits anywhere
+therefore reports host <code>MemAvailable</code>, matching D-Bus; a unit with
+<code>MemoryMax=1G MemoryHigh=512M</code> reported <code>536870912 − 1368064 = 535502848</code>,
+byte-exact with D-Bus.</p>
+<h3 id="why-hand-rolled-instead-of-a-cgroupfs-crate"><a class="doc-anchor" href="#why-hand-rolled-instead-of-a-cgroupfs-crate">§</a>Why hand-rolled instead of a cgroupfs crate</h3>
+<p>The ecosystem crates are all synchronous: <code>cgroups-rs</code> (kata, the most
+downloaded), Meta’s <code>cgroupfs</code> (the closest miss — fd-based <code>openat</code>
+reads), and youki’s <code>libcgroups</code> are <code>std::fs</code> under the hood and would
+need <code>spawn_blocking</code> around the same file reads below, plus extra
+dependencies (<code>nix</code>, <code>serde</code>, <code>oci-spec</code>, …) and more binary size,
+against the embedded goal. None of them models <code>memory_available</code>
+either — that is a systemd concept, not a kernel file, and it is where
+most of this module’s complexity lives. So: <code>tokio::fs</code> reads issued
+together with <code>tokio::join!</code>, zero new dependencies, cgroup v2 only.</p>
+<h3 id="fs_root-and-containers"><a class="doc-anchor" href="#fs_root-and-containers">§</a><code>fs_root</code> and containers</h3>
+<p>Like <code>collect_unit_files_stats</code>, every path is prefixed with <code>fs_root</code> —
+empty for the host, <code>/proc/&lt;leader&gt;/root</code> for containers — so container
+unit cgroups are readable without entering the PID namespace (#211). The
+ancestor walk stops at the prefixed root (a container’s systemd never sees
+host slices above its own root), and the root level always uses the
+<em>host</em> <code>/proc/meminfo</code>, matching what the container’s PID 1 computes via
+<code>physical_memory()</code> / <code>procfs_memory_get_used()</code>.</p>
+<h3 id="failure-semantics"><a class="doc-anchor" href="#failure-semantics">§</a>Failure semantics</h3>
+<p>Every field is <code>Option</code>: <code>None</code> means the file was absent or unparsable,
+and callers map that to <code>u64::MAX</code> — the <code>[not set]</code> sentinel D-Bus uses.
+<code>processes</code> is a plain count (<code>0</code> when the cgroup is gone), matching what
+<code>GetProcesses</code> returns for a dead unit. Callers keep their existing
+fallback (D-Bus props on the D-Bus path, the <code>Unit.List</code> reply on the
+varlink path) for fields that come back <code>None</code>, which is also what covers
+cgroup v1 hosts: no v2 files → all <code>None</code> → fallback, no new failure
+mode. <code>memory_available</code> included: the host-<code>MemAvailable</code> root level
+only binds when the unit’s own level was actually readable, so a missing
+cgroup reports <code>None</code> there like everywhere else instead of silently
+answering host memory.</p>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.CgroupStats.html" title="struct monitord::cgroup::CgroupStats">Cgroup<wbr>Stats</a></dt><dd>Accounting values for one service’s cgroup, read from cgroupfs.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.read_host_memory.html" title="fn monitord::cgroup::read_host_memory">read_<wbr>host_<wbr>memory</a></dt><dd>Read the host root-slice level: <code>(MemTotal, host used bytes)</code>.</dd><dt><a class="fn" href="fn.read_service_cgroup.html" title="fn monitord::cgroup::read_service_cgroup">read_<wbr>service_<wbr>cgroup</a></dt><dd>Read every cgroup accounting file for one service in a single parallel
+batch.</dd></dl><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><dl class="item-table"><dt><a class="type" href="type.HostMemory.html" title="type monitord::cgroup::HostMemory">Host<wbr>Memory</a></dt><dd>Host-wide memory numbers, read once per collection cycle and shared by
+every service’s <code>memory_available</code> fold: <code>(MemTotal, host used bytes)</code>.
+See <code>read_host_memory</code> for the semantics.</dd></dl></section></div></main></body></html>

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/verify.rs`."><title>verify.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01) (Fedora 1.98.1-1.fc44)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>verify.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! # verify module
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/verify.rs`."><title>verify.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="monitord" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">monitord/</div>verify.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! # verify module
 <a href=#2 id=2 data-nosnippet>2</a>//!
 <a href=#3 id=3 data-nosnippet>3</a>//! Collects systemd unit verification errors by running `systemd-analyze verify`
 <a href=#4 id=4 data-nosnippet>4</a>//! on all unit files and parsing the output. Tracks counts of failing units by type.
@@ -211,128 +211,137 @@
 <a href=#211 id=211 data-nosnippet>211</a></span>}
 <a href=#212 id=212 data-nosnippet>212</a>
 <a href=#213 id=213 data-nosnippet>213</a><span class="doccomment">/// Async wrapper that updates verify stats when passed a locked struct
-<a href=#214 id=214 data-nosnippet>214</a></span><span class="kw">pub async fn </span>update_verify_stats(
-<a href=#215 id=215 data-nosnippet>215</a>    connection: zbus::Connection,
-<a href=#216 id=216 data-nosnippet>216</a>    locked_machine_stats: Arc&lt;RwLock&lt;MachineStats&gt;&gt;,
-<a href=#217 id=217 data-nosnippet>217</a>    allowlist: HashSet&lt;String&gt;,
-<a href=#218 id=218 data-nosnippet>218</a>    blocklist: HashSet&lt;String&gt;,
-<a href=#219 id=219 data-nosnippet>219</a>    varlink_enabled: bool,
-<a href=#220 id=220 data-nosnippet>220</a>) -&gt; anyhow::Result&lt;()&gt; {
-<a href=#221 id=221 data-nosnippet>221</a>    <span class="kw">let </span>verify_stats = <span class="kw">if </span>varlink_enabled {
-<a href=#222 id=222 data-nosnippet>222</a>        <span class="kw">match </span><span class="kw">crate</span>::varlink_verify::list_unit_names(<span class="kw">crate</span>::varlink_verify::METRICS_SOCKET_PATH)
-<a href=#223 id=223 data-nosnippet>223</a>            .<span class="kw">await
-<a href=#224 id=224 data-nosnippet>224</a>        </span>{
-<a href=#225 id=225 data-nosnippet>225</a>            <span class="prelude-val">Ok</span>(all_units) =&gt; {
-<a href=#226 id=226 data-nosnippet>226</a>                log_enumerated_units(<span class="kw-2">&amp;</span>all_units);
-<a href=#227 id=227 data-nosnippet>227</a>                locked_machine_stats.write().<span class="kw">await</span>.varlink_usage.verify =
-<a href=#228 id=228 data-nosnippet>228</a>                    <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink);
-<a href=#229 id=229 data-nosnippet>229</a>                verify_units(filter_unit_names(all_units, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist))
-<a href=#230 id=230 data-nosnippet>230</a>                    .<span class="kw">await
-<a href=#231 id=231 data-nosnippet>231</a>                    </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting verify stats: {:?}"</span>, e))<span class="question-mark">?
-<a href=#232 id=232 data-nosnippet>232</a>            </span>}
-<a href=#233 id=233 data-nosnippet>233</a>            <span class="prelude-val">Err</span>(err) =&gt; {
-<a href=#234 id=234 data-nosnippet>234</a>                <span class="macro">tracing::warn!</span>(
-<a href=#235 id=235 data-nosnippet>235</a>                    <span class="string">"Varlink verify enumeration failed, falling back to D-Bus: {:?}"</span>,
-<a href=#236 id=236 data-nosnippet>236</a>                    err
-<a href=#237 id=237 data-nosnippet>237</a>                );
-<a href=#238 id=238 data-nosnippet>238</a>                locked_machine_stats.write().<span class="kw">await</span>.varlink_usage.verify =
-<a href=#239 id=239 data-nosnippet>239</a>                    <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus);
-<a href=#240 id=240 data-nosnippet>240</a>                get_verify_stats(<span class="kw-2">&amp;</span>connection, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist)
-<a href=#241 id=241 data-nosnippet>241</a>                    .<span class="kw">await
-<a href=#242 id=242 data-nosnippet>242</a>                    </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting verify stats: {:?}"</span>, e))<span class="question-mark">?
-<a href=#243 id=243 data-nosnippet>243</a>            </span>}
-<a href=#244 id=244 data-nosnippet>244</a>        }
-<a href=#245 id=245 data-nosnippet>245</a>    } <span class="kw">else </span>{
-<a href=#246 id=246 data-nosnippet>246</a>        locked_machine_stats.write().<span class="kw">await</span>.varlink_usage.verify =
-<a href=#247 id=247 data-nosnippet>247</a>            <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus);
-<a href=#248 id=248 data-nosnippet>248</a>        get_verify_stats(<span class="kw-2">&amp;</span>connection, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist)
-<a href=#249 id=249 data-nosnippet>249</a>            .<span class="kw">await
-<a href=#250 id=250 data-nosnippet>250</a>            </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting verify stats: {:?}"</span>, e))<span class="question-mark">?
-<a href=#251 id=251 data-nosnippet>251</a>    </span>};
-<a href=#252 id=252 data-nosnippet>252</a>
-<a href=#253 id=253 data-nosnippet>253</a>    <span class="kw">let </span><span class="kw-2">mut </span>machine_stats = locked_machine_stats.write().<span class="kw">await</span>;
-<a href=#254 id=254 data-nosnippet>254</a>    machine_stats.verify_stats = <span class="prelude-val">Some</span>(verify_stats);
-<a href=#255 id=255 data-nosnippet>255</a>    <span class="prelude-val">Ok</span>(())
-<a href=#256 id=256 data-nosnippet>256</a>}
-<a href=#257 id=257 data-nosnippet>257</a>
-<a href=#258 id=258 data-nosnippet>258</a><span class="attr">#[cfg(test)]
-<a href=#259 id=259 data-nosnippet>259</a></span><span class="kw">mod </span>tests {
-<a href=#260 id=260 data-nosnippet>260</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#214 id=214 data-nosnippet>214</a>/// Collect verification stats, resolving the shared D-Bus connection only
+<a href=#215 id=215 data-nosnippet>215</a>/// on a D-Bus code path: the varlink enumeration runs first and a bus-less
+<a href=#216 id=216 data-nosnippet>216</a>/// host never connects at all.
+<a href=#217 id=217 data-nosnippet>217</a></span><span class="kw">pub async fn </span>update_verify_stats(
+<a href=#218 id=218 data-nosnippet>218</a>    dbus: <span class="kw">crate</span>::DbusCell,
+<a href=#219 id=219 data-nosnippet>219</a>    dbus_timeout: u64,
+<a href=#220 id=220 data-nosnippet>220</a>    locked_machine_stats: Arc&lt;RwLock&lt;MachineStats&gt;&gt;,
+<a href=#221 id=221 data-nosnippet>221</a>    allowlist: HashSet&lt;String&gt;,
+<a href=#222 id=222 data-nosnippet>222</a>    blocklist: HashSet&lt;String&gt;,
+<a href=#223 id=223 data-nosnippet>223</a>    varlink_enabled: bool,
+<a href=#224 id=224 data-nosnippet>224</a>    no_fallback: bool,
+<a href=#225 id=225 data-nosnippet>225</a>) -&gt; anyhow::Result&lt;()&gt; {
+<a href=#226 id=226 data-nosnippet>226</a>    <span class="kw">let </span>verify_stats = <span class="kw">if </span>varlink_enabled {
+<a href=#227 id=227 data-nosnippet>227</a>        <span class="kw">match </span><span class="kw">crate</span>::varlink_verify::list_unit_names(<span class="kw">crate</span>::varlink_verify::METRICS_SOCKET_PATH)
+<a href=#228 id=228 data-nosnippet>228</a>            .<span class="kw">await
+<a href=#229 id=229 data-nosnippet>229</a>        </span>{
+<a href=#230 id=230 data-nosnippet>230</a>            <span class="prelude-val">Ok</span>(all_units) =&gt; {
+<a href=#231 id=231 data-nosnippet>231</a>                log_enumerated_units(<span class="kw-2">&amp;</span>all_units);
+<a href=#232 id=232 data-nosnippet>232</a>                locked_machine_stats.write().<span class="kw">await</span>.varlink_usage.verify =
+<a href=#233 id=233 data-nosnippet>233</a>                    <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink);
+<a href=#234 id=234 data-nosnippet>234</a>                verify_units(filter_unit_names(all_units, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist))
+<a href=#235 id=235 data-nosnippet>235</a>                    .<span class="kw">await
+<a href=#236 id=236 data-nosnippet>236</a>                    </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting verify stats: {:?}"</span>, e))<span class="question-mark">?
+<a href=#237 id=237 data-nosnippet>237</a>            </span>}
+<a href=#238 id=238 data-nosnippet>238</a>            <span class="prelude-val">Err</span>(err) =&gt; {
+<a href=#239 id=239 data-nosnippet>239</a>                <span class="kw">crate</span>::varlink_fallback::report_varlink_failure(
+<a href=#240 id=240 data-nosnippet>240</a>                    no_fallback,
+<a href=#241 id=241 data-nosnippet>241</a>                    <span class="string">"verify"</span>,
+<a href=#242 id=242 data-nosnippet>242</a>                    <span class="string">"D-Bus"</span>,
+<a href=#243 id=243 data-nosnippet>243</a>                    err,
+<a href=#244 id=244 data-nosnippet>244</a>                )<span class="question-mark">?</span>;
+<a href=#245 id=245 data-nosnippet>245</a>                locked_machine_stats.write().<span class="kw">await</span>.varlink_usage.verify =
+<a href=#246 id=246 data-nosnippet>246</a>                    <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus);
+<a href=#247 id=247 data-nosnippet>247</a>                <span class="kw">let </span>connection = <span class="kw">crate</span>::dbus_connection(<span class="kw-2">&amp;</span>dbus, dbus_timeout).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#248 id=248 data-nosnippet>248</a>                get_verify_stats(<span class="kw-2">&amp;</span>connection, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist)
+<a href=#249 id=249 data-nosnippet>249</a>                    .<span class="kw">await
+<a href=#250 id=250 data-nosnippet>250</a>                    </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting verify stats: {:?}"</span>, e))<span class="question-mark">?
+<a href=#251 id=251 data-nosnippet>251</a>            </span>}
+<a href=#252 id=252 data-nosnippet>252</a>        }
+<a href=#253 id=253 data-nosnippet>253</a>    } <span class="kw">else </span>{
+<a href=#254 id=254 data-nosnippet>254</a>        locked_machine_stats.write().<span class="kw">await</span>.varlink_usage.verify =
+<a href=#255 id=255 data-nosnippet>255</a>            <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus);
+<a href=#256 id=256 data-nosnippet>256</a>        <span class="kw">let </span>connection = <span class="kw">crate</span>::dbus_connection(<span class="kw-2">&amp;</span>dbus, dbus_timeout).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#257 id=257 data-nosnippet>257</a>        get_verify_stats(<span class="kw-2">&amp;</span>connection, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist)
+<a href=#258 id=258 data-nosnippet>258</a>            .<span class="kw">await
+<a href=#259 id=259 data-nosnippet>259</a>            </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting verify stats: {:?}"</span>, e))<span class="question-mark">?
+<a href=#260 id=260 data-nosnippet>260</a>    </span>};
 <a href=#261 id=261 data-nosnippet>261</a>
-<a href=#262 id=262 data-nosnippet>262</a>    <span class="attr">#[test]
-<a href=#263 id=263 data-nosnippet>263</a>    </span><span class="kw">fn </span>test_get_unit_type() {
-<a href=#264 id=264 data-nosnippet>264</a>        <span class="macro">assert_eq!</span>(get_unit_type(<span class="string">"foo.service"</span>), <span class="prelude-val">Some</span>(<span class="string">"service"</span>.to_string()));
-<a href=#265 id=265 data-nosnippet>265</a>        <span class="macro">assert_eq!</span>(get_unit_type(<span class="string">"bar.slice"</span>), <span class="prelude-val">Some</span>(<span class="string">"slice"</span>.to_string()));
-<a href=#266 id=266 data-nosnippet>266</a>        <span class="macro">assert_eq!</span>(get_unit_type(<span class="string">"baz.timer"</span>), <span class="prelude-val">Some</span>(<span class="string">"timer"</span>.to_string()));
-<a href=#267 id=267 data-nosnippet>267</a>        <span class="macro">assert_eq!</span>(get_unit_type(<span class="string">"test"</span>), <span class="prelude-val">Some</span>(<span class="string">"test"</span>.to_string()));
-<a href=#268 id=268 data-nosnippet>268</a>    }
-<a href=#269 id=269 data-nosnippet>269</a>
-<a href=#270 id=270 data-nosnippet>270</a>    <span class="attr">#[test]
-<a href=#271 id=271 data-nosnippet>271</a>    </span><span class="kw">fn </span>test_filter_unit_names() {
-<a href=#272 id=272 data-nosnippet>272</a>        <span class="kw">let </span>all = <span class="macro">vec!</span>[
-<a href=#273 id=273 data-nosnippet>273</a>            <span class="string">"wanted.service"</span>.to_string(),
-<a href=#274 id=274 data-nosnippet>274</a>            <span class="string">"blocked.service"</span>.to_string(),
-<a href=#275 id=275 data-nosnippet>275</a>            <span class="string">"other.timer"</span>.to_string(),
-<a href=#276 id=276 data-nosnippet>276</a>        ];
-<a href=#277 id=277 data-nosnippet>277</a>
-<a href=#278 id=278 data-nosnippet>278</a>        <span class="comment">// Empty allowlist: everything except blocklisted.
-<a href=#279 id=279 data-nosnippet>279</a>        </span><span class="macro">assert_eq!</span>(
-<a href=#280 id=280 data-nosnippet>280</a>            filter_unit_names(
-<a href=#281 id=281 data-nosnippet>281</a>                all.clone(),
-<a href=#282 id=282 data-nosnippet>282</a>                <span class="kw-2">&amp;</span>HashSet::new(),
-<a href=#283 id=283 data-nosnippet>283</a>                <span class="kw-2">&amp;</span>HashSet::from([<span class="string">"blocked.service"</span>.to_string()]),
-<a href=#284 id=284 data-nosnippet>284</a>            ),
-<a href=#285 id=285 data-nosnippet>285</a>            <span class="macro">vec!</span>[<span class="string">"wanted.service"</span>.to_string(), <span class="string">"other.timer"</span>.to_string()]
-<a href=#286 id=286 data-nosnippet>286</a>        );
-<a href=#287 id=287 data-nosnippet>287</a>
-<a href=#288 id=288 data-nosnippet>288</a>        <span class="comment">// Non-empty allowlist: only listed units, minus blocklisted.
-<a href=#289 id=289 data-nosnippet>289</a>        </span><span class="macro">assert_eq!</span>(
-<a href=#290 id=290 data-nosnippet>290</a>            filter_unit_names(
-<a href=#291 id=291 data-nosnippet>291</a>                all.clone(),
-<a href=#292 id=292 data-nosnippet>292</a>                <span class="kw-2">&amp;</span>HashSet::from([<span class="string">"wanted.service"</span>.to_string(), <span class="string">"blocked.service"</span>.to_string()]),
-<a href=#293 id=293 data-nosnippet>293</a>                <span class="kw-2">&amp;</span>HashSet::from([<span class="string">"blocked.service"</span>.to_string()]),
-<a href=#294 id=294 data-nosnippet>294</a>            ),
-<a href=#295 id=295 data-nosnippet>295</a>            <span class="macro">vec!</span>[<span class="string">"wanted.service"</span>.to_string()]
-<a href=#296 id=296 data-nosnippet>296</a>        );
-<a href=#297 id=297 data-nosnippet>297</a>    }
-<a href=#298 id=298 data-nosnippet>298</a>
-<a href=#299 id=299 data-nosnippet>299</a>    <span class="attr">#[test]
-<a href=#300 id=300 data-nosnippet>300</a>    </span><span class="kw">fn </span>test_build_verify_command_separates_flags_from_units() {
-<a href=#301 id=301 data-nosnippet>301</a>        <span class="comment">// Units like -.mount start with a dash: without `--`, analyze parses
-<a href=#302 id=302 data-nosnippet>302</a>        // them as options and exits before checking anything.
-<a href=#303 id=303 data-nosnippet>303</a>        </span><span class="kw">let </span>cmd = build_verify_command(<span class="kw-2">&amp;</span>[<span class="string">"-.mount"</span>.to_string(), <span class="string">"foo.service"</span>.to_string()]);
-<a href=#304 id=304 data-nosnippet>304</a>        <span class="kw">let </span>args: Vec&lt;<span class="kw">_</span>&gt; = cmd.get_args().collect();
-<a href=#305 id=305 data-nosnippet>305</a>        <span class="macro">assert_eq!</span>(args, <span class="macro">vec!</span>[<span class="string">"verify"</span>, <span class="string">"--"</span>, <span class="string">"-.mount"</span>, <span class="string">"foo.service"</span>]);
+<a href=#262 id=262 data-nosnippet>262</a>    <span class="kw">let </span><span class="kw-2">mut </span>machine_stats = locked_machine_stats.write().<span class="kw">await</span>;
+<a href=#263 id=263 data-nosnippet>263</a>    machine_stats.verify_stats = <span class="prelude-val">Some</span>(verify_stats);
+<a href=#264 id=264 data-nosnippet>264</a>    <span class="prelude-val">Ok</span>(())
+<a href=#265 id=265 data-nosnippet>265</a>}
+<a href=#266 id=266 data-nosnippet>266</a>
+<a href=#267 id=267 data-nosnippet>267</a><span class="attr">#[cfg(test)]
+<a href=#268 id=268 data-nosnippet>268</a></span><span class="kw">mod </span>tests {
+<a href=#269 id=269 data-nosnippet>269</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#270 id=270 data-nosnippet>270</a>
+<a href=#271 id=271 data-nosnippet>271</a>    <span class="attr">#[test]
+<a href=#272 id=272 data-nosnippet>272</a>    </span><span class="kw">fn </span>test_get_unit_type() {
+<a href=#273 id=273 data-nosnippet>273</a>        <span class="macro">assert_eq!</span>(get_unit_type(<span class="string">"foo.service"</span>), <span class="prelude-val">Some</span>(<span class="string">"service"</span>.to_string()));
+<a href=#274 id=274 data-nosnippet>274</a>        <span class="macro">assert_eq!</span>(get_unit_type(<span class="string">"bar.slice"</span>), <span class="prelude-val">Some</span>(<span class="string">"slice"</span>.to_string()));
+<a href=#275 id=275 data-nosnippet>275</a>        <span class="macro">assert_eq!</span>(get_unit_type(<span class="string">"baz.timer"</span>), <span class="prelude-val">Some</span>(<span class="string">"timer"</span>.to_string()));
+<a href=#276 id=276 data-nosnippet>276</a>        <span class="macro">assert_eq!</span>(get_unit_type(<span class="string">"test"</span>), <span class="prelude-val">Some</span>(<span class="string">"test"</span>.to_string()));
+<a href=#277 id=277 data-nosnippet>277</a>    }
+<a href=#278 id=278 data-nosnippet>278</a>
+<a href=#279 id=279 data-nosnippet>279</a>    <span class="attr">#[test]
+<a href=#280 id=280 data-nosnippet>280</a>    </span><span class="kw">fn </span>test_filter_unit_names() {
+<a href=#281 id=281 data-nosnippet>281</a>        <span class="kw">let </span>all = <span class="macro">vec!</span>[
+<a href=#282 id=282 data-nosnippet>282</a>            <span class="string">"wanted.service"</span>.to_string(),
+<a href=#283 id=283 data-nosnippet>283</a>            <span class="string">"blocked.service"</span>.to_string(),
+<a href=#284 id=284 data-nosnippet>284</a>            <span class="string">"other.timer"</span>.to_string(),
+<a href=#285 id=285 data-nosnippet>285</a>        ];
+<a href=#286 id=286 data-nosnippet>286</a>
+<a href=#287 id=287 data-nosnippet>287</a>        <span class="comment">// Empty allowlist: everything except blocklisted.
+<a href=#288 id=288 data-nosnippet>288</a>        </span><span class="macro">assert_eq!</span>(
+<a href=#289 id=289 data-nosnippet>289</a>            filter_unit_names(
+<a href=#290 id=290 data-nosnippet>290</a>                all.clone(),
+<a href=#291 id=291 data-nosnippet>291</a>                <span class="kw-2">&amp;</span>HashSet::new(),
+<a href=#292 id=292 data-nosnippet>292</a>                <span class="kw-2">&amp;</span>HashSet::from([<span class="string">"blocked.service"</span>.to_string()]),
+<a href=#293 id=293 data-nosnippet>293</a>            ),
+<a href=#294 id=294 data-nosnippet>294</a>            <span class="macro">vec!</span>[<span class="string">"wanted.service"</span>.to_string(), <span class="string">"other.timer"</span>.to_string()]
+<a href=#295 id=295 data-nosnippet>295</a>        );
+<a href=#296 id=296 data-nosnippet>296</a>
+<a href=#297 id=297 data-nosnippet>297</a>        <span class="comment">// Non-empty allowlist: only listed units, minus blocklisted.
+<a href=#298 id=298 data-nosnippet>298</a>        </span><span class="macro">assert_eq!</span>(
+<a href=#299 id=299 data-nosnippet>299</a>            filter_unit_names(
+<a href=#300 id=300 data-nosnippet>300</a>                all.clone(),
+<a href=#301 id=301 data-nosnippet>301</a>                <span class="kw-2">&amp;</span>HashSet::from([<span class="string">"wanted.service"</span>.to_string(), <span class="string">"blocked.service"</span>.to_string()]),
+<a href=#302 id=302 data-nosnippet>302</a>                <span class="kw-2">&amp;</span>HashSet::from([<span class="string">"blocked.service"</span>.to_string()]),
+<a href=#303 id=303 data-nosnippet>303</a>            ),
+<a href=#304 id=304 data-nosnippet>304</a>            <span class="macro">vec!</span>[<span class="string">"wanted.service"</span>.to_string()]
+<a href=#305 id=305 data-nosnippet>305</a>        );
 <a href=#306 id=306 data-nosnippet>306</a>    }
 <a href=#307 id=307 data-nosnippet>307</a>
 <a href=#308 id=308 data-nosnippet>308</a>    <span class="attr">#[test]
-<a href=#309 id=309 data-nosnippet>309</a>    </span><span class="kw">fn </span>test_verify_stats_default() {
-<a href=#310 id=310 data-nosnippet>310</a>        <span class="kw">let </span>stats = VerifyStats::default();
-<a href=#311 id=311 data-nosnippet>311</a>        <span class="macro">assert_eq!</span>(stats.total, <span class="number">0</span>);
-<a href=#312 id=312 data-nosnippet>312</a>        <span class="macro">assert_eq!</span>(stats.by_type.len(), <span class="number">0</span>);
-<a href=#313 id=313 data-nosnippet>313</a>    }
-<a href=#314 id=314 data-nosnippet>314</a>
-<a href=#315 id=315 data-nosnippet>315</a>    <span class="attr">#[test]
-<a href=#316 id=316 data-nosnippet>316</a>    </span><span class="kw">fn </span>test_parse_verify_output() {
-<a href=#317 id=317 data-nosnippet>317</a>        <span class="kw">let </span>stderr = <span class="string">r#"
-<a href=#318 id=318 data-nosnippet>318</a>/usr/lib/systemd/system/foo.service:4: Unknown section 'Service'. Ignoring.
-<a href=#319 id=319 data-nosnippet>319</a>bar.slice: Command /bin/foo is not executable: No such file or directory
-<a href=#320 id=320 data-nosnippet>320</a>Unit baz.timer not found.
-<a href=#321 id=321 data-nosnippet>321</a>test-with-error.target: Some error message here
-<a href=#322 id=322 data-nosnippet>322</a>"#</span>;
-<a href=#323 id=323 data-nosnippet>323</a>        <span class="kw">let </span>failing = parse_verify_output(stderr);
-<a href=#324 id=324 data-nosnippet>324</a>        <span class="comment">// Debug output
-<a href=#325 id=325 data-nosnippet>325</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>sorted: Vec&lt;<span class="kw">_</span>&gt; = failing.iter().collect();
-<a href=#326 id=326 data-nosnippet>326</a>        sorted.sort();
-<a href=#327 id=327 data-nosnippet>327</a>        <span class="kw">for </span>unit <span class="kw">in </span><span class="kw-2">&amp;</span>sorted {
-<a href=#328 id=328 data-nosnippet>328</a>            <span class="macro">eprintln!</span>(<span class="string">"Found unit: {}"</span>, unit);
-<a href=#329 id=329 data-nosnippet>329</a>        }
-<a href=#330 id=330 data-nosnippet>330</a>
-<a href=#331 id=331 data-nosnippet>331</a>        <span class="macro">assert!</span>(failing.contains(<span class="string">"foo.service"</span>));
-<a href=#332 id=332 data-nosnippet>332</a>        <span class="macro">assert!</span>(failing.contains(<span class="string">"bar.slice"</span>));
-<a href=#333 id=333 data-nosnippet>333</a>        <span class="macro">assert!</span>(failing.contains(<span class="string">"baz.timer"</span>));
-<a href=#334 id=334 data-nosnippet>334</a>        <span class="macro">assert!</span>(failing.contains(<span class="string">"test-with-error.target"</span>));
-<a href=#335 id=335 data-nosnippet>335</a>        <span class="macro">assert_eq!</span>(failing.len(), <span class="number">4</span>);
-<a href=#336 id=336 data-nosnippet>336</a>    }
-<a href=#337 id=337 data-nosnippet>337</a>}
+<a href=#309 id=309 data-nosnippet>309</a>    </span><span class="kw">fn </span>test_build_verify_command_separates_flags_from_units() {
+<a href=#310 id=310 data-nosnippet>310</a>        <span class="comment">// Units like -.mount start with a dash: without `--`, analyze parses
+<a href=#311 id=311 data-nosnippet>311</a>        // them as options and exits before checking anything.
+<a href=#312 id=312 data-nosnippet>312</a>        </span><span class="kw">let </span>cmd = build_verify_command(<span class="kw-2">&amp;</span>[<span class="string">"-.mount"</span>.to_string(), <span class="string">"foo.service"</span>.to_string()]);
+<a href=#313 id=313 data-nosnippet>313</a>        <span class="kw">let </span>args: Vec&lt;<span class="kw">_</span>&gt; = cmd.get_args().collect();
+<a href=#314 id=314 data-nosnippet>314</a>        <span class="macro">assert_eq!</span>(args, <span class="macro">vec!</span>[<span class="string">"verify"</span>, <span class="string">"--"</span>, <span class="string">"-.mount"</span>, <span class="string">"foo.service"</span>]);
+<a href=#315 id=315 data-nosnippet>315</a>    }
+<a href=#316 id=316 data-nosnippet>316</a>
+<a href=#317 id=317 data-nosnippet>317</a>    <span class="attr">#[test]
+<a href=#318 id=318 data-nosnippet>318</a>    </span><span class="kw">fn </span>test_verify_stats_default() {
+<a href=#319 id=319 data-nosnippet>319</a>        <span class="kw">let </span>stats = VerifyStats::default();
+<a href=#320 id=320 data-nosnippet>320</a>        <span class="macro">assert_eq!</span>(stats.total, <span class="number">0</span>);
+<a href=#321 id=321 data-nosnippet>321</a>        <span class="macro">assert_eq!</span>(stats.by_type.len(), <span class="number">0</span>);
+<a href=#322 id=322 data-nosnippet>322</a>    }
+<a href=#323 id=323 data-nosnippet>323</a>
+<a href=#324 id=324 data-nosnippet>324</a>    <span class="attr">#[test]
+<a href=#325 id=325 data-nosnippet>325</a>    </span><span class="kw">fn </span>test_parse_verify_output() {
+<a href=#326 id=326 data-nosnippet>326</a>        <span class="kw">let </span>stderr = <span class="string">r#"
+<a href=#327 id=327 data-nosnippet>327</a>/usr/lib/systemd/system/foo.service:4: Unknown section 'Service'. Ignoring.
+<a href=#328 id=328 data-nosnippet>328</a>bar.slice: Command /bin/foo is not executable: No such file or directory
+<a href=#329 id=329 data-nosnippet>329</a>Unit baz.timer not found.
+<a href=#330 id=330 data-nosnippet>330</a>test-with-error.target: Some error message here
+<a href=#331 id=331 data-nosnippet>331</a>"#</span>;
+<a href=#332 id=332 data-nosnippet>332</a>        <span class="kw">let </span>failing = parse_verify_output(stderr);
+<a href=#333 id=333 data-nosnippet>333</a>        <span class="comment">// Debug output
+<a href=#334 id=334 data-nosnippet>334</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>sorted: Vec&lt;<span class="kw">_</span>&gt; = failing.iter().collect();
+<a href=#335 id=335 data-nosnippet>335</a>        sorted.sort();
+<a href=#336 id=336 data-nosnippet>336</a>        <span class="kw">for </span>unit <span class="kw">in </span><span class="kw-2">&amp;</span>sorted {
+<a href=#337 id=337 data-nosnippet>337</a>            <span class="macro">eprintln!</span>(<span class="string">"Found unit: {}"</span>, unit);
+<a href=#338 id=338 data-nosnippet>338</a>        }
+<a href=#339 id=339 data-nosnippet>339</a>
+<a href=#340 id=340 data-nosnippet>340</a>        <span class="macro">assert!</span>(failing.contains(<span class="string">"foo.service"</span>));
+<a href=#341 id=341 data-nosnippet>341</a>        <span class="macro">assert!</span>(failing.contains(<span class="string">"bar.slice"</span>));
+<a href=#342 id=342 data-nosnippet>342</a>        <span class="macro">assert!</span>(failing.contains(<span class="string">"baz.timer"</span>));
+<a href=#343 id=343 data-nosnippet>343</a>        <span class="macro">assert!</span>(failing.contains(<span class="string">"test-with-error.target"</span>));
+<a href=#344 id=344 data-nosnippet>344</a>        <span class="macro">assert_eq!</span>(failing.len(), <span class="number">4</span>);
+<a href=#345 id=345 data-nosnippet>345</a>    }
+<a href=#346 id=346 data-nosnippet>346</a>}
 </code></pre></div></section></main></body></html>

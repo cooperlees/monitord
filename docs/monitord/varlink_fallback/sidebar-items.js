@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["NoFallbackError"],"fn":["report_varlink_failure"]};
