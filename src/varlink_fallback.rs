@@ -9,6 +9,12 @@
 //! error instead, so the collector fails loudly and CI proves the collector
 //! set is varlink-clean rather than silently D-Bus-served.
 //!
+//! Scope notes (so the "varlink-clean" claim is not over-read): collectors
+//! with no varlink path (`[dbus]` stats, `machines` enumeration) never
+//! report a fallback — they just use the bus. And skipped-but-warned metric
+//! parses are not fallbacks either, so a clean run can still under-report;
+//! completeness assertions cover that, not this flag.
+//!
 //! The `collector` argument names the collector for the log line (e.g.
 //! `"units"`, `"networkd"`, `"container <name> units"`); `fallback` names
 //! what would have served the data (`"D-Bus"`, `"file-based"`). Keeping both
@@ -54,10 +60,13 @@ pub fn report_varlink_failure(
             source,
         });
     }
+    // `fallback` is passed in display form ("D-Bus", "file-based"), so no
+    // case transform here — #222 was specifically about these lines
+    // reading well.
     tracing::warn!(
         "Varlink {} failed, falling back to {}: {:?}",
         collector,
-        fallback.to_lowercase(),
+        fallback,
         source,
     );
     Ok(())

@@ -525,6 +525,15 @@ impl TryFrom<Ini> for Config {
         {
             config.varlink.no_fallback = no_fallback;
         }
+        // no_fallback only fires inside varlink code paths, so with the
+        // master switch off it is a silent no-op: warn rather than let a
+        // fully green all-D-Bus run pose as varlink-clean.
+        if config.varlink.no_fallback && !config.varlink.enabled {
+            warn!(
+                "[varlink] no_fallback=true has no effect while [varlink] enabled=false; \
+                 collectors will use D-Bus without a word"
+            );
+        }
 
         for entry in unknown_config_entries(&config_map) {
             warn!("Ignoring {entry}; check for a typo'd key or section");
@@ -944,6 +953,40 @@ key = value
         assert!(unknown.contains(&"unknown key 'varlink' in [timers]".to_string()));
         assert!(unknown.contains(&"unknown section [bogus]".to_string()));
         assert_eq!(unknown.len(), 3);
+    }
+
+    #[test]
+    fn test_no_fallback_parses_and_defaults_off() {
+        // Explicit true parses; absence keeps the derived Default (false),
+        // so stock configs without the key behave exactly as before.
+        let on = r###"
+[monitord]
+output_format = json
+
+[varlink]
+enabled = true
+no_fallback = true
+"###;
+        let mut f = NamedTempFile::new().expect("tempfile");
+        f.write_all(on.as_bytes()).expect("write");
+        let mut ini = Ini::new();
+        ini.load(f.path()).expect("load");
+        let parsed: Config = ini.try_into().expect("parse");
+        assert!(parsed.varlink.no_fallback);
+
+        let off = r###"
+[monitord]
+output_format = json
+
+[varlink]
+enabled = true
+"###;
+        let mut f = NamedTempFile::new().expect("tempfile");
+        f.write_all(off.as_bytes()).expect("write");
+        let mut ini = Ini::new();
+        ini.load(f.path()).expect("load");
+        let parsed: Config = ini.try_into().expect("parse");
+        assert!(!parsed.varlink.no_fallback);
     }
 
     #[test]

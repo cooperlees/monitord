@@ -382,13 +382,14 @@ async fn collect_and_cache(
         {
             Ok(stats) => (stats, crate::CollectorTransport::Varlink),
             Err(err) => {
+                // Plain `?`: NoFallbackError already renders the full
+                // explanation via Display; `{:?}` would dump the struct.
                 crate::varlink_fallback::report_varlink_failure(
                     no_fallback,
                     "boot blame",
                     "D-Bus",
                     err,
-                )
-                .map_err(|e| anyhow!("{:?}", e))?;
+                )?;
                 let connection = crate::dbus_connection(dbus, dbus_timeout)
                     .await
                     .map_err(|e| anyhow!("D-Bus connection error: {:?}", e))?;

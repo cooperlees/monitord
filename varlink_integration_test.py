@@ -454,8 +454,14 @@ def assert_dead_bus_run(container: str) -> None:
         # no_fallback=true turns every fallback into a loud failure, so
         # this run proves the enabled collectors are varlink-clean rather
         # than silently D-Bus-served. The dead bus address doubles the
-        # proof: any attempted fallback would fail to connect.
-        .replace("[varlink]\nenabled = true", "[varlink]\nenabled = true\nno_fallback = true")
+        # proof: any attempted fallback would fail to connect. Replaces
+        # the existing block rather than inserting a duplicate key:
+        # configparser lets the later assignment win, so an insert would
+        # silently leave no_fallback=false and the proof would be vacuous.
+        .replace(
+            "[varlink]\nenabled = true\nno_fallback = false",
+            "[varlink]\nenabled = true\nno_fallback = true",
+        )
     )
     dead_path = "/tmp/monitord-dead-bus-ci.conf"
     write_container_file(container, dead_path, dead_conf)

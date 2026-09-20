@@ -845,6 +845,17 @@ When varlink is enabled, monitord will attempt to collect stats via the varlink 
 automatically falling back to D-Bus or file-based collection when a varlink socket is unavailable
 (e.g., older systemd versions).
 
+Set `no_fallback = true` alongside it to turn any varlink failure into a loud per-collector
+error instead of falling back. That is a verification mode for proving a collector set is
+varlink-clean in CI — not a hardening flag: tripped collectors still report `success=0` in
+`collector_timings` and the run exits 0 (per-collector failures are deliberately non-fatal,
+especially in daemon mode), so CI must assert on the `success` gauges, not the exit status.
+`no_fallback` only fires inside varlink code paths, so it has no effect while `[varlink]
+enabled=false` (a warning is logged) or on collectors with no varlink path at all (`[dbus]`
+stats, `machines` enumeration). Partial varlink data that parses with warnings (e.g. a
+skipped metric) is not a fallback either — pair `no_fallback` with the completeness
+assertions, not as a substitute for them.
+
 Each varlink-capable collector (`[units]`, `[networkd]`, `[system-state]`, `[boot]`,
 `[verify]`, `[machines]` for container collection) also has its own `varlink` toggle,
 defaulting to true. A collector uses varlink only when both the global switch and its section toggle are
