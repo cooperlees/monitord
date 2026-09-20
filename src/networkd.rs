@@ -311,12 +311,13 @@ pub(crate) async fn read_ifindex_map(sysfs_root: &Path) -> HashMap<i32, String> 
     };
     while let Ok(Some(entry)) = dir.next_entry().await {
         // Entries are symlinks into /sys/devices, which file_type()
-        // reports as symlink, not dir. Only skip genuine non-links
-        // (e.g. /sys/class/net/bonding_masters when the bonding module
-        // is loaded): joining ifindex onto those yields ENOTDIR, and
-        // skipping up front avoids logging every cycle in daemon mode.
-        // file_type() does NOT follow links, so this also skips dangling
-        // symlinks (an interface vanishing mid-walk) without an error.
+        // reports as symlink, not dir (file_type() does NOT follow
+        // links). Only genuine non-links are skipped up front — e.g.
+        // /sys/class/net/bonding_masters when the bonding module is
+        // loaded, where joining ifindex would yield ENOTDIR every cycle
+        // in daemon mode. A dangling symlink (interface vanishing
+        // mid-walk) still reports is_symlink, so it passes the guard
+        // and is handled by the read_to_string arm below at debug level.
         let kind = entry.file_type().await;
         if !kind.is_ok_and(|kind| kind.is_symlink() || kind.is_dir()) {
             continue;
@@ -502,15 +503,18 @@ pub async fn update_networkd_stats(
     states_path: PathBuf,
     maybe_network_int_to_name: Option<HashMap<i32, String>>,
     sysfs_root: PathBuf,
-    dbus: crate::DbusCell,
-    dbus_timeout: u64,
+    maybe_dbus: Option<(crate::DbusCell, u64)>,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
+    // A container has no valid bus fallback: the host bus could only ever
+    // describe host links, so containers pass None and an empty sysfs
+    // means nameless rows rather than cross-namespace mislabelling.
+    let maybe_dbus_ref = maybe_dbus.as_ref().map(|(cell, timeout)| (cell, *timeout));
     match parse_interface_state_files(
         &states_path,
         maybe_network_int_to_name,
         &sysfs_root,
-        Some((&dbus, dbus_timeout)),
+        maybe_dbus_ref,
     )
     .await
     {

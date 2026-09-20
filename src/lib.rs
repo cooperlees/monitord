@@ -476,8 +476,7 @@ pub async fn stat_collector(
                     config_clone.networkd.link_state_dir.clone(),
                     None,
                     std::path::PathBuf::from("/sys"),
-                    dbus_cell,
-                    dbus_timeout,
+                    Some((dbus_cell, dbus_timeout)),
                     stats_clone,
                 )
                 .await

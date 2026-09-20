@@ -234,8 +234,7 @@ pub async fn update_machines_stats(
                     container_links,
                     None,
                     container_sysfs,
-                    crate::DbusCell::default(),
-                    config_clone.monitord.dbus_timeout,
+                    None,
                     stats_clone,
                 )
                 .await

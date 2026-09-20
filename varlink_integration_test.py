@@ -142,7 +142,6 @@ FIXTURE_UNITS: dict[str, dict[str, str]] = {
 #                               field is compared, including the timestamps,
 #                               process/task counts and the unset sentinels.
 EXCLUDED_KEY_PARTS: tuple[str, ...] = (
-    "monitord.pid1.",
     ".pid1.",
     "stat_collection_run_time_ms",
     "collector_timings.",
@@ -438,7 +437,7 @@ def install_machine_fixture(container: str) -> None:
             f"--releasever={MACHINE_FIXTURE_RELEASEVER}",
             "--setopt=reposdir=/tmp",
             "--installroot=" + root,
-            "install", "-y", "systemd",
+            "install", "-y", "systemd", "systemd-networkd",
         )
     except SystemExit:
         # A generic dnf failure here almost always means the pinned
@@ -644,14 +643,19 @@ def assert_dead_bus_run(container: str) -> None:
     # that does not exist, every enabled collector must still succeed —
     # varlink/fs/procfs paths never connect — and the run must exit 0.
     # Only collectors with a varlink or non-D-Bus path are enabled here:
-    # networkd goes file-based with its ifindex map from sysfs (no bus),
-    # machines/dbus_stats are D-Bus-only by design, and verify's
-    # `systemd-analyze` subprocess talks to the bus itself.
+    # networkd is forced onto the file fallback (`varlink = false`) with
+    # its ifindex map from sysfs (no bus), machines/dbus_stats are
+    # D-Bus-only by design, and verify's `systemd-analyze` subprocess
+    # talks to the bus itself.
     dead_conf = (
         docker_exec(container, "cat", VARLINK_CONF)
         .replace(
             "dbus_address = unix:path=/run/dbus/system_bus_socket",
             "dbus_address = unix:path=/nonexistent/monitord-test-bus",
+        )
+        .replace(
+            "[networkd]\nenabled = true\nvarlink = true",
+            "[networkd]\nenabled = true\nvarlink = false",
         )
         .replace("[verify]\nenabled = true", "[verify]\nenabled = false")
         .replace("[machines]\nenabled = true", "[machines]\nenabled = false")
