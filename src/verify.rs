@@ -211,8 +211,12 @@ pub async fn get_verify_stats(
 }
 
 /// Async wrapper that updates verify stats when passed a locked struct
+/// Collect verification stats, resolving the shared D-Bus connection only
+/// on a D-Bus code path: the varlink enumeration runs first and a bus-less
+/// host never connects at all.
 pub async fn update_verify_stats(
-    connection: zbus::Connection,
+    dbus: crate::DbusCell,
+    dbus_timeout: u64,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
     allowlist: HashSet<String>,
     blocklist: HashSet<String>,
@@ -237,6 +241,7 @@ pub async fn update_verify_stats(
                 );
                 locked_machine_stats.write().await.varlink_usage.verify =
                     Some(crate::CollectorTransport::Dbus);
+                let connection = crate::dbus_connection(&dbus, dbus_timeout).await?;
                 get_verify_stats(&connection, &allowlist, &blocklist)
                     .await
                     .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?
@@ -245,6 +250,7 @@ pub async fn update_verify_stats(
     } else {
         locked_machine_stats.write().await.varlink_usage.verify =
             Some(crate::CollectorTransport::Dbus);
+        let connection = crate::dbus_connection(&dbus, dbus_timeout).await?;
         get_verify_stats(&connection, &allowlist, &blocklist)
             .await
             .map_err(|e| anyhow::anyhow!("Error getting verify stats: {:?}", e))?
