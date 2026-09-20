@@ -209,6 +209,7 @@ class DiffOutputsTest(unittest.TestCase):
     def test_volatile_keys_are_excluded(self) -> None:
         dbus_stats = {
             "monitord.pid1.cpu_user_time": 1,
+            "monitord.machines.testbox.pid1.fd_count": 74,
             "monitord.stat_collection_run_time_ms": 10.0,
             "monitord.collector_timings.0.elapsed_ms": 1.0,
             "monitord.units.collection_timings.timer_dbus_fetches": 4,

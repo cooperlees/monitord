@@ -4,6 +4,7 @@
 //! Enumerations were copied from <https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-network/network-util.h>
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -14,6 +15,7 @@ use strum_macros::EnumIter;
 use strum_macros::EnumString;
 use thiserror::Error;
 use tokio::sync::RwLock;
+use tracing::debug;
 use tracing::error;
 
 use crate::MachineStats;
@@ -263,7 +265,11 @@ pub struct InterfaceState {
     pub required_for_online: BoolState,
 }
 
-/// Get interface id + name from dbus list_links API
+/// Get interface id + name from dbus list_links API.
+///
+/// Kept for environments where sysfs is restricted but the bus is
+/// reachable; the file fallback prefers [`read_ifindex_map`] (kernel truth,
+/// no IPC) and only reaches this when sysfs yields no usable mapping.
 async fn get_interface_links(
     connection: &zbus::Connection,
 ) -> Result<HashMap<i32, String>, MonitordNetworkdError> {
@@ -277,6 +283,60 @@ async fn get_interface_links(
         link_int_to_name.insert(network_link.0, network_link.1);
     }
     Ok(link_int_to_name)
+}
+
+/// Build the ifindex-to-name map from sysfs instead of D-Bus.
+///
+/// `/sys/class/net/<name>/ifindex` is kernel truth — the same source
+/// `Manager.ListLinks` ultimately reflects — so the file fallback can map
+/// state-file names (which are ifindexes) without touching the bus. Reads
+/// `sysfs_root` (normally `/sys`) so container collection can pass
+/// `/proc/<leader>/root/sys` and unit tests a fake tree.
+///
+/// Unreadable entries are skipped, not fatal: an interface that vanishes
+/// mid-walk simply has no entry, and `parse_interface_stats` already
+/// reports an empty name for unknown ids.
+pub(crate) async fn read_ifindex_map(sysfs_root: &Path) -> HashMap<i32, String> {
+    let mut map = HashMap::new();
+    let mut dir = match tokio::fs::read_dir(sysfs_root.join("class/net")).await {
+        Ok(dir) => dir,
+        Err(err) => {
+            debug!(
+                "Unable to read {}/class/net: {:?}",
+                sysfs_root.display(),
+                err
+            );
+            return map;
+        }
+    };
+    while let Ok(Some(entry)) = dir.next_entry().await {
+        // Entries are symlinks into /sys/devices, which file_type()
+        // reports as symlink, not dir (file_type() does NOT follow
+        // links). Only genuine non-links are skipped up front — e.g.
+        // /sys/class/net/bonding_masters when the bonding module is
+        // loaded, where joining ifindex would yield ENOTDIR every cycle
+        // in daemon mode. A dangling symlink (interface vanishing
+        // mid-walk) still reports is_symlink, so it passes the guard
+        // and is handled by the read_to_string arm below at debug level.
+        let kind = entry.file_type().await;
+        if !kind.is_ok_and(|kind| kind.is_symlink() || kind.is_dir()) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        match tokio::fs::read_to_string(entry.path().join("ifindex")).await {
+            Ok(contents) => match contents.trim().parse::<i32>() {
+                Ok(ifindex) => {
+                    map.insert(ifindex, name);
+                }
+                // An interface vanishing mid-walk simply has no entry;
+                // parse_interface_stats already reports an empty name for
+                // unknown ids. Debug, not error: routine, not actionable.
+                Err(err) => debug!("Unable to parse ifindex for interface {}: {:?}", name, err),
+            },
+            Err(err) => debug!("Unable to read ifindex for interface {}: {:?}", name, err),
+        }
+    }
+    map
 }
 
 /// Aggregated systemd-networkd state: per-interface details and total managed interface count
@@ -351,19 +411,37 @@ pub fn parse_interface_stats(
     Ok(interface_state)
 }
 
-/// Parse interface state files in directory supplied
+/// Parse interface state files in directory supplied.
+///
+/// The ifindex-to-name map comes from `maybe_network_int_to_name` when the
+/// caller has one; otherwise it is read from sysfs (`sysfs_root`, normally
+/// `/sys`) — kernel truth, no IPC. The D-Bus `ListLinks` lookup remains
+/// only as a last resort for environments where sysfs is restricted but
+/// the bus is reachable.
 pub async fn parse_interface_state_files(
     states_path: &PathBuf,
     maybe_network_int_to_name: Option<HashMap<i32, String>>,
-    maybe_connection: Option<&zbus::Connection>,
+    sysfs_root: &Path,
+    maybe_dbus: Option<(&crate::DbusCell, u64)>,
 ) -> Result<NetworkdState, MonitordNetworkdError> {
     let mut managed_interface_count: u64 = 0;
     let mut interfaces_state = vec![];
 
     let network_int_to_name = match maybe_network_int_to_name {
+        Some(valid_hashmap) => valid_hashmap,
         None => {
-            if let Some(connection) = maybe_connection {
-                match get_interface_links(connection).await {
+            let sysfs_map = read_ifindex_map(sysfs_root).await;
+            if !sysfs_map.is_empty() {
+                sysfs_map
+            } else if let Some((dbus, dbus_timeout)) = maybe_dbus {
+                // Last resort only: resolving the cell connects, so an
+                // empty sysfs on a bus-less host fails here, not earlier.
+                // MonitordError today only wraps zbus errors, so this
+                // unwrap is exhaustive by construction.
+                let connection = crate::dbus_connection(dbus, dbus_timeout)
+                    .await
+                    .map_err(|e| MonitordNetworkdError::ZbusError(e.into_zbus()))?;
+                match get_interface_links(&connection).await {
                     Ok(hashmap) => hashmap,
                     Err(err) => {
                         error!(
@@ -375,12 +453,11 @@ pub async fn parse_interface_state_files(
                 }
             } else {
                 error!(
-                    "Unable to get interface links via DBUS and no network_int_to_name supplied"
+                    "Unable to map interface ids to names: sysfs gave no entries and no D-Bus cell supplied"
                 );
                 return Ok(NetworkdState::default());
             }
         }
-        Some(valid_hashmap) => valid_hashmap,
     };
 
     let mut state_file_dir_entries = tokio::fs::read_dir(states_path).await?;
@@ -414,15 +491,32 @@ pub async fn parse_interface_state_files(
     })
 }
 
-/// Async wrapper than can update networkd stats when passed a locked struct
+/// Async wrapper than can update networkd stats when passed a locked struct.
+///
+/// `sysfs_root` backs the sysfs ifindex map (normally `/sys`; container
+/// collection passes `/proc/<leader>/root/sys`). Takes the shared D-Bus
+/// cell rather than a connection: the sysfs map serves the file fallback
+/// without ever connecting, and the cell is resolved only when sysfs
+/// yields nothing usable — the same lazy pattern as
+/// `update_boot_blame_stats`.
 pub async fn update_networkd_stats(
     states_path: PathBuf,
     maybe_network_int_to_name: Option<HashMap<i32, String>>,
-    connection: zbus::Connection,
+    sysfs_root: PathBuf,
+    maybe_dbus: Option<(crate::DbusCell, u64)>,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
 ) -> anyhow::Result<()> {
-    match parse_interface_state_files(&states_path, maybe_network_int_to_name, Some(&connection))
-        .await
+    // A container has no valid bus fallback: the host bus could only ever
+    // describe host links, so containers pass None and an empty sysfs
+    // means nameless rows rather than cross-namespace mislabelling.
+    let maybe_dbus_ref = maybe_dbus.as_ref().map(|(cell, timeout)| (cell, *timeout));
+    match parse_interface_state_files(
+        &states_path,
+        maybe_network_int_to_name,
+        &sysfs_root,
+        maybe_dbus_ref,
+    )
+    .await
     {
         Ok(networkd_stats) => {
             let mut machine_stats = locked_machine_stats.write().await;
@@ -525,12 +619,80 @@ MDNS=no
             parse_interface_state_files(
                 &path,
                 return_mock_int_name_hashmap(),
+                Path::new("/nonexistent-sysfs"),
                 None, // No DBUS in tests
             )
             .await
             .expect("Problem with parsing interface stte files")
         );
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_read_ifindex_map_from_fake_sysfs() {
+        // Layout mirrors /sys/class/net, where each name is a symlink
+        // into /sys/devices — the reader must follow links, not require
+        // real directories.
+        let temp_dir = tempdir().expect("temp dir");
+        let class_net = temp_dir.path().join("class/net");
+        std::fs::create_dir_all(&class_net).expect("create class dir");
+        let devices = temp_dir.path().join("devices");
+        for (name, ifindex) in [("eth0", "2\n"), ("wlan0", "3\n")] {
+            let target = devices.join(name);
+            std::fs::create_dir_all(&target).expect("create fake device dir");
+            std::fs::write(target.join("ifindex"), ifindex).expect("write fake ifindex");
+            std::os::unix::fs::symlink(&target, class_net.join(name)).expect("link iface");
+        }
+        // A regular file (like bonding_masters) is skipped, not fatal.
+        std::fs::write(class_net.join("bonding_masters"), "").expect("write regular file");
+
+        let map = read_ifindex_map(temp_dir.path()).await;
+        assert_eq!(map.get(&2), Some(&"eth0".to_string()));
+        assert_eq!(map.get(&3), Some(&"wlan0".to_string()));
+        assert_eq!(map.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_parse_interface_state_files_uses_sysfs_map() {
+        // End to end without D-Bus and without a caller map: the state
+        // file's ifindex resolves via the fake sysfs tree.
+        let temp_dir = tempdir().expect("temp dir");
+        let links_dir = temp_dir.path().join("links");
+        std::fs::create_dir_all(&links_dir).expect("create links dir");
+        let mut state_file = File::create(links_dir.join("2")).expect("create state file");
+        writeln!(state_file, "{}", MOCK_INTERFACE_STATE).expect("write state file");
+        // Symlink like real sysfs (see test_read_ifindex_map_from_fake_sysfs).
+        let target = temp_dir.path().join("devices/eth0");
+        std::fs::create_dir_all(&target).expect("create device dir");
+        std::fs::write(target.join("ifindex"), "2\n").expect("write ifindex");
+        std::fs::create_dir_all(temp_dir.path().join("class/net")).expect("create class dir");
+        std::os::unix::fs::symlink(&target, temp_dir.path().join("class/net/eth0"))
+            .expect("link iface");
+
+        let state = parse_interface_state_files(
+            &PathBuf::from(&links_dir),
+            None,
+            temp_dir.path(),
+            None, // No DBUS: sysfs must serve the map
+        )
+        .await
+        .expect("parse state files");
+        assert_eq!(state.managed_interfaces, 1);
+        assert_eq!(state.interfaces_state[0].name, "eth0");
+    }
+
+    #[tokio::test]
+    async fn test_parse_interface_state_files_empty_sysfs_no_conn() {
+        // Empty sysfs and no connection: honest empty result, not a hang
+        // or a panic waiting for D-Bus.
+        let temp_dir = tempdir().expect("temp dir");
+        let links_dir = temp_dir.path().join("links");
+        std::fs::create_dir_all(&links_dir).expect("create links dir");
+        let state =
+            parse_interface_state_files(&PathBuf::from(&links_dir), None, temp_dir.path(), None)
+                .await
+                .expect("parse state files");
+        assert_eq!(state, NetworkdState::default());
     }
 
     #[test]

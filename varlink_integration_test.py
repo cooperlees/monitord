@@ -122,6 +122,8 @@ FIXTURE_UNITS: dict[str, dict[str, str]] = {
 
 # Keys excluded from the parity comparison:
 #   monitord.pid1.*             procfs values, change between sequential runs
+#   machines.*.pid1.*           same, inside containers (fd counts move as
+#                               connections come and go between the runs)
 #   stat_collection_run_time_ms end-to-end wall time, also varies
 #   collector_timings.*         per-collector wall times, vary between runs
 #   collection_timings.*        inner units phase timings vary between runs, and
@@ -140,7 +142,7 @@ FIXTURE_UNITS: dict[str, dict[str, str]] = {
 #                               field is compared, including the timestamps,
 #                               process/task counts and the unset sentinels.
 EXCLUDED_KEY_PARTS: tuple[str, ...] = (
-    "monitord.pid1.",
+    ".pid1.",
     "stat_collection_run_time_ms",
     "collector_timings.",
     "collection_timings.",
@@ -435,7 +437,7 @@ def install_machine_fixture(container: str) -> None:
             f"--releasever={MACHINE_FIXTURE_RELEASEVER}",
             "--setopt=reposdir=/tmp",
             "--installroot=" + root,
-            "install", "-y", "systemd",
+            "install", "-y", "systemd", "systemd-networkd",
         )
     except SystemExit:
         # A generic dnf failure here almost always means the pinned
@@ -641,16 +643,20 @@ def assert_dead_bus_run(container: str) -> None:
     # that does not exist, every enabled collector must still succeed —
     # varlink/fs/procfs paths never connect — and the run must exit 0.
     # Only collectors with a varlink or non-D-Bus path are enabled here:
-    # networkd goes file-based but needs ListLinks for the ifindex map,
-    # machines/dbus_stats are D-Bus-only by design, and verify's
-    # `systemd-analyze` subprocess talks to the bus itself.
+    # networkd is forced onto the file fallback (`varlink = false`) with
+    # its ifindex map from sysfs (no bus), machines/dbus_stats are
+    # D-Bus-only by design, and verify's `systemd-analyze` subprocess
+    # talks to the bus itself.
     dead_conf = (
         docker_exec(container, "cat", VARLINK_CONF)
         .replace(
             "dbus_address = unix:path=/run/dbus/system_bus_socket",
             "dbus_address = unix:path=/nonexistent/monitord-test-bus",
         )
-        .replace("[networkd]\nenabled = true", "[networkd]\nenabled = false")
+        .replace(
+            "[networkd]\nenabled = true\nvarlink = true",
+            "[networkd]\nenabled = true\nvarlink = false",
+        )
         .replace("[verify]\nenabled = true", "[verify]\nenabled = false")
         .replace("[machines]\nenabled = true", "[machines]\nenabled = false")
         # no_fallback=true turns every fallback into a loud failure, so
@@ -679,7 +685,19 @@ def assert_dead_bus_run(container: str) -> None:
         raise SystemExit(
             f"FAIL: dead-bus run had failing collectors: {sorted(failures)}"
         )
-    print("PASS: dead-bus run exited 0 with every enabled collector at success=1")
+    # The file fallback is the path under test here (varlink would prove
+    # nothing about it), so the run must actually have collected
+    # interfaces — an empty-but-successful collection would pass above
+    # while proving nothing.
+    managed = stats.get("monitord.networkd.managed_interfaces", 0)
+    if not isinstance(managed, int) or managed < 1:
+        raise SystemExit(
+            f"FAIL: dead-bus run collected no networkd interfaces: {managed!r}"
+        )
+    print(
+        "PASS: dead-bus run exited 0 with every enabled collector at success=1 "
+        f"({managed} networkd interfaces via the file path)"
+    )
 
 
 def run_monitord(container: str, config_path: str) -> tuple[Stats, str]:

@@ -185,7 +185,6 @@ pub async fn update_machines_stats(
 
         if config.networkd.enabled {
             let config_clone = Arc::clone(&config);
-            let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
             let no_fallback = config_clone.varlink.no_fallback;
@@ -218,10 +217,24 @@ pub async fn update_machines_stats(
                 }
                 stats_clone.write().await.varlink_usage.networkd =
                     Some(crate::CollectorTransport::Dbus);
+                // Same fs-root prefixing the units/cgroup collectors use:
+                // both the link state files AND the sysfs ifindex map
+                // come from inside the container, so host ifindexes are
+                // never labelled with container interface names (or vice
+                // versa). A container sharing the host netns simply sees
+                // identical trees, which is why CI never caught the old
+                // host-files/host-bus pairing being self-consistent.
+                let container_root = format!("/proc/{leader_pid}/root");
+                let container_sysfs = std::path::PathBuf::from(format!("{container_root}/sys"));
+                let container_links = std::path::PathBuf::from(format!(
+                    "{container_root}{}",
+                    config_clone.networkd.link_state_dir.display()
+                ));
                 crate::networkd::update_networkd_stats(
-                    config_clone.networkd.link_state_dir.clone(),
+                    container_links,
                     None,
-                    sdc_clone,
+                    container_sysfs,
+                    None,
                     stats_clone,
                 )
                 .await
