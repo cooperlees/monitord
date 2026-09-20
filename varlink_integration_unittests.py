@@ -133,13 +133,27 @@ class BuildCiConfigsTest(unittest.TestCase):
 
     def test_missing_units_to_rename_fails_loudly(self) -> None:
         # A monitord.conf whose allowlist stops naming the units we rename would
-        # silently produce a config tracking no units at all.
+        # silently produce a config tracking no units at all. Each guard
+        # isolates its own section: the state allowlist here, the machines
+        # allowlist in the next test.
         with self.assertRaises(SystemExit) as caught:
             vit.build_ci_configs(
                 "[units.state_stats.allowlist]\nfoo.service\n\n"
-                "[machines.allowlist]\ntestbox\n"
+                "[machines.allowlist]\nfedora38\n"
             )
         self.assertIn("dbus-broker.service", str(caught.exception))
+
+    def test_missing_machine_to_rename_fails_loudly(self) -> None:
+        # Mirror of the above for the machines allowlist: without the
+        # fixture rename the machine assertions would cover nothing.
+        # The message names the section to go fix.
+        with self.assertRaises(SystemExit) as caught:
+            vit.build_ci_configs(
+                "[units.state_stats.allowlist]\nchrony.service\nsshd.service\n\n"
+                "[machines.allowlist]\nsomething-else\n"
+            )
+        self.assertIn(vit.MACHINE_FIXTURE_NAME, str(caught.exception))
+        self.assertIn("[machines.allowlist]", str(caught.exception))
 
     def test_fixture_units_named_elsewhere_do_not_count(self) -> None:
         # The fixture units also appear in other sections, so confirming the
