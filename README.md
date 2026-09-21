@@ -299,6 +299,30 @@ the `machines` keyword and machine name. For example:
 }
 ```
 
+### Permissions
+
+monitord reaches each machine's sockets and files through `/proc/<leader_pid>/root/…`.
+The kernel only allows that for processes that are allowed to ptrace the machine's leader
+process, so when running as a non-root user (like the shipped `monitord.service`),
+machine collection needs `CAP_SYS_PTRACE`:
+
+```ini
+# /etc/systemd/system/monitord.service.d/machines.conf
+[Service]
+AmbientCapabilities=CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_SYS_PTRACE
+```
+
+Without it every machine fails with `Permission denied` — D-Bus, varlink and unit file
+stats alike — while host collection keeps working. `CAP_DAC_READ_SEARCH` is not enough.
+Be aware `CAP_SYS_PTRACE` is broad (it also allows reading other processes' memory), so
+only grant it if you use machine collection.
+
+Machines started with user namespacing (e.g. `machinectl start` defaults to
+`PrivateUsers=pick`) also reject monitord's D-Bus connection, as host users are not mapped
+inside the machine. Set `PrivateUsers=no` in `/etc/systemd/nspawn/<machine>.nspawn` to
+collect from them.
+
 ## Output Formats
 
 ### json
@@ -764,6 +788,11 @@ The system bus connection is created lazily: monitord starts fine without a bus 
 
 systemd-networkd must be installed and running (`systemctl start systemd-networkd`). If networkd is not in use on your system, disable the collector with `enabled = false` in `[networkd]`.
 
+**Permission denied for machines / containers**
+
+A non-root monitord needs `CAP_SYS_PTRACE` to reach machines via `/proc/<leader_pid>/root`.
+See [Permissions](#permissions) under Machines support.
+
 **Permission denied for D-Bus stats**
 
 The `[dbus]` collector requires permission to call `org.freedesktop.DBus.Debug.Stats.GetStats`. Either run monitord as root or add a D-Bus policy file — see the [dbus stats](#dbus-stats) section.
@@ -904,11 +933,19 @@ toggle of their own: they ride the units path and follow `[units] varlink`.
 
 ### Containers
 
-For systemd-nspawn containers, monitord connects to the container's varlink socket via
+For systemd-nspawn containers, monitord tries the container's varlink socket via
 `/proc/<leader_pid>/root/run/systemd/report/io.systemd.Manager`, similar to how D-Bus uses
 the container-scoped bus socket. Networkd stats use
 `/proc/<leader_pid>/root/run/systemd/netif/io.systemd.Network`, with the same file-based fallback.
 System state and version use `/proc/<leader_pid>/root/run/systemd/io.systemd.Manager`.
+
+**Currently these connections are refused by systemd and monitord falls back to D-Bus.**
+systemd's credential-checking varlink servers (PID 1, networkd) cannot translate the PID of a
+peer in the host's PID namespace and reject it
+([#211](https://github.com/cooperlees/monitord/issues/211),
+[systemd/systemd#43807](https://github.com/systemd/systemd/issues/43807)). Container data is
+still collected correctly over D-Bus. Either way, see [Permissions](#permissions) for the
+`CAP_SYS_PTRACE` requirement.
 
 ### varlink 101
 

@@ -13,6 +13,10 @@ User=monitord
 Group=monitord
 RuntimeDirectory=monitord
 RuntimeDirectoryMode=0750
+# Machine/container collection reaches machines via /proc/<leader_pid>/root,
+# which needs CAP_SYS_PTRACE. Uncomment if you collect from machines.
+#AmbientCapabilities=CAP_SYS_PTRACE
+#CapabilityBoundingSet=CAP_SYS_PTRACE
 
 # Hardening
 ProtectSystem=strict
