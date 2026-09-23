@@ -90,8 +90,10 @@ fn map_interface(iface: &Interface) -> InterfaceState {
 /// the fallback just reads the small state files in `/run/systemd/netif/links`.
 /// The cost is daemon-side serialization, so nothing client-side avoids it;
 /// varlink still wins on authority (one RPC vs. scraping daemon-private files).
-pub async fn get_networkd_state(socket_path: &str) -> anyhow::Result<NetworkdState> {
-    let mut conn = zlink::unix::connect(socket_path).await?;
+pub async fn get_networkd_state(
+    endpoint: &crate::varlink::endpoint::VarlinkEndpoint,
+) -> anyhow::Result<NetworkdState> {
+    let mut conn = endpoint.connect().await?;
     let result = conn.describe().await?;
     match result {
         Ok(output) => {

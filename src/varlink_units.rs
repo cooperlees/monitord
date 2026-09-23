@@ -30,7 +30,6 @@ use crate::units::UnitsCollectionTimings;
 use crate::varlink::metrics::{ListOutput, Metrics};
 use crate::MachineStats;
 use futures_util::stream::TryStreamExt;
-use zlink::unix;
 
 pub const METRICS_SOCKET_PATH: &str = "/run/systemd/report/io.systemd.Manager";
 
@@ -388,13 +387,15 @@ pub fn parse_one_metric(
 /// Collect all metrics from the varlink socket.
 /// Runs on a blocking thread with a dedicated runtime because the zlink
 /// stream is !Send and cannot be held across await points in a Send future.
-pub(crate) async fn collect_metrics(socket_path: String) -> anyhow::Result<Vec<ListOutput>> {
+pub(crate) async fn collect_metrics(
+    endpoint: crate::varlink::endpoint::VarlinkEndpoint,
+) -> anyhow::Result<Vec<ListOutput>> {
     tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
         rt.block_on(async move {
-            let mut conn = unix::connect(&socket_path).await?;
+            let mut conn = endpoint.connect().await?;
             let stream = conn.list().await?;
             futures_util::pin_mut!(stream);
 
@@ -422,7 +423,7 @@ pub(crate) async fn collect_metrics(socket_path: String) -> anyhow::Result<Vec<L
 
 pub async fn parse_metrics(
     stats: &mut SystemdUnitStats,
-    socket_path: &str,
+    endpoint: &crate::varlink::endpoint::VarlinkEndpoint,
     config: &crate::config::UnitsConfig,
     services: &HashSet<String>,
 ) -> anyhow::Result<Vec<String>> {
@@ -434,7 +435,7 @@ pub async fn parse_metrics(
     // which cannot reach their own varlink sockets (#211), or when the unit
     // socket is unusable and the whole collection is redone over D-Bus.
     let bulk_fetch_start = Instant::now();
-    let metrics = collect_metrics(socket_path.to_string()).await?;
+    let metrics = collect_metrics(endpoint.clone()).await?;
     let bulk_fetch_elapsed = bulk_fetch_start.elapsed();
     stats.collection_timings.list_units_ms = bulk_fetch_elapsed.as_secs_f64() * 1000.0;
 
@@ -688,7 +689,7 @@ fn select_timers(timer_names: &[String], config: &crate::config::TimersConfig) -
 /// Selection runs under a read lock and the varlink round trips hold no lock at
 /// all, matching how the D-Bus override behaved.
 pub async fn apply_unit_details(
-    socket_path: &str,
+    endpoint: &crate::varlink::endpoint::VarlinkEndpoint,
     locked_machine_stats: &Arc<RwLock<MachineStats>>,
     config: &crate::config::Config,
     fs_root: &str,
@@ -704,7 +705,7 @@ pub async fn apply_unit_details(
     }
 
     let fetch_start = Instant::now();
-    let mut lookup = crate::varlink_unit::UnitLookup::connect(socket_path).await?;
+    let mut lookup = crate::varlink_unit::UnitLookup::connect(endpoint).await?;
 
     // Phase 1: resolve every wanted service over varlink (sequential — PID 1
     // serves these one at a time) and remember the replies with live cgroups.
@@ -850,7 +851,7 @@ fn sum_units_by_type(stats: &SystemdUnitStats) -> u64 {
 
 pub async fn get_unit_stats(
     config: &crate::config::Config,
-    socket_path: &str,
+    endpoint: &crate::varlink::endpoint::VarlinkEndpoint,
 ) -> anyhow::Result<(SystemdUnitStats, Vec<String>)> {
     if !config.units.state_stats_allowlist.is_empty() {
         debug!(
@@ -870,8 +871,7 @@ pub async fn get_unit_stats(
 
     // Always collect metrics to get aggregate counts (UnitsByTypeTotal, UnitsByStateTotal)
     // as well as per-unit state data when config.units.state_stats is enabled.
-    let timer_names =
-        parse_metrics(&mut stats, socket_path, &config.units, &config.services).await?;
+    let timer_names = parse_metrics(&mut stats, endpoint, &config.units, &config.services).await?;
 
     // Prefer the UnitsTotal metric when present: it is exact, including unit
     // types we do not map (e.g. swap). Fall back to summing per-type counts
@@ -888,9 +888,9 @@ pub async fn get_unit_stats(
 pub async fn update_unit_stats(
     config: Arc<crate::config::Config>,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
-    socket_path: String,
+    endpoint: crate::varlink::endpoint::VarlinkEndpoint,
 ) -> anyhow::Result<Vec<String>> {
-    let (units_stats, timer_names) = get_unit_stats(&config, &socket_path).await?;
+    let (units_stats, timer_names) = get_unit_stats(&config, &endpoint).await?;
     let mut machine_stats = locked_machine_stats.write().await;
     machine_stats.units = units_stats;
     Ok(timer_names)

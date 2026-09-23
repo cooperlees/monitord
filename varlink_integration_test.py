@@ -10,13 +10,18 @@ reproduces locally with:
 
     ./varlink_integration_test.py
 
-The container is left running between invocations for fast iteration; use
---fresh to rebuild it from scratch.
+The image is rebuilt on every run (Docker's layer cache makes that a no-op
+when the Dockerfile has not changed), and the container is recreated whenever
+the image changes, so a local run matches the GitHub Action — which always
+builds from scratch — instead of silently reusing a stale image. The container
+is otherwise left running between invocations for fast iteration; use --fresh
+to rebuild the image without the cache and recreate the container.
 """
 
 import argparse
 import json
 import subprocess
+import re
 import sys
 import time
 from pathlib import Path
@@ -56,6 +61,15 @@ metalink=https://mirrors.fedoraproject.org/metalink?repo=fedora-44&arch=x86_64
 enabled=1
 gpgcheck=0
 """
+
+# Second fixture machine: a transient copy of the test container's own Rawhide
+# root (systemd's TEST-87 pattern: --volatile=yes --directory=/ with /etc
+# bound read-only), so container collection is also exercised against current
+# systemd. The pinned machine above runs systemd 259, older than the Metrics
+# socket (v260+), so its units collection falls back to D-Bus; this one carries
+# every endpoint and must be collected over varlink without any D-Bus fetches.
+MACHINE_CURRENT_NAME = "testbox-current"
+MACHINE_NAMES: tuple[str, ...] = (MACHINE_FIXTURE_NAME, MACHINE_CURRENT_NAME)
 
 # Stock monitord.conf tracks units that do not exist in a Rawhide container.
 ALLOWLIST_RENAMES: dict[str, str] = {
@@ -180,6 +194,38 @@ EXPECTED_VARLINK_USAGE: dict[str, dict[str, int]] = {
     },
 }
 
+# Per-machine collector transports (machines.<name>.varlink_usage.*), which
+# the parity comparison excludes like the host gauges. Container varlink goes
+# through a per-machine connector inside the machine's PID namespace (see
+# src/varlink/machine_connector.rs; the test runs monitord as root, so it has
+# the CAP_SYS_ADMIN that needs). On the systemd 259 machine PID 1's Describe
+# works, but there is no Metrics socket (v260+) and networkd is not enabled,
+# so units and networkd fall back; the current machine is varlink throughout.
+MACHINE_COLLECTORS: tuple[str, ...] = ("networkd", "system_state", "units", "version")
+EXPECTED_MACHINE_VARLINK_USAGE: dict[str, dict[str, dict[str, int]]] = {
+    "dbus": {
+        machine: {collector: 0 for collector in MACHINE_COLLECTORS}
+        for machine in MACHINE_NAMES
+    },
+    "varlink": {
+        MACHINE_FIXTURE_NAME: {
+            "networkd": 0,
+            "system_state": 1,
+            "units": 0,
+            "version": 1,
+        },
+        MACHINE_CURRENT_NAME: {collector: 1 for collector in MACHINE_COLLECTORS},
+    },
+}
+
+# The container varlink attempts that must fall back in the varlink run, as
+# (machine, collector) — exactly these: any other fallback (host or container)
+# means a collector silently stopped using varlink, and a missing one means
+# the fixture changed or the log phrasing did and the check went blind.
+EXPECTED_CONTAINER_FALLBACKS: frozenset[tuple[str, str]] = frozenset(
+    {(MACHINE_FIXTURE_NAME, "units"), (MACHINE_FIXTURE_NAME, "networkd")}
+)
+
 
 def step(message: str) -> None:
     print(f"\n=== {message} ===", flush=True)
@@ -234,6 +280,11 @@ def container_matches(container: str, repo: Path, image: str) -> bool:
     checkout's source while reporting on this one.
     """
     image_used = docker("inspect", "-f", "{{.Config.Image}}", container).strip()
+    # Started from the image by that name, but is it still the current build?
+    # An image rebuilt since (e.g. a Dockerfile change adding a tool the test
+    # needs) leaves the old container running the old filesystem.
+    image_id = docker("inspect", "-f", "{{.Image}}", container).strip()
+    current_id = docker("image", "inspect", "-f", "{{.Id}}", image).strip()
     mounted = docker(
         "inspect",
         "-f",
@@ -241,11 +292,45 @@ def container_matches(container: str, repo: Path, image: str) -> bool:
         container,
     ).strip()
     # Docker Desktop reports host bind mounts under a /host_mnt prefix.
-    return image_used == image and mounted.removeprefix("/host_mnt") == str(repo)
+    return (
+        image_used == image
+        and image_id == current_id
+        and mounted.removeprefix("/host_mnt") == str(repo)
+    )
 
 
-def image_exists(image: str) -> bool:
-    return bool(docker("images", "-q", image).strip())
+# Binaries the test needs inside the container, with what needs them. Checked
+# up front so a drifted image fails with one clear message here, rather than
+# halfway through with whatever error the missing tool happens to produce.
+REQUIRED_CONTAINER_TOOLS: dict[str, str] = {
+    "systemd-nspawn": "booting the fixture machines",
+    "machinectl": "registering and inspecting the fixture machines",
+    "systemd-run": "the capability matrix and the nspawn transient units",
+    "useradd": "the unprivileged user of the capability matrix",
+    "dnf": "installing the pinned fixture machine root",
+    "cargo": "building monitord",
+}
+
+
+def assert_container_tools(container: str) -> None:
+    step("Checking the image carries the tools the test needs")
+    missing = {
+        tool: why
+        for tool, why in REQUIRED_CONTAINER_TOOLS.items()
+        if subprocess.run(
+            ["docker", "exec", container, "sh", "-c", f"command -v {tool}"],
+            capture_output=True,
+        ).returncode
+        != 0
+    }
+    if missing:
+        detail = ", ".join(f"{tool} ({why})" for tool, why in sorted(missing.items()))
+        raise SystemExit(
+            f"FAIL: the container image is missing: {detail} — add it to the "
+            "Dockerfile (the GitHub Action builds the image from scratch, so a "
+            "local-only failure here means a stale image: rerun with --fresh)"
+        )
+    print(f"PASS: {', '.join(sorted(REQUIRED_CONTAINER_TOOLS))} present")
 
 
 def start_container(repo: Path, image: str, container: str) -> None:
@@ -324,8 +409,10 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
             # search would still pass with an empty allowlist and the
             # machine assertions would silently cover nothing.
             if line.strip() == "fedora38":
-                line = MACHINE_FIXTURE_NAME
-                renamed[MACHINE_FIXTURE_NAME] = "[machines.allowlist]"
+                dbus_lines.append(MACHINE_FIXTURE_NAME)
+                line = MACHINE_CURRENT_NAME
+                for machine in MACHINE_NAMES:
+                    renamed[machine] = "[machines.allowlist]"
         elif section == "[units.state_stats.allowlist]":
             # Tracked per substitution, not by searching the finished config:
             # the fixture units also appear in other sections, so a global
@@ -355,7 +442,7 @@ def build_ci_configs(conf_text: str) -> tuple[str, str]:
     # renamed maps name -> section, so the message says which section to
     # go fix for each missing name — not just the successfully tracked ones.
     wanted: dict[str, str] = {v: "[units.state_stats.allowlist]" for v in ALLOWLIST_RENAMES.values()}
-    wanted[MACHINE_FIXTURE_NAME] = "[machines.allowlist]"
+    wanted.update({machine: "[machines.allowlist]" for machine in MACHINE_NAMES})
     missing = {name: wanted[name] for name in sorted(set(wanted) - set(renamed))}
     if missing:
         detail = ", ".join(f"{name} ({section})" for name, section in missing.items())
@@ -421,10 +508,6 @@ def install_machine_fixture(container: str) -> None:
     # the host can read its cgroup tree via /proc/<leader>/root. Kept
     # minimal on purpose: every unit inside it multiplies the D-Bus calls
     # the assertions count.
-    # systemd-nspawn/machinectl come from the systemd-container package,
-    # baked into the image (Dockerfile) — fail loudly here rather than
-    # halfway through the install if a stale image predates it.
-    docker_exec(container, "test", "-x", "/usr/bin/systemd-nspawn")
     root = f"/var/lib/machines/{MACHINE_FIXTURE_NAME}"
     # Pinned-release repos (see MACHINE_FIXTURE_RELEASEVER): --use-host-config
     # would pull the Rawhide repo definition instead, so write a dedicated
@@ -490,6 +573,54 @@ def install_machine_fixture(container: str) -> None:
             return
         time.sleep(3)
     raise SystemExit(f"FAIL: machine {MACHINE_FIXTURE_NAME} never registered")
+
+
+def install_current_machine_fixture(container: str) -> None:
+    step("Booting current-systemd fixture machine")
+    # See MACHINE_CURRENT_NAME. No image install: the machine is the test
+    # container's own root, so it runs the same current systemd as the host.
+    # --private-network gives it its own netns, so networkd runs inside it
+    # (with only lo) without touching host interfaces the parity check reads.
+    # The cgroup fixture unit is host-only: hidden from the machine so its
+    # [services] entry is absent there on both paths alike.
+    name = MACHINE_CURRENT_NAME
+    write_container_file(
+        container, f"/etc/systemd/nspawn/{name}.nspawn", "[Exec]\nPrivateUsers=no\n"
+    )
+    subprocess.run(
+        ["docker", "exec", container, "machinectl", "terminate", name],
+        capture_output=True,
+    )
+    subprocess.run(
+        ["docker", "exec", container, "systemctl", "stop", f"nspawn-{name}"],
+        capture_output=True,
+    )
+    docker_exec(
+        container,
+        "systemd-run",
+        "--unit", f"nspawn-{name}",
+        "--property=Type=notify",
+        "systemd-nspawn",
+        f"--machine={name}",
+        "--directory=/",
+        "--volatile=yes",
+        "--bind-ro=/etc",
+        "--inaccessible=/etc/machine-id",
+        f"--inaccessible=/etc/systemd/system/{CGROUP_FIXTURE_SERVICE}",
+        "--private-network",
+        "--boot",
+    )
+    for poll in range(1, 31):
+        state = subprocess.run(
+            ["docker", "exec", container, "systemctl", "-M", name, "is-system-running"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if state in ("running", "degraded"):
+            print(f"machine {name} is {state} after {poll} polls")
+            return
+        time.sleep(2)
+    raise SystemExit(f"FAIL: machine {name} never finished booting")
 
 
 def install_cgroup_fixture(container: str) -> None:
@@ -561,14 +692,21 @@ FETCH_COUNTERS: tuple[str, ...] = (
     "timer_dbus_fetches",
 )
 
-# Exact per-transport container traffic, filmed live (host 0/0/0, container
-# 1/2/1 on both paths). Exact match, not a lower bound: upward drift (more
-# D-Bus as collectors move around) is the likelier regression, and if #211
-# is ever fixed upstream these move toward zero — update them then.
-EXPECTED_MACHINE_FETCHES: dict[str, int] = {
-    "service_dbus_fetches": 1,
-    "state_dbus_fetches": 2,
-    "timer_dbus_fetches": 1,
+# Exact per-machine, per-path container D-Bus traffic, filmed live. Exact
+# match, not a lower bound: upward drift (more D-Bus as collectors move
+# around) is the likelier regression, and zero where D-Bus is expected would
+# mean the data went missing, not that the bus went quiet. The systemd 259
+# machine's varlink run redoes units over D-Bus (no Metrics socket there), so
+# it matches its D-Bus run; the current machine's varlink run is D-Bus-free.
+EXPECTED_MACHINE_FETCHES: dict[str, dict[str, dict[str, int]]] = {
+    MACHINE_FIXTURE_NAME: {
+        "dbus": {"service_dbus_fetches": 1, "state_dbus_fetches": 2, "timer_dbus_fetches": 1},
+        "varlink": {"service_dbus_fetches": 1, "state_dbus_fetches": 2, "timer_dbus_fetches": 1},
+    },
+    MACHINE_CURRENT_NAME: {
+        "dbus": {"service_dbus_fetches": 1, "state_dbus_fetches": 2, "timer_dbus_fetches": 2},
+        "varlink": {"service_dbus_fetches": 0, "state_dbus_fetches": 0, "timer_dbus_fetches": 0},
+    },
 }
 
 
@@ -601,22 +739,10 @@ def machine_fetch_counters(stats: Stats, machine: str) -> dict[str, int]:
 
 def assert_machine_fetch_counters(dbus_stats: Stats, varlink_stats: Stats) -> None:
     step("Asserting machine fetch counters")
-    # The host varlink run must be D-Bus-free (zero fetches), while the
-    # container behind #211 cannot use varlink IPC at all: its timer
-    # backfill and oneshot type override are D-Bus by necessity, and the
-    # full D-Bus path additionally spends per-service fetches. The
-    # assertion pins the current split per transport so a regression —
-    # host-side D-Bus creeping back in, or container calls silently
-    # disappearing along with their data — fails loudly instead of
-    # drifting. If #211 is ever fixed upstream these numbers move toward
-    # zero; update them then, not before.
-    machine = MACHINE_FIXTURE_NAME
-    dbus = machine_fetch_counters(dbus_stats, machine)
-    varlink = machine_fetch_counters(varlink_stats, machine)
-    print(f"dbus path machine counters: {dbus}")
-    print(f"varlink path machine counters: {varlink}")
-    # Same presence guard as the machine counters: an empty dict would
-    # make any() vacuously False and print a PASS over nothing.
+    # The host varlink run must be D-Bus-free (zero fetches); each machine's
+    # traffic is pinned exactly per path (see EXPECTED_MACHINE_FETCHES).
+    # Same presence guard as the machine counters: an empty dict would make
+    # any() vacuously False and print a PASS over nothing.
     host = fetch_counters(varlink_stats, "monitord.collection_timings.", "host")
     if any(value != 0 for value in host.values()):
         raise SystemExit(
@@ -624,17 +750,16 @@ def assert_machine_fetch_counters(dbus_stats: Stats, varlink_stats: Stats) -> No
             "(see #37; containers are pinned separately below)"
         )
     print(f"PASS: host varlink run is D-Bus-free {host}")
-    # The container cannot avoid D-Bus (see #211), so its traffic is
-    # pinned exactly: drift in either direction fails, since upward drift
-    # (more D-Bus as collectors move) is the likelier regression and zero
-    # would mean the data went missing, not that the bus went quiet.
-    for path_name, counters in (("dbus", dbus), ("varlink", varlink)):
-        if counters != EXPECTED_MACHINE_FETCHES:
-            raise SystemExit(
-                f"FAIL: {path_name} path machine counters drifted: "
-                f"{counters} != {EXPECTED_MACHINE_FETCHES}"
-            )
-    print(f"PASS: container D-Bus traffic pinned (dbus={dbus}, varlink={varlink})")
+    for machine in MACHINE_NAMES:
+        for path_name, stats in (("dbus", dbus_stats), ("varlink", varlink_stats)):
+            counters = machine_fetch_counters(stats, machine)
+            want = EXPECTED_MACHINE_FETCHES[machine][path_name]
+            if counters != want:
+                raise SystemExit(
+                    f"FAIL: {machine} {path_name} path machine counters drifted: "
+                    f"{counters} != {want}"
+                )
+            print(f"PASS: {machine} {path_name} path D-Bus traffic pinned {counters}")
 
 
 def assert_dead_bus_run(container: str) -> None:
@@ -725,20 +850,34 @@ def run_monitord(container: str, config_path: str) -> tuple[Stats, str]:
     return json.loads(result.stdout), result.stderr
 
 
-def find_fallbacks(log: str) -> list[str]:
-    """Return log lines where a host collector fell back off varlink.
+CONTAINER_FALLBACK_RE = re.compile(r"Varlink container (\S+) (.+?) failed, falling back")
 
-    Container fallbacks (`Varlink container <name> ...`) are excluded: the
-    container behind #211 cannot use varlink IPC at all, so its D-Bus
-    traffic is expected and pinned separately by
-    `assert_machine_fetch_counters`. Only a host-side fallback makes the
-    parity comparison pass vacuously.
+
+def container_fallbacks(log: str) -> set[tuple[str, str]]:
+    """Return the (machine, collector) pairs whose varlink attempt fell back."""
+    return {
+        (match.group(1), match.group(2).replace(" ", "_"))
+        for match in map(CONTAINER_FALLBACK_RE.search, log.splitlines())
+        if match
+    }
+
+
+def find_fallbacks(log: str) -> list[str]:
+    """Return log lines where a collector fell back off varlink unexpectedly.
+
+    Host fallbacks are always unexpected: they make the parity comparison pass
+    vacuously. Container fallbacks are unexpected unless listed in
+    EXPECTED_CONTAINER_FALLBACKS (older systemd in the pinned machine).
     """
-    return [
-        line
-        for line in log.splitlines()
-        if "falling back" in line and "Varlink container " not in line
-    ]
+    unexpected = []
+    for line in log.splitlines():
+        if "falling back" not in line:
+            continue
+        match = CONTAINER_FALLBACK_RE.search(line)
+        key = (match.group(1), match.group(2).replace(" ", "_")) if match else None
+        if key not in EXPECTED_CONTAINER_FALLBACKS:
+            unexpected.append(line)
+    return unexpected
 
 
 def assert_no_varlink_fallback(log: str) -> None:
@@ -750,15 +889,19 @@ def assert_no_varlink_fallback(log: str) -> None:
     if fallbacks:
         print("\n".join(fallbacks))
         raise SystemExit("FAIL: varlink run fell back to D-Bus (see above)")
-    # The container filter above must actually be doing something: #211
-    # guarantees the container falls back, so a log with no container
-    # lines means the phrasing changed and the filter is silently dead.
-    if not any("Varlink container " in line for line in log.splitlines()):
+    # The expected container fallbacks must actually show up: if they don't,
+    # the fixture changed (update EXPECTED_CONTAINER_FALLBACKS) or the log
+    # phrasing did and the filter above silently stopped matching.
+    seen = container_fallbacks(log)
+    if seen != EXPECTED_CONTAINER_FALLBACKS:
         raise SystemExit(
-            "FAIL: no container fallback lines in the log — the "
-            "find_fallbacks filter may have stopped matching"
+            "FAIL: container fallbacks differ from the expected set "
+            f"(seen: {sorted(seen)}, expected: {sorted(EXPECTED_CONTAINER_FALLBACKS)})"
         )
-    print("PASS: no collector fell back to D-Bus")
+    print(
+        "PASS: no unexpected varlink fallback "
+        f"(expected container fallbacks: {sorted(seen)})"
+    )
 
 
 def enumerated_verify_units(log: str) -> set[str]:
@@ -873,6 +1016,218 @@ def assert_varlink_usage(outputs: dict[str, Stats]) -> None:
         )
 
 
+def machine_varlink_usage(stats: Stats, machine: str) -> dict[str, int]:
+    """Return one machine's {collector: 0/1} varlink usage gauges."""
+    prefix = f"monitord.machines.{machine}.varlink_usage."
+    return {
+        key.removeprefix(prefix): value
+        for key, value in stats.items()
+        if key.startswith(prefix)
+    }
+
+
+def check_machine_varlink_usage(
+    path_name: str, stats: Stats, expected: dict[str, dict[str, int]]
+) -> None:
+    for machine, want in expected.items():
+        usage = machine_varlink_usage(stats, machine)
+        if usage != want:
+            raise SystemExit(
+                f"FAIL: {path_name}: machine {machine} varlink usage {usage} != {want}"
+            )
+        print(f"PASS: {path_name}: machine {machine} varlink usage {usage}")
+
+
+def assert_machine_varlink_usage(outputs: dict[str, Stats]) -> None:
+    step("Asserting per-machine varlink usage gauges")
+    for path_name, stats in outputs.items():
+        check_machine_varlink_usage(
+            path_name, stats, EXPECTED_MACHINE_VARLINK_USAGE[path_name]
+        )
+
+
+def shipped_unit_properties(repo: Path) -> list[str]:
+    """`systemd-run -p` arguments reproducing monitord.service's hardening.
+
+    Everything in the shipped [Service] section except what each run sets
+    itself, so the capability runs below exercise the real deployment shape
+    (NoNewPrivileges=yes, ProtectSystem=strict, ...) plus the documented
+    AmbientCapabilities= drop-in.
+    """
+    args: list[str] = []
+    section = ""
+    for line in (repo / "monitord.service").read_text().splitlines():
+        line = line.strip()
+        if line.startswith("["):
+            section = line
+        elif section == "[Service]" and line and not line.startswith("#"):
+            key = line.split("=", 1)[0]
+            if key not in ("ExecStart", "Type", "User", "Group", "RuntimeDirectory"):
+                args += ["-p", line]
+    return args
+
+
+CAPS_USER = "monitord-ci"
+CAPS_CONF = "/run/monitord-caps-ci.conf"
+
+
+def run_monitord_as_user(
+    container: str, repo: Path, caps: str
+) -> tuple[Stats, str]:
+    """Run the varlink config as an unprivileged user with only `caps`."""
+    result = subprocess.run(
+        [
+            "docker", "exec", container,
+            "systemd-run", "-q", "--wait", "--pipe",
+            "-p", f"User={CAPS_USER}", "-p", f"Group={CAPS_USER}",
+            *shipped_unit_properties(repo),
+            "-p", f"AmbientCapabilities={caps}",
+            "-p", f"CapabilityBoundingSet={caps}",
+            f"{CONTAINER_TARGET_DIR}/release/monitord", "-c", CAPS_CONF, "-l", "debug",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise SystemExit(
+            f"FAIL: monitord with caps {caps!r} failed\n{result.stderr}"
+        )
+    return json.loads(result.stdout), result.stderr
+
+
+def assert_capability_matrix(container: str, repo: Path) -> None:
+    step("Asserting machine collection per capability set (README Permissions)")
+    # The documented contract, run under the shipped unit's hardening:
+    #   no caps                          -> machines unreachable
+    #   CAP_SYS_PTRACE                   -> machines over D-Bus, one warning,
+    #                                       no per-collector fallback noise
+    #   CAP_SYS_PTRACE + CAP_SYS_ADMIN   -> machines over varlink
+    subprocess.run(
+        ["docker", "exec", container, "useradd", "--system", "--no-create-home", CAPS_USER],
+        capture_output=True,
+    )
+    # /tmp is private under the shipped unit (PrivateTmp=yes).
+    docker_exec(container, "cp", VARLINK_CONF, CAPS_CONF)
+
+    stats, log = run_monitord_as_user(container, repo, "")
+    collected = [m for m in MACHINE_NAMES if machine_varlink_usage(stats, m)]
+    if collected:
+        raise SystemExit(f"FAIL: no-caps run unexpectedly collected machines: {collected}")
+    if log.count("Failed to connect to container") != len(MACHINE_NAMES):
+        raise SystemExit("FAIL: no-caps run did not report every machine as unreachable")
+    print("PASS: no capabilities: machines are unreachable, host collection unaffected")
+
+    stats, log = run_monitord_as_user(container, repo, "CAP_SYS_PTRACE")
+    check_machine_varlink_usage(
+        "CAP_SYS_PTRACE",
+        stats,
+        {m: {c: 0 for c in MACHINE_COLLECTORS} for m in MACHINE_NAMES},
+    )
+    warnings = log.count("needs CAP_SYS_ADMIN and CAP_SYS_PTRACE")
+    if warnings != 1:
+        raise SystemExit(f"FAIL: CAP_SYS_PTRACE run warned {warnings} times, want once")
+    if container_fallbacks(log) or "Spawned varlink connector" in log:
+        raise SystemExit(
+            "FAIL: CAP_SYS_PTRACE run kept trying container varlink after the warning"
+        )
+    print("PASS: CAP_SYS_PTRACE: machines over D-Bus after a single warning")
+
+    stats, log = run_monitord_as_user(container, repo, "CAP_SYS_PTRACE CAP_SYS_ADMIN")
+    check_machine_varlink_usage(
+        "CAP_SYS_PTRACE+CAP_SYS_ADMIN", stats, EXPECTED_MACHINE_VARLINK_USAGE["varlink"]
+    )
+    print("PASS: CAP_SYS_PTRACE + CAP_SYS_ADMIN: machines over varlink")
+
+
+CONNECTOR_PROBE = r"""
+helpers() {
+    for d in /proc/[0-9]*; do
+        [ "$(tr '\0' '\n' < "$d/cmdline" 2>/dev/null | sed -n 2p)" = "__monitord-machine-connector" ] \
+            && echo "${d#/proc/}"
+    done
+}
+timeout 10 "$1" -c "$2" -l debug >/dev/null 2>/tmp/monitord-daemon-ci.log &
+sleep 6
+for pid in $(helpers); do
+    printf 'helper %s %s pidns=%s\n' "$pid" \
+        "$(grep -E '^(Uid|CapPrm|CapEff|CapAmb|NoNewPrivs):' "/proc/$pid/status" | tr -s '\t\n' '  ')" \
+        "$(readlink "/proc/$pid/ns/pid")"
+done
+wait
+sleep 1
+echo "leftover $(helpers | wc -l)"
+"""
+
+
+def assert_connector_caching(container: str) -> None:
+    step("Asserting machine connectors are spawned once and run unprivileged")
+    # Daemon mode for several cycles: each machine's connector must be spawned
+    # exactly once and reused, run as nobody (monitord runs as root here)
+    # without any capabilities inside its machine's PID namespace, and be gone
+    # once monitord exits.
+    conf = re.sub(r"(?m)^daemon = false$", "daemon = true", docker_exec(container, "cat", VARLINK_CONF))
+    conf = re.sub(r"(?m)^daemon_stats_refresh_secs = .*$", "daemon_stats_refresh_secs = 1", conf)
+    if "daemon = true" not in conf:
+        raise SystemExit("FAIL: could not switch the CI config to daemon mode")
+    daemon_conf = "/tmp/monitord-daemon-ci.conf"
+    write_container_file(container, daemon_conf, conf)
+    probe = docker(
+        "exec", "-i", container, "bash", "-s", "--",
+        f"{CONTAINER_TARGET_DIR}/release/monitord", daemon_conf,
+        stdin=CONNECTOR_PROBE,
+    )
+    log = docker_exec(container, "cat", "/tmp/monitord-daemon-ci.log")
+    print(probe.strip())
+
+    for machine in MACHINE_NAMES:
+        cycles = log.count(f"Collecting container: machine: {machine} ")
+        spawns = log.count(f"Spawned varlink connector for machine {machine} ")
+        if cycles < 3 or spawns != 1:
+            raise SystemExit(
+                f"FAIL: {machine}: {spawns} connector spawns over {cycles} cycles "
+                "(want exactly 1 over at least 3)"
+            )
+        print(f"PASS: {machine}: 1 connector spawn over {cycles} cycles")
+
+    helpers = [line for line in probe.splitlines() if line.startswith("helper ")]
+    if len(helpers) != len(MACHINE_NAMES):
+        raise SystemExit(f"FAIL: expected {len(MACHINE_NAMES)} helpers, saw {helpers}")
+    leader_ns = {
+        docker_exec(
+            container, "sh", "-c",
+            f"readlink /proc/$(machinectl show {machine} -p Leader --value)/ns/pid",
+        ).strip()
+        for machine in MACHINE_NAMES
+    }
+    helper_ns = set()
+    for line in helpers:
+        uids = re.search(r"Uid: (\d+) (\d+) (\d+) (\d+)", line)
+        caps = dict(re.findall(r"(CapPrm|CapEff|CapAmb): ([0-9a-f]+)", line))
+        no_new_privs = re.search(r"NoNewPrivs: (\d)", line)
+        pidns = re.search(r"pidns=(\S+)", line)
+        if (
+            not uids
+            or set(uids.groups()) != {"65534"}
+            or set(caps) != {"CapPrm", "CapEff", "CapAmb"}
+            or any(int(value, 16) for value in caps.values())
+            or not no_new_privs
+            or no_new_privs.group(1) != "1"
+            or not pidns
+        ):
+            raise SystemExit(f"FAIL: machine connector is not unprivileged: {line}")
+        helper_ns.add(pidns.group(1))
+    if helper_ns != leader_ns:
+        raise SystemExit(
+            f"FAIL: helpers not in the machines' PID namespaces: {helper_ns} != {leader_ns}"
+        )
+    print("PASS: connectors run as nobody, capability-free, in their machines' PID namespaces")
+
+    leftover = probe.strip().splitlines()[-1]
+    if leftover != "leftover 0":
+        raise SystemExit(f"FAIL: machine connectors outlived monitord ({leftover})")
+    print("PASS: no connector outlives monitord")
+
+
 def comparable(stats: Stats) -> Stats:
     return {
         key: value
@@ -929,19 +1284,29 @@ def main() -> None:
 
     if args.fresh:
         remove_container(args.container)
-    if args.fresh or not image_exists(args.image):
-        step(f"Building {args.image} image")
-        docker("build", "-t", args.image, str(repo), capture=False)
+    # Always build: with the layer cache this is a no-op when the Dockerfile
+    # has not changed, and it keeps local runs on the same image the Action
+    # builds from scratch rather than on whatever was built months ago.
+    step(f"Building {args.image} image")
+    docker(
+        "build",
+        *(["--no-cache"] if args.fresh else []),
+        "-t",
+        args.image,
+        str(repo),
+        capture=False,
+    )
     if container_running(args.container) and not container_matches(
         args.container, repo, args.image
     ):
-        step(f"Replacing {args.container}: it holds a different repo or image")
+        step(f"Replacing {args.container}: it holds a different repo or image build")
         remove_container(args.container)
     if not container_running(args.container):
         remove_container(args.container)
         start_container(repo, args.image, args.container)
 
     print(docker_exec(args.container, "systemctl", "--version").splitlines()[0])
+    assert_container_tools(args.container)
 
     step("Building monitord (release)")
     docker(
@@ -971,6 +1336,7 @@ def main() -> None:
     assert_fixture_units(args.container)
     install_cgroup_fixture(args.container)
     install_machine_fixture(args.container)
+    install_current_machine_fixture(args.container)
 
     step("Running monitord on both paths")
     # The fixture machine boots asynchronously: wait until monitord
@@ -979,30 +1345,34 @@ def main() -> None:
     # (cheapest signal: the machine key set appears in the JSON).
     for poll in range(1, 20):
         probe, _ = run_monitord(args.container, VARLINK_CONF)
-        if any(
-            key.startswith(f"monitord.machines.{MACHINE_FIXTURE_NAME}.")
-            for key in probe
+        if all(
+            any(key.startswith(f"monitord.machines.{machine}.") for key in probe)
+            for machine in MACHINE_NAMES
         ):
-            print(f"fixture machine collected after {poll} polls")
+            print(f"fixture machines collected after {poll} polls")
             break
         print(f"Waiting for fixture machine collection ({poll}/20)...")
         time.sleep(3)
     else:
-        raise SystemExit(
-            f"FAIL: fixture machine {MACHINE_FIXTURE_NAME} never collected"
-        )
+        raise SystemExit(f"FAIL: fixture machines {MACHINE_NAMES} never all collected")
     varlink_stats, varlink_log = run_monitord(args.container, VARLINK_CONF)
     dbus_stats, dbus_log = run_monitord(args.container, DBUS_CONF)
 
     assert_no_varlink_fallback(varlink_log)
     assert_varlink_usage({"varlink": varlink_stats, "dbus": dbus_stats})
+    assert_machine_varlink_usage({"varlink": varlink_stats, "dbus": dbus_stats})
     assert_verify_enumeration_parity(dbus_log, varlink_log)
     assert_time_in_state({"varlink": varlink_stats, "dbus": dbus_stats})
     assert_cgroup_fixture_values({"varlink": varlink_stats, "dbus": dbus_stats})
     compare_outputs(dbus_stats, varlink_stats)
     assert_machine_fetch_counters(dbus_stats, varlink_stats)
     assert_dead_bus_run(args.container)
-    print(f"\nContainer {args.container} left running; --fresh recreates it.")
+    assert_capability_matrix(args.container, repo)
+    assert_connector_caching(args.container)
+    print(
+        f"\nContainer {args.container} left running; --fresh rebuilds the image "
+        "without the cache and recreates it."
+    )
 
 
 if __name__ == "__main__":

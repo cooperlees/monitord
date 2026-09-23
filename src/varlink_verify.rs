@@ -71,7 +71,7 @@ fn collect_unit_names(metrics: &[ListOutput]) -> anyhow::Result<Vec<String>> {
 
 /// Enumerate all units over varlink.
 pub async fn list_unit_names(socket_path: &str) -> anyhow::Result<Vec<String>> {
-    let metrics = crate::varlink_units::collect_metrics(socket_path.to_string()).await?;
+    let metrics = crate::varlink_units::collect_metrics(socket_path.into()).await?;
     collect_unit_names(&metrics)
 }
 

@@ -187,12 +187,18 @@ pub struct ProcessId {
 pub enum UnitError {
     /// No unit by that name is loaded.
     NoSuchUnit,
+    /// The unit is masked.
+    UnitMasked,
+    /// The unit is in a fatal error state (e.g. its unit file failed to load).
+    UnitError,
 }
 
 impl std::fmt::Display for UnitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             UnitError::NoSuchUnit => write!(f, "No such unit"),
+            UnitError::UnitMasked => write!(f, "Unit is masked"),
+            UnitError::UnitError => write!(f, "Unit is in a fatal error state"),
         }
     }
 }

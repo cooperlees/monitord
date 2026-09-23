@@ -301,22 +301,45 @@ the `machines` keyword and machine name. For example:
 
 ### Permissions
 
-monitord reaches each machine's sockets and files through `/proc/<leader_pid>/root/…`.
-The kernel only allows that for processes that are allowed to ptrace the machine's leader
-process, so when running as a non-root user (like the shipped `monitord.service`),
-machine collection needs `CAP_SYS_PTRACE`:
+Machine collection is the only part of monitord that needs extra privileges, so skip this
+if you don't monitor machines. When running as a non-root user (like the shipped
+`monitord.service`), what it needs depends on how machines are collected:
+
+| Machines collected over | Capabilities needed |
+|---|---|
+| D-Bus (the default, or `[machines] varlink = false`) | `CAP_SYS_PTRACE` |
+| varlink (`[varlink] enabled = true` and `[machines] varlink = true`) | `CAP_SYS_PTRACE` + `CAP_SYS_ADMIN` |
 
 ```ini
 # /etc/systemd/system/monitord.service.d/machines.conf
+# Drop CAP_SYS_ADMIN if you collect machines over D-Bus.
 [Service]
-AmbientCapabilities=CAP_SYS_PTRACE
-CapabilityBoundingSet=CAP_SYS_PTRACE
+AmbientCapabilities=CAP_SYS_PTRACE CAP_SYS_ADMIN
+CapabilityBoundingSet=CAP_SYS_PTRACE CAP_SYS_ADMIN
 ```
 
-Without it every machine fails with `Permission denied` — D-Bus, varlink and unit file
-stats alike — while host collection keeps working. `CAP_DAC_READ_SEARCH` is not enough.
-Be aware `CAP_SYS_PTRACE` is broad (it also allows reading other processes' memory), so
-only grant it if you use machine collection.
+- `CAP_SYS_PTRACE` lets monitord reach each machine's sockets and files through
+  `/proc/<leader_pid>/root/…`: the kernel only allows that for processes that may ptrace
+  the machine's leader. Without it every machine fails with `Permission denied`, while
+  host collection keeps working. `CAP_DAC_READ_SEARCH` is not enough.
+- `CAP_SYS_ADMIN` is needed for varlink only. systemd's varlink servers only accept
+  callers inside the machine's PID namespace (see
+  [#211](https://github.com/cooperlees/monitord/issues/211) and
+  [systemd/systemd#43807](https://github.com/systemd/systemd/issues/43807)), so monitord
+  spawns one small helper per machine inside that namespace, which needs `CAP_SYS_ADMIN`.
+  The helper is monitord itself re-executed; it shows up inside the machine as
+  `monitord __monitord-machine-connector`. Right after starting it opens the machine's root,
+  drops to an unprivileged user (`nobody` if monitord runs as root) with no capabilities
+  at all, and from then on only connects to a fixed set of systemd sockets and hands the
+  connection back to monitord. It is spawned once per machine and reused for every
+  collection until the machine restarts, so there is no fork per collection cycle.
+  Without `CAP_SYS_ADMIN` monitord logs one warning and collects machines over D-Bus
+  (with `[varlink] no_fallback = true` this is an error instead).
+
+Both capabilities are broad: `CAP_SYS_PTRACE` also allows reading other processes'
+memory, and `CAP_SYS_ADMIN` is close to root. If you'd rather not grant `CAP_SYS_ADMIN`,
+set `[machines] varlink = false` to collect machines over D-Bus with `CAP_SYS_PTRACE`
+only, or run monitord inside each machine instead of collecting from the host.
 
 Machines started with user namespacing (e.g. `machinectl start` defaults to
 `PrivateUsers=pick`) also reject monitord's D-Bus connection, as host users are not mapped
@@ -778,6 +801,22 @@ You can now log into the container to build + run tests and run the binary now a
   - `systemctl start systemd-networkd`
     - No interfaces will be managed tho by default in the container ...
 
+### Integration test
+
+`varlink_integration_test.py` is what the `varlink-integration` GitHub Action
+runs, so a CI failure reproduces locally with the same command:
+
+- `python3 varlink_integration_test.py`
+
+It rebuilds the image on every run (a no-op when the Dockerfile has not
+changed) and recreates its container whenever the image changes, so a local run
+uses the same image the Action builds from scratch instead of a stale one. It
+reuses the running container otherwise; `--fresh` rebuilds without the cache.
+The image must carry everything the test shells out to, which is why the
+Dockerfile names `systemd-container`, `systemd-networkd` and `shadow-utils`
+explicitly — see `REQUIRED_CONTAINER_TOOLS`, which fails the run up front with
+one message if any of them is missing.
+
 ## Troubleshooting
 
 **"Connection refused" or D-Bus connection errors**
@@ -790,8 +829,9 @@ systemd-networkd must be installed and running (`systemctl start systemd-network
 
 **Permission denied for machines / containers**
 
-A non-root monitord needs `CAP_SYS_PTRACE` to reach machines via `/proc/<leader_pid>/root`.
-See [Permissions](#permissions) under Machines support.
+A non-root monitord needs `CAP_SYS_PTRACE` to reach machines via `/proc/<leader_pid>/root`,
+plus `CAP_SYS_ADMIN` to collect them over varlink. See [Permissions](#permissions) under
+Machines support.
 
 **Permission denied for D-Bus stats**
 
@@ -933,19 +973,19 @@ toggle of their own: they ride the units path and follow `[units] varlink`.
 
 ### Containers
 
-For systemd-nspawn containers, monitord tries the container's varlink socket via
-`/proc/<leader_pid>/root/run/systemd/report/io.systemd.Manager`, similar to how D-Bus uses
-the container-scoped bus socket. Networkd stats use
-`/proc/<leader_pid>/root/run/systemd/netif/io.systemd.Network`, with the same file-based fallback.
-System state and version use `/proc/<leader_pid>/root/run/systemd/io.systemd.Manager`.
+For systemd-nspawn containers, monitord uses the same varlink endpoints as on the host,
+inside the container: units from `/run/systemd/report/io.systemd.Manager` plus
+`io.systemd.Unit.List` on `/run/systemd/io.systemd.Manager`, system state and version from
+`/run/systemd/io.systemd.Manager`, and networkd from
+`/run/systemd/netif/io.systemd.Network` (with the same file-based fallback). Unit file
+and cgroup data are read below `/proc/<leader_pid>/root`.
 
-**Currently these connections are refused by systemd and monitord falls back to D-Bus.**
-systemd's credential-checking varlink servers (PID 1, networkd) cannot translate the PID of a
-peer in the host's PID namespace and reject it
-([#211](https://github.com/cooperlees/monitord/issues/211),
-[systemd/systemd#43807](https://github.com/systemd/systemd/issues/43807)). Container data is
-still collected correctly over D-Bus. Either way, see [Permissions](#permissions) for the
-`CAP_SYS_PTRACE` requirement.
+systemd's credential-checking varlink servers (PID 1, networkd) refuse callers outside
+their PID namespace ([#211](https://github.com/cooperlees/monitord/issues/211),
+[systemd/systemd#43807](https://github.com/systemd/systemd/issues/43807)), so these
+connections are made by a per-machine helper inside the container's PID namespace. That
+needs `CAP_SYS_ADMIN` in addition to `CAP_SYS_PTRACE`; without it monitord warns once and
+collects containers over D-Bus. See [Permissions](#permissions).
 
 ### varlink 101
 

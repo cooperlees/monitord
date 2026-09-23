@@ -171,7 +171,9 @@ pub struct MachinesConfig {
     /// Use varlink APIs inside containers when the global `[varlink]`
     /// switch is on. Default true: set false to keep all container
     /// collection on D-Bus. Container paths additionally require the
-    /// matching collector section's own `varlink` toggle.
+    /// matching collector section's own `varlink` toggle. Container varlink
+    /// connects from inside the container's PID namespace (see
+    /// `crate::varlink::machine_connector`), which needs `CAP_SYS_ADMIN`.
     pub varlink: bool,
     pub allowlist: HashSet<String>,
     pub blocklist: HashSet<String>,

@@ -183,7 +183,8 @@ class BuildCiConfigsTest(unittest.TestCase):
         # configs must track the nspawn fixture instead, or the machine
         # fetch-counter assertions would cover an empty machine set.
         allowlist = section_body(self.dbus_conf, "[machines.allowlist]")
-        self.assertIn(vit.MACHINE_FIXTURE_NAME, allowlist)
+        for machine in vit.MACHINE_NAMES:
+            self.assertIn(machine, allowlist.splitlines())
         self.assertNotIn("fedora38", allowlist)
 
 
@@ -334,6 +335,13 @@ class VarlinkUsageTest(unittest.TestCase):
 
 
 class FindFallbacksTest(unittest.TestCase):
+    @staticmethod
+    def container_line(machine: str, collector: str) -> str:
+        return (
+            f"W0918 src/varlink_fallback.rs:66] Varlink container {machine} "
+            f"{collector} failed, falling back to D-Bus: Os {{ code: 2 }}\n"
+        )
+
     def test_host_fallback_line_detected(self) -> None:
         log = (
             "I0918 monitord: starting\n"
@@ -342,18 +350,79 @@ class FindFallbacksTest(unittest.TestCase):
         )
         self.assertEqual(len(vit.find_fallbacks(log)), 1)
 
-    def test_container_fallback_lines_excluded(self) -> None:
-        # Container fallbacks are expected behind #211 and pinned by
-        # assert_machine_fetch_counters; only host fallbacks fail the run.
-        log = (
-            "I0918 monitord: starting\n"
-            "W0918 src/varlink_fallback.rs:66] Varlink container demo units failed, "
-            "falling back to D-Bus: Os { code: 2 }\n"
+    def test_expected_container_fallbacks_excluded(self) -> None:
+        # The pinned systemd 259 machine has no Metrics socket and no networkd.
+        log = "".join(
+            self.container_line(machine, collector)
+            for machine, collector in vit.EXPECTED_CONTAINER_FALLBACKS
         )
         self.assertEqual(vit.find_fallbacks(log), [])
+        self.assertEqual(vit.container_fallbacks(log), vit.EXPECTED_CONTAINER_FALLBACKS)
+
+    def test_unexpected_container_fallback_detected(self) -> None:
+        # The current-systemd machine must never fall back.
+        log = self.container_line(vit.MACHINE_CURRENT_NAME, "units")
+        self.assertEqual(len(vit.find_fallbacks(log)), 1)
+
+    def test_container_fallback_collector_names_normalized(self) -> None:
+        log = self.container_line("demo", "system state")
+        self.assertEqual(vit.container_fallbacks(log), {("demo", "system_state")})
+
+    def test_missing_expected_container_fallback_fails_loudly(self) -> None:
+        with self.assertRaises(SystemExit):
+            vit.assert_no_varlink_fallback("I0918 monitord: starting\n")
 
     def test_clean_log_has_no_fallbacks(self) -> None:
         self.assertEqual(vit.find_fallbacks("I0918 monitord: starting\n"), [])
+
+
+class MachineVarlinkUsageTest(unittest.TestCase):
+    @staticmethod
+    def stats(usage: dict[str, dict[str, int]]) -> dict:
+        return {
+            f"monitord.machines.{machine}.varlink_usage.{collector}": value
+            for machine, collectors in usage.items()
+            for collector, value in collectors.items()
+        }
+
+    def test_expected_usage_passes(self) -> None:
+        vit.assert_machine_varlink_usage(
+            {
+                path: self.stats(expected)
+                for path, expected in vit.EXPECTED_MACHINE_VARLINK_USAGE.items()
+            }
+        )
+
+    def test_current_machine_falling_back_fails_loudly(self) -> None:
+        usage = {
+            machine: dict(collectors)
+            for machine, collectors in vit.EXPECTED_MACHINE_VARLINK_USAGE["varlink"].items()
+        }
+        usage[vit.MACHINE_CURRENT_NAME]["units"] = 0
+        with self.assertRaises(SystemExit) as caught:
+            vit.check_machine_varlink_usage(
+                "varlink", self.stats(usage), vit.EXPECTED_MACHINE_VARLINK_USAGE["varlink"]
+            )
+        self.assertIn(vit.MACHINE_CURRENT_NAME, str(caught.exception))
+
+    def test_uncollected_machine_fails_loudly(self) -> None:
+        with self.assertRaises(SystemExit):
+            vit.check_machine_varlink_usage(
+                "varlink", {}, vit.EXPECTED_MACHINE_VARLINK_USAGE["varlink"]
+            )
+
+
+class ShippedUnitPropertiesTest(unittest.TestCase):
+    def test_reproduces_hardening_without_identity(self) -> None:
+        from pathlib import Path
+
+        props = vit.shipped_unit_properties(Path(__file__).resolve().parent)
+        values = props[1::2]
+        self.assertEqual(props[0::2], ["-p"] * len(values))
+        self.assertIn("NoNewPrivileges=yes", values)
+        # Each capability run sets these itself; commented lines never leak.
+        for key in ("User=", "Group=", "ExecStart=", "Type=", "#", "AmbientCapabilities="):
+            self.assertFalse(any(v.startswith(key) for v in values), key)
 
 
 if __name__ == "__main__":
