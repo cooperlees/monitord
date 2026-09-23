@@ -1,18 +1,37 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use thiserror::Error;
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error, warn};
 
+use crate::varlink::endpoint::VarlinkEndpoint;
+use crate::varlink::machine_connector::{self, MachineConnector, MachineSocket};
 use crate::MachineStats;
 use crate::MonitordStats;
 
-/// Cached D-Bus connections to containers, keyed by machine name.
-/// The u32 is the leader PID at the time the connection was established.
-/// A connection is only reused if the current leader PID matches.
-pub type MachineConnections = HashMap<String, (u32, zbus::Connection)>;
+/// A machine's varlink connector, or why it could not be spawned. Errors are
+/// cached too, so a machine costs at most one spawn attempt per leader PID.
+type ConnectorSlot = Result<Arc<MachineConnector>, Arc<anyhow::Error>>;
+
+/// Everything cached for one machine, valid while its leader PID is unchanged.
+pub struct MachineConnection {
+    leader_pid: u32,
+    dbus: zbus::Connection,
+    /// Spawned on first varlink use, see [`machine_varlink_connector`].
+    varlink: Option<ConnectorSlot>,
+}
+
+/// Cached per-machine connections, keyed by machine name.
+/// An entry is only reused if the machine's current leader PID matches.
+pub type MachineConnections = HashMap<String, MachineConnection>;
+
+/// Set once joining machine PID namespaces failed for lack of privileges.
+/// That won't change at runtime, so from then on machines are collected over
+/// D-Bus without retrying (or logging) for every machine and cycle.
+static MACHINE_VARLINK_UNAVAILABLE: OnceLock<Arc<anyhow::Error>> = OnceLock::new();
 
 /// What action to take for a machine's cached connection.
 #[derive(Debug, PartialEq)]
@@ -89,10 +108,7 @@ async fn evict_stale_connections(
 
 /// Evict a cached connection for a machine that experienced errors.
 async fn evict_failed_connection(cached_connections: &Mutex<MachineConnections>, machine: &str) {
-    debug!(
-        "Evicting cached D-Bus connection for {} due to errors",
-        machine
-    );
+    debug!("Evicting cached connections for {} due to errors", machine);
     let mut cache = cached_connections.lock().await;
     cache.remove(machine);
 }
@@ -108,15 +124,14 @@ async fn get_or_create_connection(
     // Check cache and return if hit; drop the lock before any async work
     {
         let mut cache = cached_connections.lock().await;
-        match decide_cache_action(cache.get(machine).map(|(pid, _)| *pid), leader_pid) {
+        match decide_cache_action(cache.get(machine).map(|c| c.leader_pid), leader_pid) {
             CacheAction::Reuse => {
                 debug!("Reusing cached D-Bus connection for {}", machine);
-                let (_, conn) = cache.get(machine).unwrap();
-                return Ok(conn.clone());
+                return Ok(cache[machine].dbus.clone());
             }
             CacheAction::Replace => {
                 debug!(
-                    "Leader PID changed for {}, dropping stale connection",
+                    "Leader PID changed for {}, dropping stale connections",
                     machine
                 );
                 cache.remove(machine);
@@ -139,10 +154,99 @@ async fn get_or_create_connection(
     // Re-lock to insert
     {
         let mut cache = cached_connections.lock().await;
-        cache.insert(machine.to_string(), (leader_pid, conn.clone()));
+        cache.insert(
+            machine.to_string(),
+            MachineConnection {
+                leader_pid,
+                dbus: conn.clone(),
+                varlink: None,
+            },
+        );
     }
 
     Ok(conn)
+}
+
+/// The varlink connector for a machine, spawning it on first use.
+///
+/// `None` means don't try varlink for this machine at all: it is disabled, or
+/// monitord lacks the privileges to join machine namespaces (warned about
+/// once). With `[varlink] no_fallback` the latter is returned as an error
+/// instead, so it fails loudly rather than quietly using D-Bus.
+async fn machine_varlink_connector(
+    config: &crate::config::Config,
+    cached_connections: &Mutex<MachineConnections>,
+    machine: &str,
+    leader_pid: u32,
+) -> Option<ConnectorSlot> {
+    if !config.use_varlink(&[config.machines.varlink]) {
+        return None;
+    }
+    if let Some(err) = MACHINE_VARLINK_UNAVAILABLE.get() {
+        return config.varlink.no_fallback.then(|| Err(Arc::clone(err)));
+    }
+    {
+        let cache = cached_connections.lock().await;
+        match cache
+            .get(machine)
+            .filter(|c| c.leader_pid == leader_pid)
+            .and_then(|c| c.varlink.clone())
+        {
+            Some(Ok(connector)) if !connector.is_alive() => {
+                debug!("Varlink connector for {} exited, respawning", machine);
+            }
+            Some(slot) => return Some(slot),
+            None => {}
+        }
+    }
+
+    let timeout = Duration::from_secs(config.monitord.dbus_timeout);
+    let slot: ConnectorSlot =
+        match tokio::task::spawn_blocking(move || MachineConnector::spawn(leader_pid, timeout))
+            .await
+        {
+            Ok(Ok(connector)) => {
+                debug!(
+                    "Spawned varlink connector for machine {} (leader {})",
+                    machine, leader_pid
+                );
+                Ok(Arc::new(connector))
+            }
+            Ok(Err(err)) => Err(Arc::new(err.into())),
+            Err(err) => Err(Arc::new(err.into())),
+        };
+
+    if let Err(err) = &slot {
+        if machine_connector::is_permission_denied(err) {
+            if MACHINE_VARLINK_UNAVAILABLE.set(Arc::clone(err)).is_ok() {
+                warn!("{:#}; collecting machines over D-Bus instead", err);
+            }
+            return config.varlink.no_fallback.then_some(slot);
+        }
+    }
+
+    let mut cache = cached_connections.lock().await;
+    if let Some(entry) = cache
+        .get_mut(machine)
+        .filter(|c| c.leader_pid == leader_pid)
+    {
+        entry.varlink = Some(slot.clone());
+    }
+    Some(slot)
+}
+
+/// The endpoint for `socket` in a machine, if varlink is to be tried there.
+fn machine_endpoint(
+    connector: &Option<ConnectorSlot>,
+    socket: MachineSocket,
+) -> Option<anyhow::Result<VarlinkEndpoint>> {
+    connector.as_ref().map(|slot| match slot {
+        Ok(connector) => Ok(VarlinkEndpoint::Machine {
+            connector: Arc::clone(connector),
+            socket,
+        }),
+        Err(err) => Err(anyhow::anyhow!("{:#}", err)),
+    })
 }
 
 pub async fn update_machines_stats(
@@ -174,6 +278,9 @@ pub async fn update_machines_stats(
             }
         };
 
+        let connector =
+            machine_varlink_connector(&config, &cached_connections, &machine, leader_pid).await;
+
         let mut join_set = tokio::task::JoinSet::new();
 
         if config.pid1.enabled {
@@ -188,16 +295,19 @@ pub async fn update_machines_stats(
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
             let no_fallback = config_clone.varlink.no_fallback;
+            let endpoint = config_clone
+                .use_varlink(&[config_clone.networkd.varlink])
+                .then(|| machine_endpoint(&connector, MachineSocket::Network))
+                .flatten();
             join_set.spawn(async move {
-                if config_clone
-                    .use_varlink(&[config_clone.machines.varlink, config_clone.networkd.varlink])
-                {
-                    let socket_path = format!(
-                        "/proc/{}/root{}",
-                        leader_pid,
-                        crate::varlink_networkd::NETWORK_SOCKET_PATH
-                    );
-                    match crate::varlink_networkd::get_networkd_state(&socket_path).await {
+                if let Some(endpoint) = endpoint {
+                    let result = match endpoint {
+                        Ok(endpoint) => {
+                            crate::varlink_networkd::get_networkd_state(&endpoint).await
+                        }
+                        Err(err) => Err(err),
+                    };
+                    match result {
                         Ok(networkd_stats) => {
                             let mut machine_stats = stats_clone.write().await;
                             machine_stats.networkd = networkd_stats;
@@ -242,29 +352,32 @@ pub async fn update_machines_stats(
         }
 
         // One Describe per container, shared by its version and system state
-        // collectors, against the container's PID 1 varlink socket seen through
-        // its leader's procfs root.
+        // collectors, against the container's PID 1 varlink socket.
         let manager_describe = config
-            .use_varlink(&[config.machines.varlink, config.system_state.varlink])
-            .then(|| {
-                crate::varlink_system::shared_describe(format!(
-                    "/proc/{}/root{}",
-                    leader_pid,
-                    crate::varlink_system::MANAGER_SOCKET_PATH
-                ))
-            });
+            .use_varlink(&[config.system_state.varlink])
+            .then(|| machine_endpoint(&connector, MachineSocket::Manager))
+            .flatten()
+            .map(|endpoint| endpoint.map(crate::varlink_system::shared_describe));
 
         if config.system_state.enabled {
             let sdc_clone = sdc.clone();
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
             let no_fallback = config.varlink.no_fallback;
-            let describe = manager_describe.clone();
+            let describe = clone_describe(&manager_describe);
             join_set.spawn(async move {
                 if let Some(describe) = describe {
-                    match crate::varlink_system::update_system_stats(describe, stats_clone.clone())
-                        .await
-                    {
+                    let result = match describe {
+                        Ok(describe) => {
+                            crate::varlink_system::update_system_stats(
+                                describe,
+                                stats_clone.clone(),
+                            )
+                            .await
+                        }
+                        Err(err) => Err(err),
+                    };
+                    match result {
                         Ok(()) => {
                             stats_clone.write().await.varlink_usage.system_state =
                                 Some(crate::CollectorTransport::Varlink);
@@ -291,11 +404,17 @@ pub async fn update_machines_stats(
             let stats_clone = locked_machine_stats.clone();
             let machine_name = machine.clone();
             let no_fallback = config.varlink.no_fallback;
-            let describe = manager_describe.clone();
+            let describe = clone_describe(&manager_describe);
             join_set.spawn(async move {
                 if let Some(describe) = describe {
-                    match crate::varlink_system::update_version(describe, stats_clone.clone()).await
-                    {
+                    let result = match describe {
+                        Ok(describe) => {
+                            crate::varlink_system::update_version(describe, stats_clone.clone())
+                                .await
+                        }
+                        Err(err) => Err(err),
+                    };
+                    match result {
                         Ok(()) => {
                             stats_clone.write().await.varlink_usage.version =
                                 Some(crate::CollectorTransport::Varlink);
@@ -318,80 +437,34 @@ pub async fn update_machines_stats(
         }
 
         if config.units.enabled {
-            if config.use_varlink(&[config.machines.varlink, config.units.varlink]) {
-                let config_clone = Arc::clone(&config);
-                let sdc_clone = sdc.clone();
-                let stats_clone = locked_machine_stats.clone();
-                let no_fallback = config_clone.varlink.no_fallback;
-                let machine_name = machine.clone();
-                let container_socket_path = format!(
-                    "/proc/{}/root{}",
-                    leader_pid,
-                    crate::varlink_units::METRICS_SOCKET_PATH
-                );
-                join_set.spawn(async move {
-                    match crate::varlink_units::update_unit_stats(
-                        Arc::clone(&config_clone),
-                        stats_clone.clone(),
-                        container_socket_path,
+            let config_clone = Arc::clone(&config);
+            let sdc_clone = sdc.clone();
+            let stats_clone = locked_machine_stats.clone();
+            let no_fallback = config_clone.varlink.no_fallback;
+            let machine_name = machine.clone();
+            let container_root = format!("/proc/{}/root", leader_pid);
+            let endpoints = config
+                .use_varlink(&[config.units.varlink])
+                .then(|| {
+                    let metrics = machine_endpoint(&connector, MachineSocket::Metrics)?;
+                    let manager = machine_endpoint(&connector, MachineSocket::Manager)?;
+                    Some(metrics.and_then(|metrics| manager.map(|manager| (metrics, manager))))
+                })
+                .flatten();
+            join_set.spawn(async move {
+                if let Some(endpoints) = endpoints {
+                    match collect_container_units_varlink(
+                        &config_clone,
+                        &stats_clone,
+                        endpoints,
+                        &container_root,
                     )
                     .await
                     {
-                        Ok(_timer_names) => {
-                            // Containers keep the D-Bus backfill rather than the
-                            // host's io.systemd.Unit.List path: a container's
-                            // varlink sockets are unreachable from here, with
-                            // the connection accepted and then reset unless the
-                            // caller is inside the container's PID namespace
-                            // (observed, see #211). The timer names collected
-                            // above go unused for the same reason.
-                            let timer_start = std::time::Instant::now();
-                            let timer_result = crate::timer::collect_all_timers_dbus(
-                                &sdc_clone,
-                                &config_clone,
-                            )
-                            .await;
-                            let timer_elapsed_ms =
-                                timer_start.elapsed().as_secs_f64() * 1000.0;
-                            match timer_result {
-                                Ok(timer_stats) => {
-                                    let mut ms = stats_clone.write().await;
-                                    crate::timer::merge_timer_stats(
-                                        &mut ms.units,
-                                        timer_stats,
-                                        timer_elapsed_ms,
-                                    );
-                                }
-                                Err(err) => {
-                                    warn!(
-                                        "Varlink timer stats (D-Bus fallback) failed for container {}: {:?}",
-                                        machine_name, err
-                                    );
-                                    let mut ms = stats_clone.write().await;
-                                    crate::timer::record_backfill_duration(
-                                        &mut ms.units,
-                                        timer_elapsed_ms,
-                                    );
-                                }
-                            }
-                            // Service type is not exposed via varlink metrics; resolve
-                            // it over the container's D-Bus connection (same as host).
-                            crate::varlink_units::apply_oneshot_dbus_override(
-                                &sdc_clone,
-                                &stats_clone,
-                                &config_clone.units,
-                            )
-                            .await;
-                            let container_root = format!("/proc/{}/root", leader_pid);
-                            if config_clone.units.unit_files {
-                                let unit_files =
-                                    crate::units::collect_unit_files_stats(&container_root).await;
-                                let mut ms = stats_clone.write().await;
-                                ms.units.unit_files = unit_files;
-                            }
+                        Ok(()) => {
                             stats_clone.write().await.varlink_usage.units =
                                 Some(crate::CollectorTransport::Varlink);
-                            Ok(())
+                            return Ok(());
                         }
                         Err(err) => {
                             crate::varlink_fallback::report_varlink_failure(
@@ -400,42 +473,22 @@ pub async fn update_machines_stats(
                                 "D-Bus",
                                 err,
                             )?;
-                            let container_root = format!("/proc/{}/root", leader_pid);
-                            // Set before the call (the lib.rs ordering): if
-                            // the D-Bus collection errors, the gauge still
-                            // says D-Bus rather than going stale or absent.
-                            stats_clone.write().await.varlink_usage.units =
-                                Some(crate::CollectorTransport::Dbus);
-                            crate::units::update_unit_stats(
-                                config_clone,
-                                sdc_clone,
-                                stats_clone,
-                                container_root,
-                            )
-                            .await
                         }
                     }
-                });
-            } else {
-                let container_root = format!("/proc/{}/root", leader_pid);
-                let config_clone = Arc::clone(&config);
-                let sdc_clone = sdc.clone();
-                let stats_clone = locked_machine_stats.clone();
-                join_set.spawn(async move {
-                    // Set before the call (the lib.rs ordering): if the
-                    // collection errors, the gauge still says D-Bus rather
-                    // than going stale or absent.
-                    stats_clone.write().await.varlink_usage.units =
-                        Some(crate::CollectorTransport::Dbus);
-                    crate::units::update_unit_stats(
-                        config_clone,
-                        sdc_clone,
-                        stats_clone,
-                        container_root,
-                    )
-                    .await
-                });
-            }
+                }
+                // Set before the call (the lib.rs ordering): if the D-Bus
+                // collection errors, the gauge still says D-Bus rather than
+                // going stale or absent.
+                stats_clone.write().await.varlink_usage.units =
+                    Some(crate::CollectorTransport::Dbus);
+                crate::units::update_unit_stats(
+                    config_clone,
+                    sdc_clone,
+                    stats_clone,
+                    container_root,
+                )
+                .await
+            });
         }
 
         if config.dbus_stats.enabled {
@@ -479,6 +532,40 @@ pub async fn update_machines_stats(
         }
     }
 
+    Ok(())
+}
+
+type MachineDescribe = Option<anyhow::Result<crate::varlink_system::SharedDescribe>>;
+
+/// Clone the per-container shared `Describe` for one more collector; an
+/// error is re-rendered, since `anyhow::Error` itself is not `Clone`.
+fn clone_describe(describe: &MachineDescribe) -> MachineDescribe {
+    describe.as_ref().map(|describe| match describe {
+        Ok(describe) => Ok(describe.clone()),
+        Err(err) => Err(anyhow::anyhow!("{:#}", err)),
+    })
+}
+
+/// Collect a container's units over varlink the way the host does: unit and
+/// timer metrics from `io.systemd.Metrics`, then per-service stats, timer
+/// properties and service types from `io.systemd.Unit.List`, with cgroup and
+/// unit file data read below the container's root. Any failure redoes the
+/// whole collection over D-Bus (see the host path in `lib.rs` for why).
+async fn collect_container_units_varlink(
+    config: &Arc<crate::config::Config>,
+    stats: &Arc<RwLock<MachineStats>>,
+    endpoints: anyhow::Result<(VarlinkEndpoint, VarlinkEndpoint)>,
+    container_root: &str,
+) -> anyhow::Result<()> {
+    let (metrics, manager) = endpoints?;
+    let timer_names =
+        crate::varlink_units::update_unit_stats(Arc::clone(config), stats.clone(), metrics).await?;
+    crate::varlink_units::apply_unit_details(&manager, stats, config, container_root, &timer_names)
+        .await?;
+    if config.units.unit_files {
+        let unit_files = crate::units::collect_unit_files_stats(container_root).await;
+        stats.write().await.units.unit_files = unit_files;
+    }
     Ok(())
 }
 

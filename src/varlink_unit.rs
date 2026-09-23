@@ -44,14 +44,18 @@ pub struct UnitLookup {
 }
 
 impl UnitLookup {
-    pub async fn connect(socket_path: &str) -> anyhow::Result<Self> {
+    pub async fn connect(
+        endpoint: &crate::varlink::endpoint::VarlinkEndpoint,
+    ) -> anyhow::Result<Self> {
         Ok(Self {
-            connection: zlink::unix::connect(socket_path).await?,
+            connection: endpoint.connect().await?,
             cache: HashMap::new(),
         })
     }
 
-    /// Look a unit up, returning `Ok(None)` if systemd does not know it.
+    /// Look a unit up, returning `Ok(None)` if systemd does not know it, or
+    /// knows it only as masked or failed to load (`UnitMasked`/`UnitError`),
+    /// matching D-Bus `ListUnits`, which has no service data for those either.
     ///
     /// A transport or protocol failure is an error rather than `None`, so the
     /// caller can fall back to D-Bus for the whole phase. Collapsing the two

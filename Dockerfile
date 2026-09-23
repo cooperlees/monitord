@@ -1,10 +1,13 @@
 # Use the latest Fedora Rawhide image for development
 FROM fedora:rawhide
 
-# Install Git and minimize the image size. systemd-container provides
-# systemd-nspawn/machinectl for the nspawn fixture machine the integration
-# test boots to cover the machines module.
-RUN dnf install -y cargo git rust systemd systemd-container && \
+# Install Git and minimize the image size. Everything past `rust` is what the
+# integration test needs, named explicitly so the image cannot drift out from
+# under it if the base image stops pulling one in: systemd-container provides
+# systemd-nspawn/machinectl for the fixture machines it boots, systemd-networkd
+# the networkd collector's source, and shadow-utils the useradd its capability
+# matrix runs monitord with (see REQUIRED_CONTAINER_TOOLS).
+RUN dnf install -y cargo git rust systemd systemd-container systemd-networkd shadow-utils && \
     dnf clean all && \
     rm -rf /var/cache/dnf
 

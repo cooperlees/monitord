@@ -396,7 +396,7 @@ pub async fn stat_collector(
         // behind an unrelated socket.
         let manager_describe = config.use_varlink(&[config.system_state.varlink]).then(|| {
             crate::varlink_system::shared_describe(
-                crate::varlink_system::MANAGER_SOCKET_PATH.to_string(),
+                crate::varlink_system::MANAGER_SOCKET_PATH.into(),
             )
         });
 
@@ -449,8 +449,8 @@ pub async fn stat_collector(
             let no_fallback = config.varlink.no_fallback;
             spawn_timed(&mut join_set, "networkd", collect_start_time, async move {
                 if config_clone.use_varlink(&[config_clone.networkd.varlink]) {
-                    let socket_path = crate::varlink_networkd::NETWORK_SOCKET_PATH.to_string();
-                    match crate::varlink_networkd::get_networkd_state(&socket_path).await {
+                    let endpoint = crate::varlink_networkd::NETWORK_SOCKET_PATH.into();
+                    match crate::varlink_networkd::get_networkd_state(&endpoint).await {
                         Ok(networkd_stats) => {
                             let mut machine_stats = stats_clone.write().await;
                             machine_stats.networkd = networkd_stats;
@@ -532,11 +532,10 @@ pub async fn stat_collector(
             let no_fallback = config.varlink.no_fallback;
             spawn_timed(&mut join_set, "units", collect_start_time, async move {
                 if config_clone.use_varlink(&[config_clone.units.varlink]) {
-                    let socket_path = crate::varlink_units::METRICS_SOCKET_PATH.to_string();
                     match crate::varlink_units::update_unit_stats(
                         Arc::clone(&config_clone),
                         stats_clone.clone(),
-                        socket_path,
+                        crate::varlink_units::METRICS_SOCKET_PATH.into(),
                     )
                     .await
                     {
@@ -548,7 +547,7 @@ pub async fn stat_collector(
                             // leave [services] and timers partially filled from
                             // the metrics, which is worse than either path alone.
                             if let Err(err) = crate::varlink_units::apply_unit_details(
-                                crate::varlink_unit::MANAGER_SOCKET_PATH,
+                                &crate::varlink_unit::MANAGER_SOCKET_PATH.into(),
                                 &stats_clone,
                                 &config_clone,
                                 "",

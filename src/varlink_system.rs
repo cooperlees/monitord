@@ -35,8 +35,10 @@ pub type SharedDescribe = Shared<BoxFuture<'static, Result<ManagerRuntime, Arc<a
 /// No `spawn_blocking` here, unlike the streaming `io.systemd.Metrics.List`
 /// call in `varlink_units`: a single-shot zlink call holds no `!Send` stream
 /// across an await, so it runs on the main runtime like any other future.
-async fn describe_runtime(socket_path: &str) -> anyhow::Result<ManagerRuntime> {
-    let mut conn = zlink::unix::connect(socket_path).await?;
+async fn describe_runtime(
+    endpoint: &crate::varlink::endpoint::VarlinkEndpoint,
+) -> anyhow::Result<ManagerRuntime> {
+    let mut conn = endpoint.connect().await?;
     match conn.describe().await? {
         Ok(output) => output
             .runtime
@@ -49,8 +51,8 @@ async fn describe_runtime(socket_path: &str) -> anyhow::Result<ManagerRuntime> {
 ///
 /// Nothing is sent until a collector awaits it, so building this for a cycle
 /// that ends up needing neither value costs nothing.
-pub fn shared_describe(socket_path: String) -> SharedDescribe {
-    async move { describe_runtime(&socket_path).await.map_err(Arc::new) }
+pub fn shared_describe(endpoint: crate::varlink::endpoint::VarlinkEndpoint) -> SharedDescribe {
+    async move { describe_runtime(&endpoint).await.map_err(Arc::new) }
         .boxed()
         .shared()
 }
@@ -148,7 +150,7 @@ mod tests {
     async fn test_shared_describe_resolves_for_every_awaiter() {
         // Both collectors await one call, so a failure has to reach both of
         // them — otherwise one would report success off a call never made.
-        let shared = shared_describe("/nonexistent/io.systemd.Manager".to_string());
+        let shared = shared_describe("/nonexistent/io.systemd.Manager".into());
         let (version, system_state) =
             tokio::join!(get_version(shared.clone()), get_system_state(shared));
         assert!(version.is_err());

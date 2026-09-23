@@ -25,8 +25,21 @@ struct Cli {
     log_level: monitord::logging::LogLevels,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    // monitord re-executes itself as a tiny helper inside each machine's PID
+    // namespace (see monitord::varlink::machine_connector). Dispatch that
+    // before clap and before starting a multi-threaded runtime it never needs.
+    let argv: Vec<String> = std::env::args().collect();
+    if argv.get(1).map(String::as_str) == Some(monitord::varlink::machine_connector::HELPER_ARG) {
+        monitord::varlink::machine_connector::helper_main(&argv[2..]);
+    }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(async_main())
+}
+
+async fn async_main() -> anyhow::Result<()> {
     let args = Cli::parse();
     monitord::logging::setup_logging(args.log_level.into());
 
