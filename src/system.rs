@@ -69,7 +69,22 @@ pub enum SystemdSystemState {
 }
 
 /// Parsed systemd version from the Version property on org.freedesktop.systemd1.Manager.
-/// Format: "major.minor[.revision].os" (e.g. "256.1.fc40", "255.6-9.9.hs+fb.el9")
+///
+/// systemd version strings follow the [UAPI Version Format Specification][uapi]
+/// (what `systemd-analyze compare-versions` implements), which standardises how
+/// versions *sort* — `~` sorts below everything, `-` separates major parts, `.`
+/// separates parts of a component — but not how they split into fields. So
+/// there is no official parser to defer to for this: the major/minor/revision/os
+/// split below is monitord's own, for the JSON output, and the separator
+/// handling follows the spec's meanings. Should monitord ever need to *compare*
+/// versions, use that spec (e.g. the zero-dependency `uapi-version` crate)
+/// rather than these fields — today it feature-detects instead, by looking for
+/// the metrics a systemd release added.
+///
+/// Format: "major[.minor][.revision][.os]" (e.g. "256.1.fc40",
+/// "255.6-9.9.hs+fb.el9", "260~rc1-5.fc45", "262-1.fc46").
+///
+/// [uapi]: https://uapi-group.org/specifications/specs/version_format_specification/
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct SystemdVersion {
     /// Major version number (e.g. 256)
@@ -92,11 +107,22 @@ impl SystemdVersion {
     }
 }
 impl fmt::Display for SystemdVersion {
+    /// Dot-joined, skipping parts this version does not have. Note the
+    /// separators are normalised: "260~rc1-5.fc45" renders as
+    /// "260.rc1-5.fc45", since which separator followed the major version is
+    /// not kept.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(revision) = self.revision {
-            return write!(f, "{}.{}.{}.{}", self.major, self.minor, revision, self.os);
+        write!(f, "{}", self.major)?;
+        if !self.minor.is_empty() {
+            write!(f, ".{}", self.minor)?;
         }
-        write!(f, "{}.{}.{}", self.major, self.minor, self.os)
+        if let Some(revision) = self.revision {
+            write!(f, ".{revision}")?;
+        }
+        if !self.os.is_empty() {
+            write!(f, ".{}", self.os)?;
+        }
+        Ok(())
     }
 }
 impl TryFrom<String> for SystemdVersion {
@@ -105,12 +131,16 @@ impl TryFrom<String> for SystemdVersion {
     fn try_from(s: String) -> Result<Self, Self::Error> {
         let no_v_version = s.strip_prefix('v').unwrap_or(&s);
 
-        // Handle RC/pre-release versions like "260~rc1-5.fc45".
-        // The '~' separates the major version number from the pre-release identifier.
-        if let Some(tilde_pos) = no_v_version.find('~') {
-            let major = no_v_version[..tilde_pos].parse::<u32>()?;
-            let after_tilde = &no_v_version[tilde_pos + 1..];
-            let mut tilde_parts = after_tilde.splitn(2, '.');
+        // Handle versions whose major number is followed by a package release
+        // rather than a dotted minor: "260~rc1-5.fc45" (pre-release) and
+        // "262-1.fc46" (Fedora once the release is final). Only a separator
+        // before the first '.' counts — a '-' after one belongs to a distro
+        // minor such as the "6-9" in "969.6-9.9.hs+fb.el9".
+        let first_dot = no_v_version.find('.').unwrap_or(no_v_version.len());
+        if let Some(sep_pos) = no_v_version[..first_dot].find(['~', '-']) {
+            let major = no_v_version[..sep_pos].parse::<u32>()?;
+            let after_sep = &no_v_version[sep_pos + 1..];
+            let mut tilde_parts = after_sep.splitn(2, '.');
             let minor = tilde_parts.next().unwrap_or("").to_string();
             let os = tilde_parts.next().unwrap_or("").to_string();
             return Ok(SystemdVersion {
@@ -127,10 +157,9 @@ impl TryFrom<String> for SystemdVersion {
             .next()
             .ok_or_else(|| MonitordSystemError::VersionParseError("No valid major version".into()))?
             .parse::<u32>()?;
-        let minor = parts
-            .next()
-            .ok_or_else(|| MonitordSystemError::VersionParseError("No valid minor version".into()))?
-            .to_string();
+        // A version can be just the major number ("263", as built from an
+        // upstream tarball): no minor, revision or OS suffix to report.
+        let minor = parts.next().unwrap_or_default().to_string();
         let mut revision = None;
         if split_count > 3 {
             revision = parts.next().and_then(|s| s.parse::<u32>().ok());
@@ -290,6 +319,43 @@ mod tests {
             SystemdVersion::new(260, String::from("rc1-5"), None, String::from("fc45")),
             parsed
         );
+
+        // Fedora once the release is final and the '~rc' is gone: "262-1.fc46".
+        // The package release follows the major version directly, with no
+        // dotted minor at all.
+        let parsed: SystemdVersion = String::from("262-1.fc46").try_into()?;
+        assert_eq!(
+            SystemdVersion::new(262, String::from("1"), None, String::from("fc46")),
+            parsed
+        );
+
+        // A release with no OS suffix still parses.
+        let parsed: SystemdVersion = String::from("262-1").try_into()?;
+        assert_eq!(
+            SystemdVersion::new(262, String::from("1"), None, String::new()),
+            parsed
+        );
+
+        // A '-' after the first dot is part of the minor, not a release
+        // separator: this must keep parsing as it did before.
+        let parsed: SystemdVersion = String::from("969.6-9.9.hs+fb.el9").try_into()?;
+        assert_eq!(
+            SystemdVersion::new(969, String::from("6-9"), Some(9), String::from("hs+fb.el9")),
+            parsed
+        );
+
+        // Just the major version, as built from an upstream tarball.
+        let parsed: SystemdVersion = String::from("263").try_into()?;
+        assert_eq!(
+            SystemdVersion::new(263, String::new(), None, String::new()),
+            parsed
+        );
+        assert_eq!(parsed.to_string(), "263");
+
+        // Anything that does not start with a number is still an error: a
+        // version monitord cannot read must not silently become 0.
+        assert!(SystemdVersion::try_from(String::from("not-a-version")).is_err());
+        assert!(SystemdVersion::try_from(String::new()).is_err());
 
         Ok(())
     }
