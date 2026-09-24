@@ -806,7 +806,12 @@ mod tests {
   "units.timer_remain_after_elapse": 0,
   "units.timer_units": 0,
   "units.total_units": 0,
+  "varlink_usage.boot_blame": 1,
+  "varlink_usage.machines": 0,
+  "varlink_usage.networkd": 1,
+  "varlink_usage.system_state": 1,
   "varlink_usage.units": 0,
+  "varlink_usage.verify": 0,
   "varlink_usage.version": 1,
   "verify.failing.service": 2,
   "verify.failing.slice": 1,
@@ -864,10 +869,17 @@ mod tests {
                     success: false,
                 },
             ],
+            // Exhaustive init (no `..Default::default()`): adding a new
+            // gauge forces this fixture — and EXPECTED_FLAT_JSON — to be
+            // updated, so the example flat output can't silently go stale.
             varlink_usage: crate::VarlinkUsage {
                 version: Some(crate::CollectorTransport::Varlink),
+                system_state: Some(crate::CollectorTransport::Varlink),
                 units: Some(crate::CollectorTransport::Dbus),
-                ..Default::default()
+                networkd: Some(crate::CollectorTransport::Varlink),
+                machines: Some(crate::CollectorTransport::Dbus),
+                boot_blame: Some(crate::CollectorTransport::Varlink),
+                verify: Some(crate::CollectorTransport::Dbus),
             },
         };
         stats.units.collection_timings = units::UnitsCollectionTimings {
@@ -949,7 +961,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(131, json_flat_map.len());
+        assert_eq!(136, json_flat_map.len());
     }
 
     #[test]

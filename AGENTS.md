@@ -78,7 +78,11 @@ Single-crate project (both library and binary). The binary (`main.rs`) parses CL
   changing, or removing varlink endpoints (minimum systemd version per endpoint)
 - When adding new output values, add them to the sample json-flat output in
   README.md (the `### json-flat` block under Output Formats), in sorted key
-  order to match the `BTreeMap` flat output
+  order to match the `BTreeMap` flat output, AND to the `EXPECTED_FLAT_JSON`
+  fixture in `src/json.rs` (plus its `return_monitord_stats()` builder, which
+  uses exhaustive struct init with no `..Default::default()` so the compiler
+  forces the update). Run the binary and diff real output against both
+  samples to catch anything missed.
 - Exception: do not add `machines.<name>.*` keys to that sample. They are the
   same keys as the top level namespaces, just prefixed per machine, so listing
   them only doubles the block. The `## Machines support` section documents the
