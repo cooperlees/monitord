@@ -184,6 +184,8 @@ stale_fd_stats = true
 user_stats = false
 # dbus.oeer.* metrics: peer stats as reported by dbus-broker
 peer_stats = false
+# Only report peers that own a well-known bus name when peer_stats is on
+peer_well_known_names_only = false
 # dbus.cgroup.* stats is an aggregation of peer_stats by cgroup
 # by dbus-broker
 cgroup_stats = false
