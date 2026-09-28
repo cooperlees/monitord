@@ -15,36 +15,36 @@ categories = ["network-programming", "os::linux-apis"]
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.6", features = ["derive", "std", "help", "env"], default-features = false }
-configparser = { version = "3.1.0", features = ["indexmap"] }
+configparser = { version = "3.3", features = ["indexmap"] }
 futures-util = "0.3"
 indexmap = "2.14"
-int-enum = "1.1"
+int-enum = "1.2"
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_repr = "0.1"
-serde_tuple = "1.0.0"
+serde_tuple = "1.1"
 struct-field-names-as-array = "0.3"
 strum = "0.28"
 strum_macros = "0.28"
 thiserror = "2.0"
-tokio = { version = "1.52.1", features = ["fs", "rt", "rt-multi-thread", "macros", "tracing", "time", "sync"] }
+tokio = { version = "1.53", features = ["fs", "rt", "rt-multi-thread", "macros", "tracing", "time", "sync"] }
 tracing = "0.1"
 tracing-core = "0.1"
 tracing-glog = "0.4"
 tracing-subscriber = "0.3"
 uzers = "0.12"
-zbus = { version = "5.10.0", features = ["tokio"], default-features = false }
-zvariant = "5.10.0"
-zvariant_derive = "5.10.0"
-zlink = "0.7.1"
+zbus = { version = "5.14", features = ["tokio"], default-features = false }
+zvariant = "5.15"
+zvariant_derive = "5.15"
+zlink = "0.7"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 procfs = "0.18"
 
 [dev-dependencies]
-tempfile = "3.3.0"
-tokio = { version = "1.47.1", features = ["test-util"] }
+tempfile = "3.27"
+tokio = { version = "1.53", features = ["test-util"] }
 
 [profile]
 release = { strip = "symbols", lto = "fat", opt-level = "z", codegen-units = 1 }
