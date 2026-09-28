@@ -39,7 +39,7 @@ const UNSET: u64 = u64::MAX;
 /// `[services]` and the target of a tracked timer — and a miss costs a round
 /// trip to PID 1, which serves varlink requests one at a time.
 pub struct UnitLookup {
-    connection: zlink::unix::Connection,
+    connection: zlink::tokio::unix::Connection,
     cache: HashMap<String, Option<ListOutput>>,
 }
 

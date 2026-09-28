@@ -18,9 +18,9 @@ pub enum VarlinkEndpoint {
 }
 
 impl VarlinkEndpoint {
-    pub async fn connect(&self) -> anyhow::Result<zlink::unix::Connection> {
+    pub async fn connect(&self) -> anyhow::Result<zlink::tokio::unix::Connection> {
         match self {
-            Self::Path(path) => Ok(zlink::unix::connect(path).await?),
+            Self::Path(path) => Ok(zlink::tokio::unix::connect(path).await?),
             Self::Machine { connector, socket } => connector.connect(*socket).await,
         }
     }
