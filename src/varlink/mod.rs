@@ -1,4 +1,5 @@
 pub mod endpoint;
+pub mod machine;
 pub mod machine_connector;
 pub mod manager;
 pub mod metrics;

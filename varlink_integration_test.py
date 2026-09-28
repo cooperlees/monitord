@@ -181,17 +181,14 @@ EXPECTED_VARLINK_COLLECTORS: tuple[str, ...] = (
     "system_state",
     "units",
     "networkd",
-    "machines",  # enumeration is D-Bus-only, so always 0 (see #37)
+    "machines",  # enumeration via machined's io.systemd.Machine.List
     "boot_blame",
     "verify",
 )
 
 EXPECTED_VARLINK_USAGE: dict[str, dict[str, int]] = {
     "dbus": {collector: 0 for collector in EXPECTED_VARLINK_COLLECTORS},
-    "varlink": {
-        collector: 0 if collector == "machines" else 1
-        for collector in EXPECTED_VARLINK_COLLECTORS
-    },
+    "varlink": {collector: 1 for collector in EXPECTED_VARLINK_COLLECTORS},
 }
 
 # Per-machine collector transports (machines.<name>.varlink_usage.*), which
@@ -769,9 +766,11 @@ def assert_dead_bus_run(container: str) -> None:
     # varlink/fs/procfs paths never connect — and the run must exit 0.
     # Only collectors with a varlink or non-D-Bus path are enabled here:
     # networkd is forced onto the file fallback (`varlink = false`) with
-    # its ifindex map from sysfs (no bus), machines/dbus_stats are
-    # D-Bus-only by design, and verify's `systemd-analyze` subprocess
-    # talks to the bus itself.
+    # its ifindex map from sysfs (no bus), dbus_stats is D-Bus-only by
+    # design, and verify's `systemd-analyze` subprocess talks to the bus
+    # itself. machines stays enabled: enumeration must come from machined's
+    # varlink List, since the host bus is dead (each container is still
+    # reached on its own bus or varlink, which this run does not break).
     dead_conf = (
         docker_exec(container, "cat", VARLINK_CONF)
         .replace(
@@ -783,7 +782,6 @@ def assert_dead_bus_run(container: str) -> None:
             "[networkd]\nenabled = true\nvarlink = false",
         )
         .replace("[verify]\nenabled = true", "[verify]\nenabled = false")
-        .replace("[machines]\nenabled = true", "[machines]\nenabled = false")
         # no_fallback=true turns every fallback into a loud failure, so
         # this run proves the enabled collectors are varlink-clean rather
         # than silently D-Bus-served. The dead bus address doubles the
@@ -819,9 +817,25 @@ def assert_dead_bus_run(container: str) -> None:
         raise SystemExit(
             f"FAIL: dead-bus run collected no networkd interfaces: {managed!r}"
         )
+    # Enumeration over the dead host bus would have failed the machines
+    # collector above; also require it reported varlink and found every
+    # fixture machine, so an empty enumeration cannot pass vacuously.
+    if stats.get("monitord.varlink_usage.machines") != 1:
+        raise SystemExit(
+            "FAIL: dead-bus run did not enumerate machines over varlink: "
+            f"{stats.get('monitord.varlink_usage.machines')!r}"
+        )
+    missing = [
+        machine
+        for machine in MACHINE_NAMES
+        if not any(key.startswith(f"monitord.machines.{machine}.") for key in stats)
+    ]
+    if missing:
+        raise SystemExit(f"FAIL: dead-bus run did not enumerate machines {missing}")
     print(
         "PASS: dead-bus run exited 0 with every enabled collector at success=1 "
-        f"({managed} networkd interfaces via the file path)"
+        f"({managed} networkd interfaces via the file path, "
+        f"machines {list(MACHINE_NAMES)} enumerated over varlink)"
     )
 
 

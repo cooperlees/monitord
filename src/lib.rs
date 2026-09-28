@@ -143,20 +143,16 @@ pub struct VarlinkUsage {
     pub version: Option<CollectorTransport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_state: Option<CollectorTransport>,
-    /// `Varlink` means the bulk enumeration came from the metrics stream.
-    /// Inside containers this still includes D-Bus calls underneath: the
-    /// timer backfill (`collect_all_timers_dbus`) and the oneshot type
-    /// override, which have no varlink equivalent there (see #211). The host
-    /// varlink path needs neither, so a container `1` involves strictly more
-    /// D-Bus traffic than a host `1` — compare host and container gauges
-    /// separately rather than aggregating them into one adoption ratio.
+    /// `Varlink` means the bulk enumeration came from the metrics stream and
+    /// per-unit details from `io.systemd.Unit.List`, on the host and inside
+    /// containers alike.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<CollectorTransport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub networkd: Option<CollectorTransport>,
-    /// Host-side machine enumeration, still D-Bus-only until machined grows
-    /// a varlink List API (see #37). Per-container transports land on each
-    /// machine's own `MachineStats` instead.
+    /// Host-side machine enumeration: machined's `io.systemd.Machine.List`
+    /// (systemd v257+) or its D-Bus API. Per-container transports land on
+    /// each machine's own `MachineStats` instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub machines: Option<CollectorTransport>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -605,14 +601,13 @@ pub async fn stat_collector(
             let monitord_stats_clone = locked_monitord_stats.clone();
             let connections_clone = cached_machine_connections.clone();
             spawn_timed(&mut join_set, "machines", collect_start_time, async move {
-                // Enumeration is D-Bus-only: machined has no varlink
-                // List API yet (see #37). Per-container collection
-                // records its own transports on the machine stats.
-                stats_clone.write().await.varlink_usage.machines = Some(CollectorTransport::Dbus);
-                let conn = dbus_connection(&dbus_cell, dbus_timeout).await?;
+                // Enumeration records its transport (varlink or D-Bus) on
+                // the host stats; per-container collection records its own
+                // transports on each machine's stats.
                 crate::machines::update_machines_stats(
                     config_clone,
-                    conn,
+                    dbus_cell,
+                    stats_clone,
                     monitord_stats_clone,
                     connections_clone,
                 )

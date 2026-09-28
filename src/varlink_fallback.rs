@@ -9,9 +9,9 @@
 //! error instead, so the collector fails loudly and CI proves the collector
 //! set is varlink-clean rather than silently D-Bus-served.
 //!
-//! Scope notes (so the "varlink-clean" claim is not over-read): collectors
-//! with no varlink path (`[dbus]` stats, `machines` enumeration) never
-//! report a fallback — they just use the bus. And skipped-but-warned metric
+//! Scope notes (so the "varlink-clean" claim is not over-read): `[dbus]`
+//! stats have no varlink path (they are statistics about the D-Bus daemon
+//! itself), so they never report a fallback — they just use the bus. And skipped-but-warned metric
 //! parses are not fallbacks either, so a clean run can still under-report;
 //! completeness assertions cover that, not this flag.
 //!

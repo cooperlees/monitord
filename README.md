@@ -32,8 +32,8 @@ monitord ... know how happy your systemd is! 😊
     `varlink-timer.c`, which first appear in v261 — so per-service stats and
     service types are unavailable before then. v261+ also for job listing
   - machined (`io.systemd.Machine.List` on
-    `/run/systemd/machine/io.systemd.Machine`; planned future use for machine
-    enumeration — see #37): v257+
+    `/run/systemd/machine/io.systemd.Machine`, used today for machine
+    enumeration): v257+
 
 ## What does monitord monitor?
 
@@ -47,7 +47,7 @@ monitord collects systemd health metrics via D-Bus (and optionally Varlink) and 
 - **Timers** — trigger times, accuracy, delays, and associated service state for systemd timers
 - **Boot blame** — the N slowest units at boot, similar to `systemd-analyze blame`
 - **D-Bus daemon stats** — connection counts, match rules, and per-peer/per-cgroup/per-user breakdowns (dbus-broker and dbus-daemon)
-- **Containers / machines** — recursively collects the same metrics from systemd-nspawn containers and VMs via `systemd-machined`
+- **Containers** — recursively collects the same metrics from containers registered with `systemd-machined` (e.g. systemd-nspawn; VMs are skipped)
 - **Unit verification** — runs `systemd-analyze verify` and reports failing unit counts by type
 
 ## Run Modes
@@ -299,7 +299,9 @@ Alternatively, set `cache_dir` to a location like `/tmp` that is always writable
 ## Machines support
 
 From version `>=0.11` monitord supports obtaining the same set of key from
-systemd 'machines' (i.e. `machinectl --list`).
+systemd 'machines' (i.e. `machinectl --list`). Only machines of class `container`
+are collected. They are enumerated via machined's `io.systemd.Machine.List` varlink
+API (systemd v257+) when varlink is enabled, falling back to machined's D-Bus API.
 
 The keys are the same format as below in `json_flat` output but are prefixed with
 the `machines` keyword and machine name. For example:
@@ -541,7 +543,7 @@ they are not repeated below.
   "units.timer_units": 20,
   "units.total_units": 562,
   "varlink_usage.boot_blame": 1,
-  "varlink_usage.machines": 0,
+  "varlink_usage.machines": 1,
   "varlink_usage.networkd": 1,
   "varlink_usage.system_state": 1,
   "varlink_usage.units": 1,
@@ -583,11 +585,9 @@ gauges over time shows varlink adoption climbing across the fleet. Downstream
 consumers such as monitord-exporter can aggregate them (share of collectors
 reporting 1) from there; monitord itself only makes the gauges available in
 its output formats. Per-container gauges are emitted under
-`machines.<name>.varlink_usage.<collector>`; note a container `units` gauge
-of 1 still includes D-Bus calls underneath (the timer backfill and oneshot
-type override, which have no varlink equivalent inside containers), so compare
-host and container gauges separately. The host `machines` gauge covers
-enumeration only and stays 0 until machined grows a varlink List API.
+`machines.<name>.varlink_usage.<collector>`. The host `machines` gauge covers
+enumeration only (machined's `io.systemd.Machine.List`, v257+); per-container
+collection reports its own gauges.
 
 | Field | Meaning |
 |-------|---------|
@@ -874,7 +874,8 @@ All monitord's dbus is done via async (tokio) [zbus](https://crates.io/crates/zb
 systemd Dbus APIs are in use in the following modules:
 
 - machines
-  - `ManagerProxy::list_machines()`
+  - `ManagerProxy::list_machines()` — fallback only, when varlink enumeration
+    (`io.systemd.Machine.List`) is disabled or unavailable
   - Can do most other calls then on the machine's systemd/dbus
 - networkd
   - `ManagerProxy::list_links()` — last resort only, when sysfs yields no usable ifindex map
@@ -935,13 +936,13 @@ varlink-clean in CI — not a hardening flag: tripped collectors still report `s
 `collector_timings` and the run exits 0 (per-collector failures are deliberately non-fatal,
 especially in daemon mode), so CI must assert on the `success` gauges, not the exit status.
 `no_fallback` only fires inside varlink code paths, so it has no effect while `[varlink]
-enabled=false` (a warning is logged) or on collectors with no varlink path at all (`[dbus]`
-stats, `machines` enumeration). Partial varlink data that parses with warnings (e.g. a
+enabled=false` (a warning is logged) or on `[dbus]` stats, which have no varlink path
+(they are statistics about the D-Bus daemon itself). Partial varlink data that parses with warnings (e.g. a
 skipped metric) is not a fallback either — pair `no_fallback` with the completeness
 assertions, not as a substitute for them.
 
 Each varlink-capable collector (`[units]`, `[networkd]`, `[system-state]`, `[boot]`,
-`[verify]`, `[machines]` for container collection) also has its own `varlink` toggle,
+`[verify]`, `[machines]` for machine enumeration and container collection) also has its own `varlink` toggle,
 defaulting to true. A collector uses varlink only when both the global switch and its section toggle are
 true, so collectors can be moved to varlink one at a time by setting a section toggle to
 false. Container collection additionally requires `[machines] varlink`. Timers have no
@@ -984,6 +985,11 @@ toggle of their own: they ride the units path and follow `[units] varlink`.
 **Networkd interfaces** (`io.systemd.Network.Describe` — systemd v257+):
 - Per-interface operational, carrier, admin, and address states
 - Falls back to parsing `/run/systemd/netif/links` state files if the socket is unavailable
+
+**Machines** (`io.systemd.Machine.List` on `/run/systemd/machine/io.systemd.Machine` — systemd v257+):
+- Enumeration of containers and their leader PIDs, with the `[machines]` allowlist/blocklist
+- Needs no extra privileges (unlike per-container collection, see below)
+- Falls back to machined's D-Bus `ListMachines` if the socket is unavailable
 
 ### Containers
 
