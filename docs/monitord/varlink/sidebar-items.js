@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["manager","metrics","network","unit"]};
+window.SIDEBAR_ITEMS = {"mod":["endpoint","machine","machine_connector","manager","metrics","network","unit"]};

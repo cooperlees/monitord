@@ -264,8 +264,8 @@
     <code>varlink-timer.c</code>, which first appear in v261 — so per-service stats and
     service types are unavailable before then. v261+ also for job listing</li>
 <li>machined (<code>io.systemd.Machine.List</code> on
-    <code>/run/systemd/machine/io.systemd.Machine</code>; planned future use for machine
-    enumeration — see #37): v257+</li>
+    <code>/run/systemd/machine/io.systemd.Machine</code>, used today for machine
+    enumeration): v257+</li>
 </ul>
 <h2>What does monitord monitor?</h2>
 <p>monitord collects systemd health metrics via D-Bus (and optionally Varlink) and outputs them as JSON. It provides visibility into:</p>
@@ -278,7 +278,7 @@
 <li><strong>Timers</strong> — trigger times, accuracy, delays, and associated service state for systemd timers</li>
 <li><strong>Boot blame</strong> — the N slowest units at boot, similar to <code>systemd-analyze blame</code></li>
 <li><strong>D-Bus daemon stats</strong> — connection counts, match rules, and per-peer/per-cgroup/per-user breakdowns (dbus-broker and dbus-daemon)</li>
-<li><strong>Containers / machines</strong> — recursively collects the same metrics from systemd-nspawn containers and VMs via <code>systemd-machined</code></li>
+<li><strong>Containers</strong> — recursively collects the same metrics from containers registered with <code>systemd-machined</code> (e.g. systemd-nspawn; VMs are skipped)</li>
 <li><strong>Unit verification</strong> — runs <code>systemd-analyze verify</code> and reports failing unit counts by type</li>
 </ul>
 <h2>Run Modes</h2>
@@ -398,8 +398,10 @@ enabled = false
 stale_fd_stats = true
 # dbus.user.* metrics: user stats as reported by dbus-broker
 user_stats = false
-# dbus.oeer.* metrics: peer stats as reported by dbus-broker
+# dbus.peer.* metrics: peer stats as reported by dbus-broker
 peer_stats = false
+# Only report peers that own a well-known bus name when peer_stats is on
+peer_well_known_names_only = false
 # dbus.cgroup.* stats is an aggregation of peer_stats by cgroup
 # by dbus-broker
 cgroup_stats = false
@@ -418,6 +420,10 @@ enabled = true
 [services]
 foo.service
 
+# systemd version and system state (e.g. running, degraded)
+[system-state]
+enabled = true
+
 [timers]
 enabled = true
 
@@ -431,6 +437,8 @@ bar.timer
 [units]
 enabled = true
 state_stats = true
+# Also record how long each unit has been in its current state
+state_stats_time_in_state = true
 ignore_inactive_oneshot_services = true
 
 # Filter what services you want collect state stats for
@@ -452,6 +460,12 @@ foo
 
 [machines.blocklist]
 bar
+
+# Collect via systemd varlink APIs instead of D-Bus where available
+# (see the Varlink section below). Falls back to D-Bus unless no_fallback = true
+[varlink]
+enabled = false
+no_fallback = false
 
 # Boot blame metrics - shows the N slowest units at boot
 # Similar to `systemd-analyze blame`
@@ -498,7 +512,9 @@ directory exists and is writable by the monitord process user so boot cache file
 Alternatively, set <code>cache_dir</code> to a location like <code>/tmp</code> that is always writable.</p>
 <h2>Machines support</h2>
 <p>From version <code>&gt;=0.11</code> monitord supports obtaining the same set of key from
-systemd 'machines' (i.e. <code>machinectl --list</code>).</p>
+systemd 'machines' (i.e. <code>machinectl --list</code>). Only machines of class <code>container</code>
+are collected. They are enumerated via machined's <code>io.systemd.Machine.List</code> varlink
+API (systemd v257+) when varlink is enabled, falling back to machined's D-Bus API.</p>
 <p>The keys are the same format as below in <code>json_flat</code> output but are prefixed with
 the <code>machines</code> keyword and machine name. For example:</p>
 <pre><code class="language-json"># $KEY_PREFIX.machines.$MACHINE_NAME
@@ -508,6 +524,61 @@ the <code>machines</code> keyword and machine name. For example:</p>
   ...
 }
 </code></pre>
+<h3>Permissions</h3>
+<p>Machine collection is the only part of monitord that needs extra privileges, so skip this
+if you don't monitor machines. When running as a non-root user (like the shipped
+<code>monitord.service</code>), what it needs depends on how machines are collected:</p>
+<table>
+<thead>
+<tr>
+<th>Machines collected over</th>
+<th>Capabilities needed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D-Bus (the default, or <code>[machines] varlink = false</code>)</td>
+<td><code>CAP_SYS_PTRACE</code></td>
+</tr>
+<tr>
+<td>varlink (<code>[varlink] enabled = true</code> and <code>[machines] varlink = true</code>)</td>
+<td><code>CAP_SYS_PTRACE</code> + <code>CAP_SYS_ADMIN</code></td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-ini"># /etc/systemd/system/monitord.service.d/machines.conf
+# Drop CAP_SYS_ADMIN if you collect machines over D-Bus.
+[Service]
+AmbientCapabilities=CAP_SYS_PTRACE CAP_SYS_ADMIN
+CapabilityBoundingSet=CAP_SYS_PTRACE CAP_SYS_ADMIN
+</code></pre>
+<ul>
+<li><code>CAP_SYS_PTRACE</code> lets monitord reach each machine's sockets and files through
+  <code>/proc/&lt;leader_pid&gt;/root/…</code>: the kernel only allows that for processes that may ptrace
+  the machine's leader. Without it every machine fails with <code>Permission denied</code>, while
+  host collection keeps working. <code>CAP_DAC_READ_SEARCH</code> is not enough.</li>
+<li><code>CAP_SYS_ADMIN</code> is needed for varlink only. systemd's varlink servers only accept
+  callers inside the machine's PID namespace (see
+  <a href="https://github.com/cooperlees/monitord/issues/211">#211</a> and
+  <a href="https://github.com/systemd/systemd/issues/43807">systemd/systemd#43807</a>), so monitord
+  spawns one small helper per machine inside that namespace, which needs <code>CAP_SYS_ADMIN</code>.
+  The helper is monitord itself re-executed; it shows up inside the machine as
+  <code>monitord __monitord-machine-connector</code>. Right after starting it opens the machine's root,
+  drops to an unprivileged user (<code>nobody</code> if monitord runs as root) with no capabilities
+  at all, and from then on only connects to a fixed set of systemd sockets and hands the
+  connection back to monitord. It is spawned once per machine and reused for every
+  collection until the machine restarts, so there is no fork per collection cycle.
+  Without <code>CAP_SYS_ADMIN</code> monitord logs one warning and collects machines over D-Bus
+  (with <code>[varlink] no_fallback = true</code> this is an error instead).</li>
+</ul>
+<p>Both capabilities are broad: <code>CAP_SYS_PTRACE</code> also allows reading other processes'
+memory, and <code>CAP_SYS_ADMIN</code> is close to root. If you'd rather not grant <code>CAP_SYS_ADMIN</code>,
+set <code>[machines] varlink = false</code> to collect machines over D-Bus with <code>CAP_SYS_PTRACE</code>
+only, or run monitord inside each machine instead of collecting from the host.</p>
+<p>Machines started with user namespacing (e.g. <code>machinectl start</code> defaults to
+<code>PrivateUsers=pick</code>) also reject monitord's D-Bus connection, as host users are not mapped
+inside the machine. Set <code>PrivateUsers=no</code> in <code>/etc/systemd/nspawn/&lt;machine&gt;.nspawn</code> to
+collect from them.</p>
 <h2>Output Formats</h2>
 <h3>json</h3>
 <p>Normal <code>serde_json</code> non pretty JSON. All on one line. Most compact format.</p>
@@ -681,7 +752,7 @@ they are not repeated below.</p>
   &quot;units.timer_units&quot;: 20,
   &quot;units.total_units&quot;: 562,
   &quot;varlink_usage.boot_blame&quot;: 1,
-  &quot;varlink_usage.machines&quot;: 0,
+  &quot;varlink_usage.machines&quot;: 1,
   &quot;varlink_usage.networkd&quot;: 1,
   &quot;varlink_usage.system_state&quot;: 1,
   &quot;varlink_usage.units&quot;: 1,
@@ -716,11 +787,9 @@ gauges over time shows varlink adoption climbing across the fleet. Downstream
 consumers such as monitord-exporter can aggregate them (share of collectors
 reporting 1) from there; monitord itself only makes the gauges available in
 its output formats. Per-container gauges are emitted under
-<code>machines.&lt;name&gt;.varlink_usage.&lt;collector&gt;</code>; note a container <code>units</code> gauge
-of 1 still includes D-Bus calls underneath (the timer backfill and oneshot
-type override, which have no varlink equivalent inside containers), so compare
-host and container gauges separately. The host <code>machines</code> gauge covers
-enumeration only and stays 0 until machined grows a varlink List API.</p>
+<code>machines.&lt;name&gt;.varlink_usage.&lt;collector&gt;</code>. The host <code>machines</code> gauge covers
+enumeration only (machined's <code>io.systemd.Machine.List</code>, v257+); per-container
+collection reports its own gauges.</p>
 <table>
 <thead>
 <tr>
@@ -1170,11 +1239,29 @@ in the container to run monitord and test.</p>
 </ul>
 </li>
 </ul>
+<h3>Integration test</h3>
+<p><code>varlink_integration_test.py</code> is what the <code>varlink-integration</code> GitHub Action
+runs, so a CI failure reproduces locally with the same command:</p>
+<ul>
+<li><code>python3 varlink_integration_test.py</code></li>
+</ul>
+<p>It rebuilds the image on every run (a no-op when the Dockerfile has not
+changed) and recreates its container whenever the image changes, so a local run
+uses the same image the Action builds from scratch instead of a stale one. It
+reuses the running container otherwise; <code>--fresh</code> rebuilds without the cache.
+The image must carry everything the test shells out to, which is why the
+Dockerfile names <code>systemd-container</code>, <code>systemd-networkd</code> and <code>shadow-utils</code>
+explicitly — see <code>REQUIRED_CONTAINER_TOOLS</code>, which fails the run up front with
+one message if any of them is missing.</p>
 <h2>Troubleshooting</h2>
 <p><strong>"Connection refused" or D-Bus connection errors</strong></p>
 <p>The system bus connection is created lazily: monitord starts fine without a bus as long as no enabled collector needs D-Bus. Collectors served entirely over varlink, cgroupfs, state files, sysfs or procfs never connect — the networkd file fallback maps ifindexes to names via <code>/sys/class/net/*/ifindex</code> and only reaches for <code>Manager.ListLinks</code> when sysfs yields nothing usable. A collector that does need the bus — including any varlink fallback — reports its own per-collector error and the run continues with the remaining collectors. If a D-Bus collector is failing, ensure the system D-Bus daemon is running and the socket exists at <code>/run/dbus/system_bus_socket</code>. If using a custom address, set <code>dbus_address</code> in <code>[monitord]</code> config. Increase <code>dbus_timeout</code> if running on slow systems.</p>
 <p><strong>Empty or missing networkd metrics</strong></p>
 <p>systemd-networkd must be installed and running (<code>systemctl start systemd-networkd</code>). If networkd is not in use on your system, disable the collector with <code>enabled = false</code> in <code>[networkd]</code>.</p>
+<p><strong>Permission denied for machines / containers</strong></p>
+<p>A non-root monitord needs <code>CAP_SYS_PTRACE</code> to reach machines via <code>/proc/&lt;leader_pid&gt;/root</code>,
+plus <code>CAP_SYS_ADMIN</code> to collect them over varlink. See <a href="#permissions">Permissions</a> under
+Machines support.</p>
 <p><strong>Permission denied for D-Bus stats</strong></p>
 <p>The <code>[dbus]</code> collector requires permission to call <code>org.freedesktop.DBus.Debug.Stats.GetStats</code>. Either run monitord as root or add a D-Bus policy file — see the <a href="#dbus-stats">dbus stats</a> section.</p>
 <p><strong>PID 1 stats unavailable</strong></p>
@@ -1190,7 +1277,8 @@ in the container to run monitord and test.</p>
 <p>systemd Dbus APIs are in use in the following modules:</p>
 <ul>
 <li>machines</li>
-<li><code>ManagerProxy::list_machines()</code></li>
+<li><code>ManagerProxy::list_machines()</code> — fallback only, when varlink enumeration
+    (<code>io.systemd.Machine.List</code>) is disabled or unavailable</li>
 <li>Can do most other calls then on the machine's systemd/dbus</li>
 <li>networkd</li>
 <li><code>ManagerProxy::list_links()</code> — last resort only, when sysfs yields no usable ifindex map</li>
@@ -1243,12 +1331,12 @@ varlink-clean in CI — not a hardening flag: tripped collectors still report <c
 <code>collector_timings</code> and the run exits 0 (per-collector failures are deliberately non-fatal,
 especially in daemon mode), so CI must assert on the <code>success</code> gauges, not the exit status.
 <code>no_fallback</code> only fires inside varlink code paths, so it has no effect while <code>[varlink]
-enabled=false</code> (a warning is logged) or on collectors with no varlink path at all (<code>[dbus]</code>
-stats, <code>machines</code> enumeration). Partial varlink data that parses with warnings (e.g. a
+enabled=false</code> (a warning is logged) or on <code>[dbus]</code> stats, which have no varlink path
+(they are statistics about the D-Bus daemon itself). Partial varlink data that parses with warnings (e.g. a
 skipped metric) is not a fallback either — pair <code>no_fallback</code> with the completeness
 assertions, not as a substitute for them.</p>
 <p>Each varlink-capable collector (<code>[units]</code>, <code>[networkd]</code>, <code>[system-state]</code>, <code>[boot]</code>,
-<code>[verify]</code>, <code>[machines]</code> for container collection) also has its own <code>varlink</code> toggle,
+<code>[verify]</code>, <code>[machines]</code> for machine enumeration and container collection) also has its own <code>varlink</code> toggle,
 defaulting to true. A collector uses varlink only when both the global switch and its section toggle are
 true, so collectors can be moved to varlink one at a time by setting a section toggle to
 false. Container collection additionally requires <code>[machines] varlink</code>. Timers have no
@@ -1285,12 +1373,23 @@ toggle of their own: they ride the units path and follow <code>[units] varlink</
 <p><strong>Networkd interfaces</strong> (<code>io.systemd.Network.Describe</code> — systemd v257+):
 - Per-interface operational, carrier, admin, and address states
 - Falls back to parsing <code>/run/systemd/netif/links</code> state files if the socket is unavailable</p>
+<p><strong>Machines</strong> (<code>io.systemd.Machine.List</code> on <code>/run/systemd/machine/io.systemd.Machine</code> — systemd v257+):
+- Enumeration of containers and their leader PIDs, with the <code>[machines]</code> allowlist/blocklist
+- Needs no extra privileges (unlike per-container collection, see below)
+- Falls back to machined's D-Bus <code>ListMachines</code> if the socket is unavailable</p>
 <h3>Containers</h3>
-<p>For systemd-nspawn containers, monitord connects to the container's varlink socket via
-<code>/proc/&lt;leader_pid&gt;/root/run/systemd/report/io.systemd.Manager</code>, similar to how D-Bus uses
-the container-scoped bus socket. Networkd stats use
-<code>/proc/&lt;leader_pid&gt;/root/run/systemd/netif/io.systemd.Network</code>, with the same file-based fallback.
-System state and version use <code>/proc/&lt;leader_pid&gt;/root/run/systemd/io.systemd.Manager</code>.</p>
+<p>For systemd-nspawn containers, monitord uses the same varlink endpoints as on the host,
+inside the container: units from <code>/run/systemd/report/io.systemd.Manager</code> plus
+<code>io.systemd.Unit.List</code> on <code>/run/systemd/io.systemd.Manager</code>, system state and version from
+<code>/run/systemd/io.systemd.Manager</code>, and networkd from
+<code>/run/systemd/netif/io.systemd.Network</code> (with the same file-based fallback). Unit file
+and cgroup data are read below <code>/proc/&lt;leader_pid&gt;/root</code>.</p>
+<p>systemd's credential-checking varlink servers (PID 1, networkd) refuse callers outside
+their PID namespace (<a href="https://github.com/cooperlees/monitord/issues/211">#211</a>,
+<a href="https://github.com/systemd/systemd/issues/43807">systemd/systemd#43807</a>), so these
+connections are made by a per-machine helper inside the container's PID namespace. That
+needs <code>CAP_SYS_ADMIN</code> in addition to <code>CAP_SYS_PTRACE</code>; without it monitord warns once and
+collects containers over D-Bus. See <a href="#permissions">Permissions</a>.</p>
 <h3>varlink 101</h3>
 <p>varlink might one day replace our DBUS usage. Here are some notes on how to work with systemd varlink
 as there isn't really documentation outside <code>man</code> pages.</p>

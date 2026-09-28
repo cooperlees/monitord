@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["HELPER_ARG"],"enum":["MachineConnectorError","MachineSocket"],"fn":["helper_main","is_permission_denied"],"struct":["MachineConnector"]};

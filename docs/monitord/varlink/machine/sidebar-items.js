@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MACHINE_SOCKET_PATH"],"enum":["MachineError"],"struct":["ListOutput"],"trait":["Machine"]};

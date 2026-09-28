@@ -69,229 +69,295 @@
 <a href=#69 id=69 data-nosnippet>69</a>}
 <a href=#70 id=70 data-nosnippet>70</a>
 <a href=#71 id=71 data-nosnippet>71</a><span class="doccomment">/// Parsed systemd version from the Version property on org.freedesktop.systemd1.Manager.
-<a href=#72 id=72 data-nosnippet>72</a>/// Format: "major.minor[.revision].os" (e.g. "256.1.fc40", "255.6-9.9.hs+fb.el9")
-<a href=#73 id=73 data-nosnippet>73</a></span><span class="attr">#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
-<a href=#74 id=74 data-nosnippet>74</a></span><span class="kw">pub struct </span>SystemdVersion {
-<a href=#75 id=75 data-nosnippet>75</a>    <span class="doccomment">/// Major version number (e.g. 256)
-<a href=#76 id=76 data-nosnippet>76</a>    </span>major: u32,
-<a href=#77 id=77 data-nosnippet>77</a>    <span class="doccomment">/// Minor version string; may contain hyphens for distro-patched versions (e.g. "6-9")
-<a href=#78 id=78 data-nosnippet>78</a>    </span>minor: String,
-<a href=#79 id=79 data-nosnippet>79</a>    <span class="doccomment">/// Optional patch/revision number, present when the version string has 4+ dot-separated parts
-<a href=#80 id=80 data-nosnippet>80</a>    </span>revision: <span class="prelude-ty">Option</span>&lt;u32&gt;,
-<a href=#81 id=81 data-nosnippet>81</a>    <span class="doccomment">/// OS/distribution suffix (e.g. "fc40", "hs+fb.el9")
-<a href=#82 id=82 data-nosnippet>82</a>    </span>os: String,
-<a href=#83 id=83 data-nosnippet>83</a>}
-<a href=#84 id=84 data-nosnippet>84</a><span class="kw">impl </span>SystemdVersion {
-<a href=#85 id=85 data-nosnippet>85</a>    <span class="kw">pub fn </span>new(major: u32, minor: String, revision: <span class="prelude-ty">Option</span>&lt;u32&gt;, os: String) -&gt; SystemdVersion {
-<a href=#86 id=86 data-nosnippet>86</a>        <span class="self">Self </span>{
-<a href=#87 id=87 data-nosnippet>87</a>            major,
-<a href=#88 id=88 data-nosnippet>88</a>            minor,
-<a href=#89 id=89 data-nosnippet>89</a>            revision,
-<a href=#90 id=90 data-nosnippet>90</a>            os,
-<a href=#91 id=91 data-nosnippet>91</a>        }
-<a href=#92 id=92 data-nosnippet>92</a>    }
-<a href=#93 id=93 data-nosnippet>93</a>}
-<a href=#94 id=94 data-nosnippet>94</a><span class="kw">impl </span>fmt::Display <span class="kw">for </span>SystemdVersion {
-<a href=#95 id=95 data-nosnippet>95</a>    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
-<a href=#96 id=96 data-nosnippet>96</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(revision) = <span class="self">self</span>.revision {
-<a href=#97 id=97 data-nosnippet>97</a>            <span class="kw">return </span><span class="macro">write!</span>(f, <span class="string">"{}.{}.{}.{}"</span>, <span class="self">self</span>.major, <span class="self">self</span>.minor, revision, <span class="self">self</span>.os);
-<a href=#98 id=98 data-nosnippet>98</a>        }
-<a href=#99 id=99 data-nosnippet>99</a>        <span class="macro">write!</span>(f, <span class="string">"{}.{}.{}"</span>, <span class="self">self</span>.major, <span class="self">self</span>.minor, <span class="self">self</span>.os)
-<a href=#100 id=100 data-nosnippet>100</a>    }
-<a href=#101 id=101 data-nosnippet>101</a>}
-<a href=#102 id=102 data-nosnippet>102</a><span class="kw">impl </span>TryFrom&lt;String&gt; <span class="kw">for </span>SystemdVersion {
-<a href=#103 id=103 data-nosnippet>103</a>    <span class="kw">type </span>Error = MonitordSystemError;
-<a href=#104 id=104 data-nosnippet>104</a>
-<a href=#105 id=105 data-nosnippet>105</a>    <span class="kw">fn </span>try_from(s: String) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="self">Self</span>::Error&gt; {
-<a href=#106 id=106 data-nosnippet>106</a>        <span class="kw">let </span>no_v_version = s.strip_prefix(<span class="string">'v'</span>).unwrap_or(<span class="kw-2">&amp;</span>s);
-<a href=#107 id=107 data-nosnippet>107</a>
-<a href=#108 id=108 data-nosnippet>108</a>        <span class="comment">// Handle RC/pre-release versions like "260~rc1-5.fc45".
-<a href=#109 id=109 data-nosnippet>109</a>        // The '~' separates the major version number from the pre-release identifier.
-<a href=#110 id=110 data-nosnippet>110</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(tilde_pos) = no_v_version.find(<span class="string">'~'</span>) {
-<a href=#111 id=111 data-nosnippet>111</a>            <span class="kw">let </span>major = no_v_version[..tilde_pos].parse::&lt;u32&gt;()<span class="question-mark">?</span>;
-<a href=#112 id=112 data-nosnippet>112</a>            <span class="kw">let </span>after_tilde = <span class="kw-2">&amp;</span>no_v_version[tilde_pos + <span class="number">1</span>..];
-<a href=#113 id=113 data-nosnippet>113</a>            <span class="kw">let </span><span class="kw-2">mut </span>tilde_parts = after_tilde.splitn(<span class="number">2</span>, <span class="string">'.'</span>);
-<a href=#114 id=114 data-nosnippet>114</a>            <span class="kw">let </span>minor = tilde_parts.next().unwrap_or(<span class="string">""</span>).to_string();
-<a href=#115 id=115 data-nosnippet>115</a>            <span class="kw">let </span>os = tilde_parts.next().unwrap_or(<span class="string">""</span>).to_string();
-<a href=#116 id=116 data-nosnippet>116</a>            <span class="kw">return </span><span class="prelude-val">Ok</span>(SystemdVersion {
-<a href=#117 id=117 data-nosnippet>117</a>                major,
-<a href=#118 id=118 data-nosnippet>118</a>                minor,
-<a href=#119 id=119 data-nosnippet>119</a>                revision: <span class="prelude-val">None</span>,
-<a href=#120 id=120 data-nosnippet>120</a>                os,
-<a href=#121 id=121 data-nosnippet>121</a>            });
-<a href=#122 id=122 data-nosnippet>122</a>        }
-<a href=#123 id=123 data-nosnippet>123</a>
-<a href=#124 id=124 data-nosnippet>124</a>        <span class="kw">let </span><span class="kw-2">mut </span>parts = no_v_version.split(<span class="string">'.'</span>);
-<a href=#125 id=125 data-nosnippet>125</a>        <span class="kw">let </span>split_count = parts.clone().count();
-<a href=#126 id=126 data-nosnippet>126</a>        <span class="kw">let </span>major = parts
-<a href=#127 id=127 data-nosnippet>127</a>            .next()
-<a href=#128 id=128 data-nosnippet>128</a>            .ok_or_else(|| MonitordSystemError::VersionParseError(<span class="string">"No valid major version"</span>.into()))<span class="question-mark">?
-<a href=#129 id=129 data-nosnippet>129</a>            </span>.parse::&lt;u32&gt;()<span class="question-mark">?</span>;
-<a href=#130 id=130 data-nosnippet>130</a>        <span class="kw">let </span>minor = parts
-<a href=#131 id=131 data-nosnippet>131</a>            .next()
-<a href=#132 id=132 data-nosnippet>132</a>            .ok_or_else(|| MonitordSystemError::VersionParseError(<span class="string">"No valid minor version"</span>.into()))<span class="question-mark">?
-<a href=#133 id=133 data-nosnippet>133</a>            </span>.to_string();
-<a href=#134 id=134 data-nosnippet>134</a>        <span class="kw">let </span><span class="kw-2">mut </span>revision = <span class="prelude-val">None</span>;
-<a href=#135 id=135 data-nosnippet>135</a>        <span class="kw">if </span>split_count &gt; <span class="number">3 </span>{
-<a href=#136 id=136 data-nosnippet>136</a>            revision = parts.next().and_then(|s| s.parse::&lt;u32&gt;().ok());
-<a href=#137 id=137 data-nosnippet>137</a>        }
-<a href=#138 id=138 data-nosnippet>138</a>        <span class="kw">let </span>os = parts.collect::&lt;Vec&lt;<span class="kw-2">&amp;</span>str&gt;&gt;().join(<span class="string">"."</span>);
-<a href=#139 id=139 data-nosnippet>139</a>        <span class="prelude-val">Ok</span>(SystemdVersion {
-<a href=#140 id=140 data-nosnippet>140</a>            major,
-<a href=#141 id=141 data-nosnippet>141</a>            minor,
-<a href=#142 id=142 data-nosnippet>142</a>            revision,
-<a href=#143 id=143 data-nosnippet>143</a>            os,
-<a href=#144 id=144 data-nosnippet>144</a>        })
-<a href=#145 id=145 data-nosnippet>145</a>    }
-<a href=#146 id=146 data-nosnippet>146</a>}
-<a href=#147 id=147 data-nosnippet>147</a>
-<a href=#148 id=148 data-nosnippet>148</a><span class="doccomment">/// Map systemd's system state string to our enum.
-<a href=#149 id=149 data-nosnippet>149</a>///
-<a href=#150 id=150 data-nosnippet>150</a>/// Shared by the D-Bus `SystemState` property and the varlink
-<a href=#151 id=151 data-nosnippet>151</a>/// `io.systemd.Manager.Describe` runtime field, which use the same vocabulary.
-<a href=#152 id=152 data-nosnippet>152</a></span><span class="kw">pub fn </span>parse_system_state(system_state: <span class="kw-2">&amp;</span>str) -&gt; SystemdSystemState {
-<a href=#153 id=153 data-nosnippet>153</a>    <span class="kw">match </span>system_state {
-<a href=#154 id=154 data-nosnippet>154</a>        <span class="string">"initializing" </span>=&gt; SystemdSystemState::initializing,
-<a href=#155 id=155 data-nosnippet>155</a>        <span class="string">"starting" </span>=&gt; SystemdSystemState::starting,
-<a href=#156 id=156 data-nosnippet>156</a>        <span class="string">"running" </span>=&gt; SystemdSystemState::running,
-<a href=#157 id=157 data-nosnippet>157</a>        <span class="string">"degraded" </span>=&gt; SystemdSystemState::degraded,
-<a href=#158 id=158 data-nosnippet>158</a>        <span class="string">"maintenance" </span>=&gt; SystemdSystemState::maintenance,
-<a href=#159 id=159 data-nosnippet>159</a>        <span class="string">"stopping" </span>=&gt; SystemdSystemState::stopping,
-<a href=#160 id=160 data-nosnippet>160</a>        <span class="string">"offline" </span>=&gt; SystemdSystemState::offline,
-<a href=#161 id=161 data-nosnippet>161</a>        <span class="kw">_ </span>=&gt; SystemdSystemState::unknown,
-<a href=#162 id=162 data-nosnippet>162</a>    }
-<a href=#163 id=163 data-nosnippet>163</a>}
-<a href=#164 id=164 data-nosnippet>164</a>
-<a href=#165 id=165 data-nosnippet>165</a><span class="comment">//pub fn get_system_state(dbus_address: &amp;str) -&gt; Result&lt;SystemdSystemState, dbus::Error&gt; {
-<a href=#166 id=166 data-nosnippet>166</a></span><span class="kw">pub async fn </span>get_system_state(
-<a href=#167 id=167 data-nosnippet>167</a>    connection: <span class="kw-2">&amp;</span>zbus::Connection,
-<a href=#168 id=168 data-nosnippet>168</a>) -&gt; <span class="prelude-ty">Result</span>&lt;SystemdSystemState, MonitordSystemError&gt; {
-<a href=#169 id=169 data-nosnippet>169</a>    <span class="kw">let </span>p = <span class="kw">crate</span>::dbus::zbus_systemd::ManagerProxy::builder(connection)
-<a href=#170 id=170 data-nosnippet>170</a>        .cache_properties(zbus::proxy::CacheProperties::No)
-<a href=#171 id=171 data-nosnippet>171</a>        .build()
-<a href=#172 id=172 data-nosnippet>172</a>        .<span class="kw">await
-<a href=#173 id=173 data-nosnippet>173</a>        </span>.map_err(MonitordSystemError::ZbusError)<span class="question-mark">?</span>;
-<a href=#174 id=174 data-nosnippet>174</a>
-<a href=#175 id=175 data-nosnippet>175</a>    <span class="kw">let </span>state = <span class="kw">match </span>p.system_state().<span class="kw">await </span>{
-<a href=#176 id=176 data-nosnippet>176</a>        <span class="prelude-val">Ok</span>(system_state) =&gt; parse_system_state(<span class="kw-2">&amp;</span>system_state),
-<a href=#177 id=177 data-nosnippet>177</a>        <span class="prelude-val">Err</span>(err) =&gt; {
-<a href=#178 id=178 data-nosnippet>178</a>            <span class="macro">error!</span>(<span class="string">"Failed to get system-state: {:?}"</span>, err);
-<a href=#179 id=179 data-nosnippet>179</a>            <span class="kw">crate</span>::system::SystemdSystemState::unknown
-<a href=#180 id=180 data-nosnippet>180</a>        }
-<a href=#181 id=181 data-nosnippet>181</a>    };
-<a href=#182 id=182 data-nosnippet>182</a>    <span class="prelude-val">Ok</span>(state)
-<a href=#183 id=183 data-nosnippet>183</a>}
-<a href=#184 id=184 data-nosnippet>184</a>
-<a href=#185 id=185 data-nosnippet>185</a><span class="doccomment">/// Async wrapper than can update system stats when passed a locked struct
-<a href=#186 id=186 data-nosnippet>186</a>///
-<a href=#187 id=187 data-nosnippet>187</a>/// The D-Bus call runs before the write lock is taken (not while holding it):
-<a href=#188 id=188 data-nosnippet>188</a>/// `locked_machine_stats` is shared by every collector, so holding it across an
-<a href=#189 id=189 data-nosnippet>189</a>/// awaited D-Bus round trip would block every other collector's own (already
-<a href=#190 id=190 data-nosnippet>190</a>/// finished) write until this one's D-Bus call completes.
-<a href=#191 id=191 data-nosnippet>191</a></span><span class="kw">pub async fn </span>update_system_stats(
-<a href=#192 id=192 data-nosnippet>192</a>    connection: zbus::Connection,
-<a href=#193 id=193 data-nosnippet>193</a>    locked_machine_stats: Arc&lt;RwLock&lt;MachineStats&gt;&gt;,
-<a href=#194 id=194 data-nosnippet>194</a>) -&gt; anyhow::Result&lt;()&gt; {
-<a href=#195 id=195 data-nosnippet>195</a>    <span class="kw">let </span>system_state = <span class="kw">crate</span>::system::get_system_state(<span class="kw-2">&amp;</span>connection)
-<a href=#196 id=196 data-nosnippet>196</a>        .instrument(<span class="macro">tracing::debug_span!</span>(<span class="string">"system_state_dbus_call"</span>))
-<a href=#197 id=197 data-nosnippet>197</a>        .<span class="kw">await
-<a href=#198 id=198 data-nosnippet>198</a>        </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting system state: {:?}"</span>, e))<span class="question-mark">?</span>;
-<a href=#199 id=199 data-nosnippet>199</a>    <span class="kw">let </span><span class="kw-2">mut </span>machine_stats = locked_machine_stats
-<a href=#200 id=200 data-nosnippet>200</a>        .write()
-<a href=#201 id=201 data-nosnippet>201</a>        .instrument(<span class="macro">tracing::debug_span!</span>(<span class="string">"system_state_acquire_write_lock"</span>))
-<a href=#202 id=202 data-nosnippet>202</a>        .<span class="kw">await</span>;
-<a href=#203 id=203 data-nosnippet>203</a>    machine_stats.system_state = system_state;
-<a href=#204 id=204 data-nosnippet>204</a>    <span class="prelude-val">Ok</span>(())
-<a href=#205 id=205 data-nosnippet>205</a>}
-<a href=#206 id=206 data-nosnippet>206</a>
-<a href=#207 id=207 data-nosnippet>207</a><span class="kw">pub async fn </span>get_version(
-<a href=#208 id=208 data-nosnippet>208</a>    connection: <span class="kw-2">&amp;</span>zbus::Connection,
-<a href=#209 id=209 data-nosnippet>209</a>) -&gt; <span class="prelude-ty">Result</span>&lt;SystemdVersion, MonitordSystemError&gt; {
-<a href=#210 id=210 data-nosnippet>210</a>    <span class="kw">let </span>p = <span class="kw">crate</span>::dbus::zbus_systemd::ManagerProxy::builder(connection)
-<a href=#211 id=211 data-nosnippet>211</a>        .cache_properties(zbus::proxy::CacheProperties::No)
-<a href=#212 id=212 data-nosnippet>212</a>        .build()
-<a href=#213 id=213 data-nosnippet>213</a>        .<span class="kw">await
-<a href=#214 id=214 data-nosnippet>214</a>        </span>.map_err(MonitordSystemError::ZbusError)<span class="question-mark">?</span>;
-<a href=#215 id=215 data-nosnippet>215</a>    <span class="kw">let </span>version_string = p.version().<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#216 id=216 data-nosnippet>216</a>    version_string.try_into()
-<a href=#217 id=217 data-nosnippet>217</a>}
-<a href=#218 id=218 data-nosnippet>218</a>
-<a href=#219 id=219 data-nosnippet>219</a><span class="doccomment">/// Async wrapper than can update system stats when passed a locked struct
-<a href=#220 id=220 data-nosnippet>220</a>///
-<a href=#221 id=221 data-nosnippet>221</a>/// See `update_system_stats` above: the D-Bus call runs before the write lock
-<a href=#222 id=222 data-nosnippet>222</a>/// is taken so it doesn't hold the shared lock for the round trip's duration.
-<a href=#223 id=223 data-nosnippet>223</a></span><span class="kw">pub async fn </span>update_version(
-<a href=#224 id=224 data-nosnippet>224</a>    connection: zbus::Connection,
-<a href=#225 id=225 data-nosnippet>225</a>    locked_machine_stats: Arc&lt;RwLock&lt;MachineStats&gt;&gt;,
-<a href=#226 id=226 data-nosnippet>226</a>) -&gt; anyhow::Result&lt;()&gt; {
-<a href=#227 id=227 data-nosnippet>227</a>    <span class="kw">let </span>version = <span class="kw">crate</span>::system::get_version(<span class="kw-2">&amp;</span>connection)
-<a href=#228 id=228 data-nosnippet>228</a>        .instrument(<span class="macro">tracing::debug_span!</span>(<span class="string">"version_dbus_call"</span>))
-<a href=#229 id=229 data-nosnippet>229</a>        .<span class="kw">await
-<a href=#230 id=230 data-nosnippet>230</a>        </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting systemd version: {:?}"</span>, e))<span class="question-mark">?</span>;
-<a href=#231 id=231 data-nosnippet>231</a>    <span class="kw">let </span><span class="kw-2">mut </span>machine_stats = locked_machine_stats
-<a href=#232 id=232 data-nosnippet>232</a>        .write()
-<a href=#233 id=233 data-nosnippet>233</a>        .instrument(<span class="macro">tracing::debug_span!</span>(<span class="string">"version_acquire_write_lock"</span>))
-<a href=#234 id=234 data-nosnippet>234</a>        .<span class="kw">await</span>;
-<a href=#235 id=235 data-nosnippet>235</a>    machine_stats.version = version;
-<a href=#236 id=236 data-nosnippet>236</a>    <span class="prelude-val">Ok</span>(())
-<a href=#237 id=237 data-nosnippet>237</a>}
-<a href=#238 id=238 data-nosnippet>238</a>
-<a href=#239 id=239 data-nosnippet>239</a><span class="attr">#[cfg(test)]
-<a href=#240 id=240 data-nosnippet>240</a></span><span class="kw">mod </span>tests {
-<a href=#241 id=241 data-nosnippet>241</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#242 id=242 data-nosnippet>242</a>
-<a href=#243 id=243 data-nosnippet>243</a>    <span class="attr">#[test]
-<a href=#244 id=244 data-nosnippet>244</a>    </span><span class="kw">fn </span>test_display_struct() {
-<a href=#245 id=245 data-nosnippet>245</a>        <span class="macro">assert_eq!</span>(
-<a href=#246 id=246 data-nosnippet>246</a>            <span class="macro">format!</span>(<span class="string">"{}"</span>, SystemdSystemState::running),
-<a href=#247 id=247 data-nosnippet>247</a>            String::from(<span class="string">"running"</span>),
-<a href=#248 id=248 data-nosnippet>248</a>        )
-<a href=#249 id=249 data-nosnippet>249</a>    }
-<a href=#250 id=250 data-nosnippet>250</a>
-<a href=#251 id=251 data-nosnippet>251</a>    <span class="attr">#[test]
-<a href=#252 id=252 data-nosnippet>252</a>    </span><span class="kw">fn </span>test_parse_system_state() {
-<a href=#253 id=253 data-nosnippet>253</a>        <span class="macro">assert_eq!</span>(parse_system_state(<span class="string">"running"</span>), SystemdSystemState::running);
-<a href=#254 id=254 data-nosnippet>254</a>        <span class="macro">assert_eq!</span>(parse_system_state(<span class="string">"degraded"</span>), SystemdSystemState::degraded);
-<a href=#255 id=255 data-nosnippet>255</a>        <span class="comment">// Anything systemd grows later reads as unknown rather than failing.
-<a href=#256 id=256 data-nosnippet>256</a>        </span><span class="macro">assert_eq!</span>(parse_system_state(<span class="string">"brand-new"</span>), SystemdSystemState::unknown);
-<a href=#257 id=257 data-nosnippet>257</a>    }
-<a href=#258 id=258 data-nosnippet>258</a>
-<a href=#259 id=259 data-nosnippet>259</a>    <span class="attr">#[test]
-<a href=#260 id=260 data-nosnippet>260</a>    </span><span class="kw">fn </span>test_parsing_systemd_versions() -&gt; <span class="prelude-ty">Result</span>&lt;(), MonitordSystemError&gt; {
-<a href=#261 id=261 data-nosnippet>261</a>        <span class="kw">let </span>parsed: SystemdVersion = <span class="string">"969.1.69.fc69"</span>.to_string().try_into()<span class="question-mark">?</span>;
-<a href=#262 id=262 data-nosnippet>262</a>        <span class="macro">assert_eq!</span>(
-<a href=#263 id=263 data-nosnippet>263</a>            SystemdVersion::new(<span class="number">969</span>, String::from(<span class="string">"1"</span>), <span class="prelude-val">Some</span>(<span class="number">69</span>), String::from(<span class="string">"fc69"</span>)),
-<a href=#264 id=264 data-nosnippet>264</a>            parsed
-<a href=#265 id=265 data-nosnippet>265</a>        );
-<a href=#266 id=266 data-nosnippet>266</a>
-<a href=#267 id=267 data-nosnippet>267</a>        <span class="comment">// No revision
-<a href=#268 id=268 data-nosnippet>268</a>        </span><span class="kw">let </span>parsed: SystemdVersion = <span class="string">"969.1.fc69"</span>.to_string().try_into()<span class="question-mark">?</span>;
-<a href=#269 id=269 data-nosnippet>269</a>        <span class="macro">assert_eq!</span>(
-<a href=#270 id=270 data-nosnippet>270</a>            SystemdVersion::new(<span class="number">969</span>, String::from(<span class="string">"1"</span>), <span class="prelude-val">None</span>, String::from(<span class="string">"fc69"</span>)),
-<a href=#271 id=271 data-nosnippet>271</a>            parsed
-<a href=#272 id=272 data-nosnippet>272</a>        );
-<a href=#273 id=273 data-nosnippet>273</a>
-<a href=#274 id=274 data-nosnippet>274</a>        <span class="comment">// #bigCompany strings
-<a href=#275 id=275 data-nosnippet>275</a>        </span><span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"969.6-9.9.hs+fb.el9"</span>).try_into()<span class="question-mark">?</span>;
-<a href=#276 id=276 data-nosnippet>276</a>        <span class="macro">assert_eq!</span>(
-<a href=#277 id=277 data-nosnippet>277</a>            SystemdVersion::new(<span class="number">969</span>, String::from(<span class="string">"6-9"</span>), <span class="prelude-val">Some</span>(<span class="number">9</span>), String::from(<span class="string">"hs+fb.el9"</span>)),
-<a href=#278 id=278 data-nosnippet>278</a>            parsed
-<a href=#279 id=279 data-nosnippet>279</a>        );
-<a href=#280 id=280 data-nosnippet>280</a>
-<a href=#281 id=281 data-nosnippet>281</a>        <span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"v299.6-9.9.hs+fb.el9"</span>).try_into()<span class="question-mark">?</span>;
-<a href=#282 id=282 data-nosnippet>282</a>        <span class="macro">assert_eq!</span>(
-<a href=#283 id=283 data-nosnippet>283</a>            SystemdVersion::new(<span class="number">299</span>, String::from(<span class="string">"6-9"</span>), <span class="prelude-val">Some</span>(<span class="number">9</span>), String::from(<span class="string">"hs+fb.el9"</span>)),
-<a href=#284 id=284 data-nosnippet>284</a>            parsed
-<a href=#285 id=285 data-nosnippet>285</a>        );
-<a href=#286 id=286 data-nosnippet>286</a>
-<a href=#287 id=287 data-nosnippet>287</a>        <span class="comment">// RC / pre-release versions like those seen on Fedora Rawhide: "260~rc1-5.fc45"
-<a href=#288 id=288 data-nosnippet>288</a>        </span><span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"260~rc1-5.fc45"</span>).try_into()<span class="question-mark">?</span>;
-<a href=#289 id=289 data-nosnippet>289</a>        <span class="macro">assert_eq!</span>(
-<a href=#290 id=290 data-nosnippet>290</a>            SystemdVersion::new(<span class="number">260</span>, String::from(<span class="string">"rc1-5"</span>), <span class="prelude-val">None</span>, String::from(<span class="string">"fc45"</span>)),
-<a href=#291 id=291 data-nosnippet>291</a>            parsed
-<a href=#292 id=292 data-nosnippet>292</a>        );
-<a href=#293 id=293 data-nosnippet>293</a>
-<a href=#294 id=294 data-nosnippet>294</a>        <span class="prelude-val">Ok</span>(())
-<a href=#295 id=295 data-nosnippet>295</a>    }
-<a href=#296 id=296 data-nosnippet>296</a>}
+<a href=#72 id=72 data-nosnippet>72</a>///
+<a href=#73 id=73 data-nosnippet>73</a>/// systemd version strings follow the [UAPI Version Format Specification][uapi]
+<a href=#74 id=74 data-nosnippet>74</a>/// (what `systemd-analyze compare-versions` implements), which standardises how
+<a href=#75 id=75 data-nosnippet>75</a>/// versions *sort* — `~` sorts below everything, `-` separates major parts, `.`
+<a href=#76 id=76 data-nosnippet>76</a>/// separates parts of a component — but not how they split into fields. So
+<a href=#77 id=77 data-nosnippet>77</a>/// there is no official parser to defer to for this: the major/minor/revision/os
+<a href=#78 id=78 data-nosnippet>78</a>/// split below is monitord's own, for the JSON output, and the separator
+<a href=#79 id=79 data-nosnippet>79</a>/// handling follows the spec's meanings. Should monitord ever need to *compare*
+<a href=#80 id=80 data-nosnippet>80</a>/// versions, use that spec (e.g. the zero-dependency `uapi-version` crate)
+<a href=#81 id=81 data-nosnippet>81</a>/// rather than these fields — today it feature-detects instead, by looking for
+<a href=#82 id=82 data-nosnippet>82</a>/// the metrics a systemd release added.
+<a href=#83 id=83 data-nosnippet>83</a>///
+<a href=#84 id=84 data-nosnippet>84</a>/// Format: "major[.minor][.revision][.os]" (e.g. "256.1.fc40",
+<a href=#85 id=85 data-nosnippet>85</a>/// "255.6-9.9.hs+fb.el9", "260~rc1-5.fc45", "262-1.fc46").
+<a href=#86 id=86 data-nosnippet>86</a>///
+<a href=#87 id=87 data-nosnippet>87</a>/// [uapi]: https://uapi-group.org/specifications/specs/version_format_specification/
+<a href=#88 id=88 data-nosnippet>88</a></span><span class="attr">#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+<a href=#89 id=89 data-nosnippet>89</a></span><span class="kw">pub struct </span>SystemdVersion {
+<a href=#90 id=90 data-nosnippet>90</a>    <span class="doccomment">/// Major version number (e.g. 256)
+<a href=#91 id=91 data-nosnippet>91</a>    </span>major: u32,
+<a href=#92 id=92 data-nosnippet>92</a>    <span class="doccomment">/// Minor version string; may contain hyphens for distro-patched versions (e.g. "6-9")
+<a href=#93 id=93 data-nosnippet>93</a>    </span>minor: String,
+<a href=#94 id=94 data-nosnippet>94</a>    <span class="doccomment">/// Optional patch/revision number, present when the version string has 4+ dot-separated parts
+<a href=#95 id=95 data-nosnippet>95</a>    </span>revision: <span class="prelude-ty">Option</span>&lt;u32&gt;,
+<a href=#96 id=96 data-nosnippet>96</a>    <span class="doccomment">/// OS/distribution suffix (e.g. "fc40", "hs+fb.el9")
+<a href=#97 id=97 data-nosnippet>97</a>    </span>os: String,
+<a href=#98 id=98 data-nosnippet>98</a>}
+<a href=#99 id=99 data-nosnippet>99</a><span class="kw">impl </span>SystemdVersion {
+<a href=#100 id=100 data-nosnippet>100</a>    <span class="kw">pub fn </span>new(major: u32, minor: String, revision: <span class="prelude-ty">Option</span>&lt;u32&gt;, os: String) -&gt; SystemdVersion {
+<a href=#101 id=101 data-nosnippet>101</a>        <span class="self">Self </span>{
+<a href=#102 id=102 data-nosnippet>102</a>            major,
+<a href=#103 id=103 data-nosnippet>103</a>            minor,
+<a href=#104 id=104 data-nosnippet>104</a>            revision,
+<a href=#105 id=105 data-nosnippet>105</a>            os,
+<a href=#106 id=106 data-nosnippet>106</a>        }
+<a href=#107 id=107 data-nosnippet>107</a>    }
+<a href=#108 id=108 data-nosnippet>108</a>}
+<a href=#109 id=109 data-nosnippet>109</a><span class="kw">impl </span>fmt::Display <span class="kw">for </span>SystemdVersion {
+<a href=#110 id=110 data-nosnippet>110</a>    <span class="doccomment">/// Dot-joined, skipping parts this version does not have. Note the
+<a href=#111 id=111 data-nosnippet>111</a>    /// separators are normalised: "260~rc1-5.fc45" renders as
+<a href=#112 id=112 data-nosnippet>112</a>    /// "260.rc1-5.fc45", since which separator followed the major version is
+<a href=#113 id=113 data-nosnippet>113</a>    /// not kept.
+<a href=#114 id=114 data-nosnippet>114</a>    </span><span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
+<a href=#115 id=115 data-nosnippet>115</a>        <span class="macro">write!</span>(f, <span class="string">"{}"</span>, <span class="self">self</span>.major)<span class="question-mark">?</span>;
+<a href=#116 id=116 data-nosnippet>116</a>        <span class="kw">if </span>!<span class="self">self</span>.minor.is_empty() {
+<a href=#117 id=117 data-nosnippet>117</a>            <span class="macro">write!</span>(f, <span class="string">".{}"</span>, <span class="self">self</span>.minor)<span class="question-mark">?</span>;
+<a href=#118 id=118 data-nosnippet>118</a>        }
+<a href=#119 id=119 data-nosnippet>119</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(revision) = <span class="self">self</span>.revision {
+<a href=#120 id=120 data-nosnippet>120</a>            <span class="macro">write!</span>(f, <span class="string">".{revision}"</span>)<span class="question-mark">?</span>;
+<a href=#121 id=121 data-nosnippet>121</a>        }
+<a href=#122 id=122 data-nosnippet>122</a>        <span class="kw">if </span>!<span class="self">self</span>.os.is_empty() {
+<a href=#123 id=123 data-nosnippet>123</a>            <span class="macro">write!</span>(f, <span class="string">".{}"</span>, <span class="self">self</span>.os)<span class="question-mark">?</span>;
+<a href=#124 id=124 data-nosnippet>124</a>        }
+<a href=#125 id=125 data-nosnippet>125</a>        <span class="prelude-val">Ok</span>(())
+<a href=#126 id=126 data-nosnippet>126</a>    }
+<a href=#127 id=127 data-nosnippet>127</a>}
+<a href=#128 id=128 data-nosnippet>128</a><span class="kw">impl </span>TryFrom&lt;String&gt; <span class="kw">for </span>SystemdVersion {
+<a href=#129 id=129 data-nosnippet>129</a>    <span class="kw">type </span>Error = MonitordSystemError;
+<a href=#130 id=130 data-nosnippet>130</a>
+<a href=#131 id=131 data-nosnippet>131</a>    <span class="kw">fn </span>try_from(s: String) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="self">Self</span>::Error&gt; {
+<a href=#132 id=132 data-nosnippet>132</a>        <span class="kw">let </span>no_v_version = s.strip_prefix(<span class="string">'v'</span>).unwrap_or(<span class="kw-2">&amp;</span>s);
+<a href=#133 id=133 data-nosnippet>133</a>
+<a href=#134 id=134 data-nosnippet>134</a>        <span class="comment">// Handle versions whose major number is followed by a package release
+<a href=#135 id=135 data-nosnippet>135</a>        // rather than a dotted minor: "260~rc1-5.fc45" (pre-release) and
+<a href=#136 id=136 data-nosnippet>136</a>        // "262-1.fc46" (Fedora once the release is final). Only a separator
+<a href=#137 id=137 data-nosnippet>137</a>        // before the first '.' counts — a '-' after one belongs to a distro
+<a href=#138 id=138 data-nosnippet>138</a>        // minor such as the "6-9" in "969.6-9.9.hs+fb.el9".
+<a href=#139 id=139 data-nosnippet>139</a>        </span><span class="kw">let </span>first_dot = no_v_version.find(<span class="string">'.'</span>).unwrap_or(no_v_version.len());
+<a href=#140 id=140 data-nosnippet>140</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(sep_pos) = no_v_version[..first_dot].find([<span class="string">'~'</span>, <span class="string">'-'</span>]) {
+<a href=#141 id=141 data-nosnippet>141</a>            <span class="kw">let </span>major = no_v_version[..sep_pos].parse::&lt;u32&gt;()<span class="question-mark">?</span>;
+<a href=#142 id=142 data-nosnippet>142</a>            <span class="kw">let </span>after_sep = <span class="kw-2">&amp;</span>no_v_version[sep_pos + <span class="number">1</span>..];
+<a href=#143 id=143 data-nosnippet>143</a>            <span class="kw">let </span><span class="kw-2">mut </span>tilde_parts = after_sep.splitn(<span class="number">2</span>, <span class="string">'.'</span>);
+<a href=#144 id=144 data-nosnippet>144</a>            <span class="kw">let </span>minor = tilde_parts.next().unwrap_or(<span class="string">""</span>).to_string();
+<a href=#145 id=145 data-nosnippet>145</a>            <span class="kw">let </span>os = tilde_parts.next().unwrap_or(<span class="string">""</span>).to_string();
+<a href=#146 id=146 data-nosnippet>146</a>            <span class="kw">return </span><span class="prelude-val">Ok</span>(SystemdVersion {
+<a href=#147 id=147 data-nosnippet>147</a>                major,
+<a href=#148 id=148 data-nosnippet>148</a>                minor,
+<a href=#149 id=149 data-nosnippet>149</a>                revision: <span class="prelude-val">None</span>,
+<a href=#150 id=150 data-nosnippet>150</a>                os,
+<a href=#151 id=151 data-nosnippet>151</a>            });
+<a href=#152 id=152 data-nosnippet>152</a>        }
+<a href=#153 id=153 data-nosnippet>153</a>
+<a href=#154 id=154 data-nosnippet>154</a>        <span class="kw">let </span><span class="kw-2">mut </span>parts = no_v_version.split(<span class="string">'.'</span>);
+<a href=#155 id=155 data-nosnippet>155</a>        <span class="kw">let </span>split_count = parts.clone().count();
+<a href=#156 id=156 data-nosnippet>156</a>        <span class="kw">let </span>major = parts
+<a href=#157 id=157 data-nosnippet>157</a>            .next()
+<a href=#158 id=158 data-nosnippet>158</a>            .ok_or_else(|| MonitordSystemError::VersionParseError(<span class="string">"No valid major version"</span>.into()))<span class="question-mark">?
+<a href=#159 id=159 data-nosnippet>159</a>            </span>.parse::&lt;u32&gt;()<span class="question-mark">?</span>;
+<a href=#160 id=160 data-nosnippet>160</a>        <span class="comment">// A version can be just the major number ("263", as built from an
+<a href=#161 id=161 data-nosnippet>161</a>        // upstream tarball): no minor, revision or OS suffix to report.
+<a href=#162 id=162 data-nosnippet>162</a>        </span><span class="kw">let </span>minor = parts.next().unwrap_or_default().to_string();
+<a href=#163 id=163 data-nosnippet>163</a>        <span class="kw">let </span><span class="kw-2">mut </span>revision = <span class="prelude-val">None</span>;
+<a href=#164 id=164 data-nosnippet>164</a>        <span class="kw">if </span>split_count &gt; <span class="number">3 </span>{
+<a href=#165 id=165 data-nosnippet>165</a>            revision = parts.next().and_then(|s| s.parse::&lt;u32&gt;().ok());
+<a href=#166 id=166 data-nosnippet>166</a>        }
+<a href=#167 id=167 data-nosnippet>167</a>        <span class="kw">let </span>os = parts.collect::&lt;Vec&lt;<span class="kw-2">&amp;</span>str&gt;&gt;().join(<span class="string">"."</span>);
+<a href=#168 id=168 data-nosnippet>168</a>        <span class="prelude-val">Ok</span>(SystemdVersion {
+<a href=#169 id=169 data-nosnippet>169</a>            major,
+<a href=#170 id=170 data-nosnippet>170</a>            minor,
+<a href=#171 id=171 data-nosnippet>171</a>            revision,
+<a href=#172 id=172 data-nosnippet>172</a>            os,
+<a href=#173 id=173 data-nosnippet>173</a>        })
+<a href=#174 id=174 data-nosnippet>174</a>    }
+<a href=#175 id=175 data-nosnippet>175</a>}
+<a href=#176 id=176 data-nosnippet>176</a>
+<a href=#177 id=177 data-nosnippet>177</a><span class="doccomment">/// Map systemd's system state string to our enum.
+<a href=#178 id=178 data-nosnippet>178</a>///
+<a href=#179 id=179 data-nosnippet>179</a>/// Shared by the D-Bus `SystemState` property and the varlink
+<a href=#180 id=180 data-nosnippet>180</a>/// `io.systemd.Manager.Describe` runtime field, which use the same vocabulary.
+<a href=#181 id=181 data-nosnippet>181</a></span><span class="kw">pub fn </span>parse_system_state(system_state: <span class="kw-2">&amp;</span>str) -&gt; SystemdSystemState {
+<a href=#182 id=182 data-nosnippet>182</a>    <span class="kw">match </span>system_state {
+<a href=#183 id=183 data-nosnippet>183</a>        <span class="string">"initializing" </span>=&gt; SystemdSystemState::initializing,
+<a href=#184 id=184 data-nosnippet>184</a>        <span class="string">"starting" </span>=&gt; SystemdSystemState::starting,
+<a href=#185 id=185 data-nosnippet>185</a>        <span class="string">"running" </span>=&gt; SystemdSystemState::running,
+<a href=#186 id=186 data-nosnippet>186</a>        <span class="string">"degraded" </span>=&gt; SystemdSystemState::degraded,
+<a href=#187 id=187 data-nosnippet>187</a>        <span class="string">"maintenance" </span>=&gt; SystemdSystemState::maintenance,
+<a href=#188 id=188 data-nosnippet>188</a>        <span class="string">"stopping" </span>=&gt; SystemdSystemState::stopping,
+<a href=#189 id=189 data-nosnippet>189</a>        <span class="string">"offline" </span>=&gt; SystemdSystemState::offline,
+<a href=#190 id=190 data-nosnippet>190</a>        <span class="kw">_ </span>=&gt; SystemdSystemState::unknown,
+<a href=#191 id=191 data-nosnippet>191</a>    }
+<a href=#192 id=192 data-nosnippet>192</a>}
+<a href=#193 id=193 data-nosnippet>193</a>
+<a href=#194 id=194 data-nosnippet>194</a><span class="comment">//pub fn get_system_state(dbus_address: &amp;str) -&gt; Result&lt;SystemdSystemState, dbus::Error&gt; {
+<a href=#195 id=195 data-nosnippet>195</a></span><span class="kw">pub async fn </span>get_system_state(
+<a href=#196 id=196 data-nosnippet>196</a>    connection: <span class="kw-2">&amp;</span>zbus::Connection,
+<a href=#197 id=197 data-nosnippet>197</a>) -&gt; <span class="prelude-ty">Result</span>&lt;SystemdSystemState, MonitordSystemError&gt; {
+<a href=#198 id=198 data-nosnippet>198</a>    <span class="kw">let </span>p = <span class="kw">crate</span>::dbus::zbus_systemd::ManagerProxy::builder(connection)
+<a href=#199 id=199 data-nosnippet>199</a>        .cache_properties(zbus::proxy::CacheProperties::No)
+<a href=#200 id=200 data-nosnippet>200</a>        .build()
+<a href=#201 id=201 data-nosnippet>201</a>        .<span class="kw">await
+<a href=#202 id=202 data-nosnippet>202</a>        </span>.map_err(MonitordSystemError::ZbusError)<span class="question-mark">?</span>;
+<a href=#203 id=203 data-nosnippet>203</a>
+<a href=#204 id=204 data-nosnippet>204</a>    <span class="kw">let </span>state = <span class="kw">match </span>p.system_state().<span class="kw">await </span>{
+<a href=#205 id=205 data-nosnippet>205</a>        <span class="prelude-val">Ok</span>(system_state) =&gt; parse_system_state(<span class="kw-2">&amp;</span>system_state),
+<a href=#206 id=206 data-nosnippet>206</a>        <span class="prelude-val">Err</span>(err) =&gt; {
+<a href=#207 id=207 data-nosnippet>207</a>            <span class="macro">error!</span>(<span class="string">"Failed to get system-state: {:?}"</span>, err);
+<a href=#208 id=208 data-nosnippet>208</a>            <span class="kw">crate</span>::system::SystemdSystemState::unknown
+<a href=#209 id=209 data-nosnippet>209</a>        }
+<a href=#210 id=210 data-nosnippet>210</a>    };
+<a href=#211 id=211 data-nosnippet>211</a>    <span class="prelude-val">Ok</span>(state)
+<a href=#212 id=212 data-nosnippet>212</a>}
+<a href=#213 id=213 data-nosnippet>213</a>
+<a href=#214 id=214 data-nosnippet>214</a><span class="doccomment">/// Async wrapper than can update system stats when passed a locked struct
+<a href=#215 id=215 data-nosnippet>215</a>///
+<a href=#216 id=216 data-nosnippet>216</a>/// The D-Bus call runs before the write lock is taken (not while holding it):
+<a href=#217 id=217 data-nosnippet>217</a>/// `locked_machine_stats` is shared by every collector, so holding it across an
+<a href=#218 id=218 data-nosnippet>218</a>/// awaited D-Bus round trip would block every other collector's own (already
+<a href=#219 id=219 data-nosnippet>219</a>/// finished) write until this one's D-Bus call completes.
+<a href=#220 id=220 data-nosnippet>220</a></span><span class="kw">pub async fn </span>update_system_stats(
+<a href=#221 id=221 data-nosnippet>221</a>    connection: zbus::Connection,
+<a href=#222 id=222 data-nosnippet>222</a>    locked_machine_stats: Arc&lt;RwLock&lt;MachineStats&gt;&gt;,
+<a href=#223 id=223 data-nosnippet>223</a>) -&gt; anyhow::Result&lt;()&gt; {
+<a href=#224 id=224 data-nosnippet>224</a>    <span class="kw">let </span>system_state = <span class="kw">crate</span>::system::get_system_state(<span class="kw-2">&amp;</span>connection)
+<a href=#225 id=225 data-nosnippet>225</a>        .instrument(<span class="macro">tracing::debug_span!</span>(<span class="string">"system_state_dbus_call"</span>))
+<a href=#226 id=226 data-nosnippet>226</a>        .<span class="kw">await
+<a href=#227 id=227 data-nosnippet>227</a>        </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting system state: {:?}"</span>, e))<span class="question-mark">?</span>;
+<a href=#228 id=228 data-nosnippet>228</a>    <span class="kw">let </span><span class="kw-2">mut </span>machine_stats = locked_machine_stats
+<a href=#229 id=229 data-nosnippet>229</a>        .write()
+<a href=#230 id=230 data-nosnippet>230</a>        .instrument(<span class="macro">tracing::debug_span!</span>(<span class="string">"system_state_acquire_write_lock"</span>))
+<a href=#231 id=231 data-nosnippet>231</a>        .<span class="kw">await</span>;
+<a href=#232 id=232 data-nosnippet>232</a>    machine_stats.system_state = system_state;
+<a href=#233 id=233 data-nosnippet>233</a>    <span class="prelude-val">Ok</span>(())
+<a href=#234 id=234 data-nosnippet>234</a>}
+<a href=#235 id=235 data-nosnippet>235</a>
+<a href=#236 id=236 data-nosnippet>236</a><span class="kw">pub async fn </span>get_version(
+<a href=#237 id=237 data-nosnippet>237</a>    connection: <span class="kw-2">&amp;</span>zbus::Connection,
+<a href=#238 id=238 data-nosnippet>238</a>) -&gt; <span class="prelude-ty">Result</span>&lt;SystemdVersion, MonitordSystemError&gt; {
+<a href=#239 id=239 data-nosnippet>239</a>    <span class="kw">let </span>p = <span class="kw">crate</span>::dbus::zbus_systemd::ManagerProxy::builder(connection)
+<a href=#240 id=240 data-nosnippet>240</a>        .cache_properties(zbus::proxy::CacheProperties::No)
+<a href=#241 id=241 data-nosnippet>241</a>        .build()
+<a href=#242 id=242 data-nosnippet>242</a>        .<span class="kw">await
+<a href=#243 id=243 data-nosnippet>243</a>        </span>.map_err(MonitordSystemError::ZbusError)<span class="question-mark">?</span>;
+<a href=#244 id=244 data-nosnippet>244</a>    <span class="kw">let </span>version_string = p.version().<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#245 id=245 data-nosnippet>245</a>    version_string.try_into()
+<a href=#246 id=246 data-nosnippet>246</a>}
+<a href=#247 id=247 data-nosnippet>247</a>
+<a href=#248 id=248 data-nosnippet>248</a><span class="doccomment">/// Async wrapper than can update system stats when passed a locked struct
+<a href=#249 id=249 data-nosnippet>249</a>///
+<a href=#250 id=250 data-nosnippet>250</a>/// See `update_system_stats` above: the D-Bus call runs before the write lock
+<a href=#251 id=251 data-nosnippet>251</a>/// is taken so it doesn't hold the shared lock for the round trip's duration.
+<a href=#252 id=252 data-nosnippet>252</a></span><span class="kw">pub async fn </span>update_version(
+<a href=#253 id=253 data-nosnippet>253</a>    connection: zbus::Connection,
+<a href=#254 id=254 data-nosnippet>254</a>    locked_machine_stats: Arc&lt;RwLock&lt;MachineStats&gt;&gt;,
+<a href=#255 id=255 data-nosnippet>255</a>) -&gt; anyhow::Result&lt;()&gt; {
+<a href=#256 id=256 data-nosnippet>256</a>    <span class="kw">let </span>version = <span class="kw">crate</span>::system::get_version(<span class="kw-2">&amp;</span>connection)
+<a href=#257 id=257 data-nosnippet>257</a>        .instrument(<span class="macro">tracing::debug_span!</span>(<span class="string">"version_dbus_call"</span>))
+<a href=#258 id=258 data-nosnippet>258</a>        .<span class="kw">await
+<a href=#259 id=259 data-nosnippet>259</a>        </span>.map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Error getting systemd version: {:?}"</span>, e))<span class="question-mark">?</span>;
+<a href=#260 id=260 data-nosnippet>260</a>    <span class="kw">let </span><span class="kw-2">mut </span>machine_stats = locked_machine_stats
+<a href=#261 id=261 data-nosnippet>261</a>        .write()
+<a href=#262 id=262 data-nosnippet>262</a>        .instrument(<span class="macro">tracing::debug_span!</span>(<span class="string">"version_acquire_write_lock"</span>))
+<a href=#263 id=263 data-nosnippet>263</a>        .<span class="kw">await</span>;
+<a href=#264 id=264 data-nosnippet>264</a>    machine_stats.version = version;
+<a href=#265 id=265 data-nosnippet>265</a>    <span class="prelude-val">Ok</span>(())
+<a href=#266 id=266 data-nosnippet>266</a>}
+<a href=#267 id=267 data-nosnippet>267</a>
+<a href=#268 id=268 data-nosnippet>268</a><span class="attr">#[cfg(test)]
+<a href=#269 id=269 data-nosnippet>269</a></span><span class="kw">mod </span>tests {
+<a href=#270 id=270 data-nosnippet>270</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#271 id=271 data-nosnippet>271</a>
+<a href=#272 id=272 data-nosnippet>272</a>    <span class="attr">#[test]
+<a href=#273 id=273 data-nosnippet>273</a>    </span><span class="kw">fn </span>test_display_struct() {
+<a href=#274 id=274 data-nosnippet>274</a>        <span class="macro">assert_eq!</span>(
+<a href=#275 id=275 data-nosnippet>275</a>            <span class="macro">format!</span>(<span class="string">"{}"</span>, SystemdSystemState::running),
+<a href=#276 id=276 data-nosnippet>276</a>            String::from(<span class="string">"running"</span>),
+<a href=#277 id=277 data-nosnippet>277</a>        )
+<a href=#278 id=278 data-nosnippet>278</a>    }
+<a href=#279 id=279 data-nosnippet>279</a>
+<a href=#280 id=280 data-nosnippet>280</a>    <span class="attr">#[test]
+<a href=#281 id=281 data-nosnippet>281</a>    </span><span class="kw">fn </span>test_parse_system_state() {
+<a href=#282 id=282 data-nosnippet>282</a>        <span class="macro">assert_eq!</span>(parse_system_state(<span class="string">"running"</span>), SystemdSystemState::running);
+<a href=#283 id=283 data-nosnippet>283</a>        <span class="macro">assert_eq!</span>(parse_system_state(<span class="string">"degraded"</span>), SystemdSystemState::degraded);
+<a href=#284 id=284 data-nosnippet>284</a>        <span class="comment">// Anything systemd grows later reads as unknown rather than failing.
+<a href=#285 id=285 data-nosnippet>285</a>        </span><span class="macro">assert_eq!</span>(parse_system_state(<span class="string">"brand-new"</span>), SystemdSystemState::unknown);
+<a href=#286 id=286 data-nosnippet>286</a>    }
+<a href=#287 id=287 data-nosnippet>287</a>
+<a href=#288 id=288 data-nosnippet>288</a>    <span class="attr">#[test]
+<a href=#289 id=289 data-nosnippet>289</a>    </span><span class="kw">fn </span>test_parsing_systemd_versions() -&gt; <span class="prelude-ty">Result</span>&lt;(), MonitordSystemError&gt; {
+<a href=#290 id=290 data-nosnippet>290</a>        <span class="kw">let </span>parsed: SystemdVersion = <span class="string">"969.1.69.fc69"</span>.to_string().try_into()<span class="question-mark">?</span>;
+<a href=#291 id=291 data-nosnippet>291</a>        <span class="macro">assert_eq!</span>(
+<a href=#292 id=292 data-nosnippet>292</a>            SystemdVersion::new(<span class="number">969</span>, String::from(<span class="string">"1"</span>), <span class="prelude-val">Some</span>(<span class="number">69</span>), String::from(<span class="string">"fc69"</span>)),
+<a href=#293 id=293 data-nosnippet>293</a>            parsed
+<a href=#294 id=294 data-nosnippet>294</a>        );
+<a href=#295 id=295 data-nosnippet>295</a>
+<a href=#296 id=296 data-nosnippet>296</a>        <span class="comment">// No revision
+<a href=#297 id=297 data-nosnippet>297</a>        </span><span class="kw">let </span>parsed: SystemdVersion = <span class="string">"969.1.fc69"</span>.to_string().try_into()<span class="question-mark">?</span>;
+<a href=#298 id=298 data-nosnippet>298</a>        <span class="macro">assert_eq!</span>(
+<a href=#299 id=299 data-nosnippet>299</a>            SystemdVersion::new(<span class="number">969</span>, String::from(<span class="string">"1"</span>), <span class="prelude-val">None</span>, String::from(<span class="string">"fc69"</span>)),
+<a href=#300 id=300 data-nosnippet>300</a>            parsed
+<a href=#301 id=301 data-nosnippet>301</a>        );
+<a href=#302 id=302 data-nosnippet>302</a>
+<a href=#303 id=303 data-nosnippet>303</a>        <span class="comment">// #bigCompany strings
+<a href=#304 id=304 data-nosnippet>304</a>        </span><span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"969.6-9.9.hs+fb.el9"</span>).try_into()<span class="question-mark">?</span>;
+<a href=#305 id=305 data-nosnippet>305</a>        <span class="macro">assert_eq!</span>(
+<a href=#306 id=306 data-nosnippet>306</a>            SystemdVersion::new(<span class="number">969</span>, String::from(<span class="string">"6-9"</span>), <span class="prelude-val">Some</span>(<span class="number">9</span>), String::from(<span class="string">"hs+fb.el9"</span>)),
+<a href=#307 id=307 data-nosnippet>307</a>            parsed
+<a href=#308 id=308 data-nosnippet>308</a>        );
+<a href=#309 id=309 data-nosnippet>309</a>
+<a href=#310 id=310 data-nosnippet>310</a>        <span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"v299.6-9.9.hs+fb.el9"</span>).try_into()<span class="question-mark">?</span>;
+<a href=#311 id=311 data-nosnippet>311</a>        <span class="macro">assert_eq!</span>(
+<a href=#312 id=312 data-nosnippet>312</a>            SystemdVersion::new(<span class="number">299</span>, String::from(<span class="string">"6-9"</span>), <span class="prelude-val">Some</span>(<span class="number">9</span>), String::from(<span class="string">"hs+fb.el9"</span>)),
+<a href=#313 id=313 data-nosnippet>313</a>            parsed
+<a href=#314 id=314 data-nosnippet>314</a>        );
+<a href=#315 id=315 data-nosnippet>315</a>
+<a href=#316 id=316 data-nosnippet>316</a>        <span class="comment">// RC / pre-release versions like those seen on Fedora Rawhide: "260~rc1-5.fc45"
+<a href=#317 id=317 data-nosnippet>317</a>        </span><span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"260~rc1-5.fc45"</span>).try_into()<span class="question-mark">?</span>;
+<a href=#318 id=318 data-nosnippet>318</a>        <span class="macro">assert_eq!</span>(
+<a href=#319 id=319 data-nosnippet>319</a>            SystemdVersion::new(<span class="number">260</span>, String::from(<span class="string">"rc1-5"</span>), <span class="prelude-val">None</span>, String::from(<span class="string">"fc45"</span>)),
+<a href=#320 id=320 data-nosnippet>320</a>            parsed
+<a href=#321 id=321 data-nosnippet>321</a>        );
+<a href=#322 id=322 data-nosnippet>322</a>
+<a href=#323 id=323 data-nosnippet>323</a>        <span class="comment">// Fedora once the release is final and the '~rc' is gone: "262-1.fc46".
+<a href=#324 id=324 data-nosnippet>324</a>        // The package release follows the major version directly, with no
+<a href=#325 id=325 data-nosnippet>325</a>        // dotted minor at all.
+<a href=#326 id=326 data-nosnippet>326</a>        </span><span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"262-1.fc46"</span>).try_into()<span class="question-mark">?</span>;
+<a href=#327 id=327 data-nosnippet>327</a>        <span class="macro">assert_eq!</span>(
+<a href=#328 id=328 data-nosnippet>328</a>            SystemdVersion::new(<span class="number">262</span>, String::from(<span class="string">"1"</span>), <span class="prelude-val">None</span>, String::from(<span class="string">"fc46"</span>)),
+<a href=#329 id=329 data-nosnippet>329</a>            parsed
+<a href=#330 id=330 data-nosnippet>330</a>        );
+<a href=#331 id=331 data-nosnippet>331</a>
+<a href=#332 id=332 data-nosnippet>332</a>        <span class="comment">// A release with no OS suffix still parses.
+<a href=#333 id=333 data-nosnippet>333</a>        </span><span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"262-1"</span>).try_into()<span class="question-mark">?</span>;
+<a href=#334 id=334 data-nosnippet>334</a>        <span class="macro">assert_eq!</span>(
+<a href=#335 id=335 data-nosnippet>335</a>            SystemdVersion::new(<span class="number">262</span>, String::from(<span class="string">"1"</span>), <span class="prelude-val">None</span>, String::new()),
+<a href=#336 id=336 data-nosnippet>336</a>            parsed
+<a href=#337 id=337 data-nosnippet>337</a>        );
+<a href=#338 id=338 data-nosnippet>338</a>
+<a href=#339 id=339 data-nosnippet>339</a>        <span class="comment">// A '-' after the first dot is part of the minor, not a release
+<a href=#340 id=340 data-nosnippet>340</a>        // separator: this must keep parsing as it did before.
+<a href=#341 id=341 data-nosnippet>341</a>        </span><span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"969.6-9.9.hs+fb.el9"</span>).try_into()<span class="question-mark">?</span>;
+<a href=#342 id=342 data-nosnippet>342</a>        <span class="macro">assert_eq!</span>(
+<a href=#343 id=343 data-nosnippet>343</a>            SystemdVersion::new(<span class="number">969</span>, String::from(<span class="string">"6-9"</span>), <span class="prelude-val">Some</span>(<span class="number">9</span>), String::from(<span class="string">"hs+fb.el9"</span>)),
+<a href=#344 id=344 data-nosnippet>344</a>            parsed
+<a href=#345 id=345 data-nosnippet>345</a>        );
+<a href=#346 id=346 data-nosnippet>346</a>
+<a href=#347 id=347 data-nosnippet>347</a>        <span class="comment">// Just the major version, as built from an upstream tarball.
+<a href=#348 id=348 data-nosnippet>348</a>        </span><span class="kw">let </span>parsed: SystemdVersion = String::from(<span class="string">"263"</span>).try_into()<span class="question-mark">?</span>;
+<a href=#349 id=349 data-nosnippet>349</a>        <span class="macro">assert_eq!</span>(
+<a href=#350 id=350 data-nosnippet>350</a>            SystemdVersion::new(<span class="number">263</span>, String::new(), <span class="prelude-val">None</span>, String::new()),
+<a href=#351 id=351 data-nosnippet>351</a>            parsed
+<a href=#352 id=352 data-nosnippet>352</a>        );
+<a href=#353 id=353 data-nosnippet>353</a>        <span class="macro">assert_eq!</span>(parsed.to_string(), <span class="string">"263"</span>);
+<a href=#354 id=354 data-nosnippet>354</a>
+<a href=#355 id=355 data-nosnippet>355</a>        <span class="comment">// Anything that does not start with a number is still an error: a
+<a href=#356 id=356 data-nosnippet>356</a>        // version monitord cannot read must not silently become 0.
+<a href=#357 id=357 data-nosnippet>357</a>        </span><span class="macro">assert!</span>(SystemdVersion::try_from(String::from(<span class="string">"not-a-version"</span>)).is_err());
+<a href=#358 id=358 data-nosnippet>358</a>        <span class="macro">assert!</span>(SystemdVersion::try_from(String::new()).is_err());
+<a href=#359 id=359 data-nosnippet>359</a>
+<a href=#360 id=360 data-nosnippet>360</a>        <span class="prelude-val">Ok</span>(())
+<a href=#361 id=361 data-nosnippet>361</a>    }
+<a href=#362 id=362 data-nosnippet>362</a>}
 </code></pre></div></section></main></body></html>

@@ -806,246 +806,258 @@
 <a href=#806 id=806 data-nosnippet>806</a>  "units.timer_remain_after_elapse": 0,
 <a href=#807 id=807 data-nosnippet>807</a>  "units.timer_units": 0,
 <a href=#808 id=808 data-nosnippet>808</a>  "units.total_units": 0,
-<a href=#809 id=809 data-nosnippet>809</a>  "varlink_usage.units": 0,
-<a href=#810 id=810 data-nosnippet>810</a>  "varlink_usage.version": 1,
-<a href=#811 id=811 data-nosnippet>811</a>  "verify.failing.service": 2,
-<a href=#812 id=812 data-nosnippet>812</a>  "verify.failing.slice": 1,
-<a href=#813 id=813 data-nosnippet>813</a>  "verify.failing.total": 3,
-<a href=#814 id=814 data-nosnippet>814</a>  "version": "255.7-1.fc40"
-<a href=#815 id=815 data-nosnippet>815</a>}"###</span>;
-<a href=#816 id=816 data-nosnippet>816</a>
-<a href=#817 id=817 data-nosnippet>817</a>    <span class="kw">fn </span>return_monitord_stats() -&gt; MonitordStats {
-<a href=#818 id=818 data-nosnippet>818</a>        <span class="kw">let </span><span class="kw-2">mut </span>stats = MonitordStats {
-<a href=#819 id=819 data-nosnippet>819</a>            networkd: networkd::NetworkdState {
-<a href=#820 id=820 data-nosnippet>820</a>                interfaces_state: <span class="macro">vec!</span>[networkd::InterfaceState {
-<a href=#821 id=821 data-nosnippet>821</a>                    address_state: networkd::AddressState::routable,
-<a href=#822 id=822 data-nosnippet>822</a>                    admin_state: networkd::AdminState::configured,
-<a href=#823 id=823 data-nosnippet>823</a>                    carrier_state: networkd::CarrierState::carrier,
-<a href=#824 id=824 data-nosnippet>824</a>                    ipv4_address_state: networkd::AddressState::routable,
-<a href=#825 id=825 data-nosnippet>825</a>                    ipv6_address_state: networkd::AddressState::degraded,
-<a href=#826 id=826 data-nosnippet>826</a>                    name: <span class="string">"eth0"</span>.to_string(),
-<a href=#827 id=827 data-nosnippet>827</a>                    network_file: <span class="string">"/etc/systemd/network/69-eno4.network"</span>.to_string(),
-<a href=#828 id=828 data-nosnippet>828</a>                    oper_state: networkd::OperState::routable,
-<a href=#829 id=829 data-nosnippet>829</a>                    required_for_online: networkd::BoolState::True,
-<a href=#830 id=830 data-nosnippet>830</a>                }],
-<a href=#831 id=831 data-nosnippet>831</a>                managed_interfaces: <span class="number">1</span>,
-<a href=#832 id=832 data-nosnippet>832</a>            },
-<a href=#833 id=833 data-nosnippet>833</a>            pid1: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::pid1::Pid1Stats {
-<a href=#834 id=834 data-nosnippet>834</a>                cpu_time_kernel: <span class="number">69</span>,
-<a href=#835 id=835 data-nosnippet>835</a>                cpu_time_user: <span class="number">69</span>,
-<a href=#836 id=836 data-nosnippet>836</a>                memory_usage_bytes: <span class="number">69</span>,
-<a href=#837 id=837 data-nosnippet>837</a>                fd_count: <span class="number">69</span>,
-<a href=#838 id=838 data-nosnippet>838</a>                tasks: <span class="number">1</span>,
-<a href=#839 id=839 data-nosnippet>839</a>            }),
-<a href=#840 id=840 data-nosnippet>840</a>            system_state: <span class="kw">crate</span>::system::SystemdSystemState::running,
-<a href=#841 id=841 data-nosnippet>841</a>            units: <span class="kw">crate</span>::units::SystemdUnitStats::default(),
-<a href=#842 id=842 data-nosnippet>842</a>            version: String::from(<span class="string">"255.7-1.fc40"</span>)
-<a href=#843 id=843 data-nosnippet>843</a>                .try_into()
-<a href=#844 id=844 data-nosnippet>844</a>                .expect(<span class="string">"Unable to make SystemdVersion struct"</span>),
-<a href=#845 id=845 data-nosnippet>845</a>            machines: HashMap::from([(String::from(<span class="string">"foo"</span>), MachineStats::default())]),
-<a href=#846 id=846 data-nosnippet>846</a>            dbus_stats: <span class="prelude-val">None</span>,
-<a href=#847 id=847 data-nosnippet>847</a>            boot_blame: <span class="prelude-val">None</span>,
-<a href=#848 id=848 data-nosnippet>848</a>            verify_stats: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::verify::VerifyStats {
-<a href=#849 id=849 data-nosnippet>849</a>                total: <span class="number">3</span>,
-<a href=#850 id=850 data-nosnippet>850</a>                by_type: HashMap::from([(<span class="string">"service"</span>.to_string(), <span class="number">2</span>), (<span class="string">"slice"</span>.to_string(), <span class="number">1</span>)]),
-<a href=#851 id=851 data-nosnippet>851</a>            }),
-<a href=#852 id=852 data-nosnippet>852</a>            stat_collection_run_time_ms: <span class="number">69.0</span>,
-<a href=#853 id=853 data-nosnippet>853</a>            collector_timings: <span class="macro">vec!</span>[
-<a href=#854 id=854 data-nosnippet>854</a>                <span class="kw">crate</span>::CollectorTiming {
-<a href=#855 id=855 data-nosnippet>855</a>                    name: <span class="string">"units"</span>.to_string(),
-<a href=#856 id=856 data-nosnippet>856</a>                    start_offset_ms: <span class="number">0.5</span>,
-<a href=#857 id=857 data-nosnippet>857</a>                    elapsed_ms: <span class="number">42.0</span>,
-<a href=#858 id=858 data-nosnippet>858</a>                    success: <span class="bool-val">true</span>,
-<a href=#859 id=859 data-nosnippet>859</a>                },
-<a href=#860 id=860 data-nosnippet>860</a>                <span class="kw">crate</span>::CollectorTiming {
-<a href=#861 id=861 data-nosnippet>861</a>                    name: <span class="string">"boot_blame"</span>.to_string(),
-<a href=#862 id=862 data-nosnippet>862</a>                    start_offset_ms: <span class="number">0.25</span>,
-<a href=#863 id=863 data-nosnippet>863</a>                    elapsed_ms: <span class="number">12.5</span>,
-<a href=#864 id=864 data-nosnippet>864</a>                    success: <span class="bool-val">false</span>,
-<a href=#865 id=865 data-nosnippet>865</a>                },
-<a href=#866 id=866 data-nosnippet>866</a>            ],
-<a href=#867 id=867 data-nosnippet>867</a>            varlink_usage: <span class="kw">crate</span>::VarlinkUsage {
-<a href=#868 id=868 data-nosnippet>868</a>                version: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink),
-<a href=#869 id=869 data-nosnippet>869</a>                units: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus),
-<a href=#870 id=870 data-nosnippet>870</a>                ..Default::default()
-<a href=#871 id=871 data-nosnippet>871</a>            },
-<a href=#872 id=872 data-nosnippet>872</a>        };
-<a href=#873 id=873 data-nosnippet>873</a>        stats.units.collection_timings = units::UnitsCollectionTimings {
-<a href=#874 id=874 data-nosnippet>874</a>            list_units_ms: <span class="number">5.0</span>,
-<a href=#875 id=875 data-nosnippet>875</a>            unit_files_ms: <span class="number">2.0</span>,
-<a href=#876 id=876 data-nosnippet>876</a>            per_unit_loop_ms: <span class="number">37.0</span>,
-<a href=#877 id=877 data-nosnippet>877</a>            timer_dbus_fetches: <span class="number">4</span>,
-<a href=#878 id=878 data-nosnippet>878</a>            state_dbus_fetches: <span class="number">0</span>,
-<a href=#879 id=879 data-nosnippet>879</a>            service_dbus_fetches: <span class="number">1</span>,
-<a href=#880 id=880 data-nosnippet>880</a>            slowest_units: <span class="macro">vec!</span>[
-<a href=#881 id=881 data-nosnippet>881</a>                (<span class="string">"unittest.service"</span>.to_string(), <span class="number">12.5</span>),
-<a href=#882 id=882 data-nosnippet>882</a>                (<span class="string">"unittest.timer"</span>.to_string(), <span class="number">8.25</span>),
-<a href=#883 id=883 data-nosnippet>883</a>            ],
+<a href=#809 id=809 data-nosnippet>809</a>  "varlink_usage.boot_blame": 1,
+<a href=#810 id=810 data-nosnippet>810</a>  "varlink_usage.machines": 0,
+<a href=#811 id=811 data-nosnippet>811</a>  "varlink_usage.networkd": 1,
+<a href=#812 id=812 data-nosnippet>812</a>  "varlink_usage.system_state": 1,
+<a href=#813 id=813 data-nosnippet>813</a>  "varlink_usage.units": 0,
+<a href=#814 id=814 data-nosnippet>814</a>  "varlink_usage.verify": 0,
+<a href=#815 id=815 data-nosnippet>815</a>  "varlink_usage.version": 1,
+<a href=#816 id=816 data-nosnippet>816</a>  "verify.failing.service": 2,
+<a href=#817 id=817 data-nosnippet>817</a>  "verify.failing.slice": 1,
+<a href=#818 id=818 data-nosnippet>818</a>  "verify.failing.total": 3,
+<a href=#819 id=819 data-nosnippet>819</a>  "version": "255.7-1.fc40"
+<a href=#820 id=820 data-nosnippet>820</a>}"###</span>;
+<a href=#821 id=821 data-nosnippet>821</a>
+<a href=#822 id=822 data-nosnippet>822</a>    <span class="kw">fn </span>return_monitord_stats() -&gt; MonitordStats {
+<a href=#823 id=823 data-nosnippet>823</a>        <span class="kw">let </span><span class="kw-2">mut </span>stats = MonitordStats {
+<a href=#824 id=824 data-nosnippet>824</a>            networkd: networkd::NetworkdState {
+<a href=#825 id=825 data-nosnippet>825</a>                interfaces_state: <span class="macro">vec!</span>[networkd::InterfaceState {
+<a href=#826 id=826 data-nosnippet>826</a>                    address_state: networkd::AddressState::routable,
+<a href=#827 id=827 data-nosnippet>827</a>                    admin_state: networkd::AdminState::configured,
+<a href=#828 id=828 data-nosnippet>828</a>                    carrier_state: networkd::CarrierState::carrier,
+<a href=#829 id=829 data-nosnippet>829</a>                    ipv4_address_state: networkd::AddressState::routable,
+<a href=#830 id=830 data-nosnippet>830</a>                    ipv6_address_state: networkd::AddressState::degraded,
+<a href=#831 id=831 data-nosnippet>831</a>                    name: <span class="string">"eth0"</span>.to_string(),
+<a href=#832 id=832 data-nosnippet>832</a>                    network_file: <span class="string">"/etc/systemd/network/69-eno4.network"</span>.to_string(),
+<a href=#833 id=833 data-nosnippet>833</a>                    oper_state: networkd::OperState::routable,
+<a href=#834 id=834 data-nosnippet>834</a>                    required_for_online: networkd::BoolState::True,
+<a href=#835 id=835 data-nosnippet>835</a>                }],
+<a href=#836 id=836 data-nosnippet>836</a>                managed_interfaces: <span class="number">1</span>,
+<a href=#837 id=837 data-nosnippet>837</a>            },
+<a href=#838 id=838 data-nosnippet>838</a>            pid1: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::pid1::Pid1Stats {
+<a href=#839 id=839 data-nosnippet>839</a>                cpu_time_kernel: <span class="number">69</span>,
+<a href=#840 id=840 data-nosnippet>840</a>                cpu_time_user: <span class="number">69</span>,
+<a href=#841 id=841 data-nosnippet>841</a>                memory_usage_bytes: <span class="number">69</span>,
+<a href=#842 id=842 data-nosnippet>842</a>                fd_count: <span class="number">69</span>,
+<a href=#843 id=843 data-nosnippet>843</a>                tasks: <span class="number">1</span>,
+<a href=#844 id=844 data-nosnippet>844</a>            }),
+<a href=#845 id=845 data-nosnippet>845</a>            system_state: <span class="kw">crate</span>::system::SystemdSystemState::running,
+<a href=#846 id=846 data-nosnippet>846</a>            units: <span class="kw">crate</span>::units::SystemdUnitStats::default(),
+<a href=#847 id=847 data-nosnippet>847</a>            version: String::from(<span class="string">"255.7-1.fc40"</span>)
+<a href=#848 id=848 data-nosnippet>848</a>                .try_into()
+<a href=#849 id=849 data-nosnippet>849</a>                .expect(<span class="string">"Unable to make SystemdVersion struct"</span>),
+<a href=#850 id=850 data-nosnippet>850</a>            machines: HashMap::from([(String::from(<span class="string">"foo"</span>), MachineStats::default())]),
+<a href=#851 id=851 data-nosnippet>851</a>            dbus_stats: <span class="prelude-val">None</span>,
+<a href=#852 id=852 data-nosnippet>852</a>            boot_blame: <span class="prelude-val">None</span>,
+<a href=#853 id=853 data-nosnippet>853</a>            verify_stats: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::verify::VerifyStats {
+<a href=#854 id=854 data-nosnippet>854</a>                total: <span class="number">3</span>,
+<a href=#855 id=855 data-nosnippet>855</a>                by_type: HashMap::from([(<span class="string">"service"</span>.to_string(), <span class="number">2</span>), (<span class="string">"slice"</span>.to_string(), <span class="number">1</span>)]),
+<a href=#856 id=856 data-nosnippet>856</a>            }),
+<a href=#857 id=857 data-nosnippet>857</a>            stat_collection_run_time_ms: <span class="number">69.0</span>,
+<a href=#858 id=858 data-nosnippet>858</a>            collector_timings: <span class="macro">vec!</span>[
+<a href=#859 id=859 data-nosnippet>859</a>                <span class="kw">crate</span>::CollectorTiming {
+<a href=#860 id=860 data-nosnippet>860</a>                    name: <span class="string">"units"</span>.to_string(),
+<a href=#861 id=861 data-nosnippet>861</a>                    start_offset_ms: <span class="number">0.5</span>,
+<a href=#862 id=862 data-nosnippet>862</a>                    elapsed_ms: <span class="number">42.0</span>,
+<a href=#863 id=863 data-nosnippet>863</a>                    success: <span class="bool-val">true</span>,
+<a href=#864 id=864 data-nosnippet>864</a>                },
+<a href=#865 id=865 data-nosnippet>865</a>                <span class="kw">crate</span>::CollectorTiming {
+<a href=#866 id=866 data-nosnippet>866</a>                    name: <span class="string">"boot_blame"</span>.to_string(),
+<a href=#867 id=867 data-nosnippet>867</a>                    start_offset_ms: <span class="number">0.25</span>,
+<a href=#868 id=868 data-nosnippet>868</a>                    elapsed_ms: <span class="number">12.5</span>,
+<a href=#869 id=869 data-nosnippet>869</a>                    success: <span class="bool-val">false</span>,
+<a href=#870 id=870 data-nosnippet>870</a>                },
+<a href=#871 id=871 data-nosnippet>871</a>            ],
+<a href=#872 id=872 data-nosnippet>872</a>            <span class="comment">// Exhaustive init (no `..Default::default()`): adding a new
+<a href=#873 id=873 data-nosnippet>873</a>            // gauge forces this fixture — and EXPECTED_FLAT_JSON — to be
+<a href=#874 id=874 data-nosnippet>874</a>            // updated, so the example flat output can't silently go stale.
+<a href=#875 id=875 data-nosnippet>875</a>            </span>varlink_usage: <span class="kw">crate</span>::VarlinkUsage {
+<a href=#876 id=876 data-nosnippet>876</a>                version: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink),
+<a href=#877 id=877 data-nosnippet>877</a>                system_state: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink),
+<a href=#878 id=878 data-nosnippet>878</a>                units: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus),
+<a href=#879 id=879 data-nosnippet>879</a>                networkd: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink),
+<a href=#880 id=880 data-nosnippet>880</a>                machines: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus),
+<a href=#881 id=881 data-nosnippet>881</a>                boot_blame: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink),
+<a href=#882 id=882 data-nosnippet>882</a>                verify: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus),
+<a href=#883 id=883 data-nosnippet>883</a>            },
 <a href=#884 id=884 data-nosnippet>884</a>        };
-<a href=#885 id=885 data-nosnippet>885</a>        <span class="kw">let </span>service_unit_name = String::from(<span class="string">"unittest.service"</span>);
-<a href=#886 id=886 data-nosnippet>886</a>        stats.units.service_stats.insert(
-<a href=#887 id=887 data-nosnippet>887</a>            service_unit_name.clone(),
-<a href=#888 id=888 data-nosnippet>888</a>            units::ServiceStats {
-<a href=#889 id=889 data-nosnippet>889</a>                <span class="comment">// Ensure json-flat handles negative i32s
-<a href=#890 id=890 data-nosnippet>890</a>                </span>status_errno: -<span class="number">69</span>,
-<a href=#891 id=891 data-nosnippet>891</a>                ..Default::default()
-<a href=#892 id=892 data-nosnippet>892</a>            },
-<a href=#893 id=893 data-nosnippet>893</a>        );
-<a href=#894 id=894 data-nosnippet>894</a>        stats.units.unit_states.insert(
-<a href=#895 id=895 data-nosnippet>895</a>            String::from(<span class="string">"unittest.service"</span>),
-<a href=#896 id=896 data-nosnippet>896</a>            units::UnitStates {
-<a href=#897 id=897 data-nosnippet>897</a>                active_state: units::SystemdUnitActiveState::active,
-<a href=#898 id=898 data-nosnippet>898</a>                load_state: units::SystemdUnitLoadState::loaded,
-<a href=#899 id=899 data-nosnippet>899</a>                unhealthy: <span class="bool-val">false</span>,
-<a href=#900 id=900 data-nosnippet>900</a>                time_in_state_usecs: <span class="prelude-val">Some</span>(<span class="number">69</span>),
-<a href=#901 id=901 data-nosnippet>901</a>            },
-<a href=#902 id=902 data-nosnippet>902</a>        );
-<a href=#903 id=903 data-nosnippet>903</a>        <span class="kw">let </span>timer_unit = String::from(<span class="string">"unittest.timer"</span>);
-<a href=#904 id=904 data-nosnippet>904</a>        <span class="kw">let </span>timer_stats = timer::TimerStats {
-<a href=#905 id=905 data-nosnippet>905</a>            accuracy_usec: <span class="number">69</span>,
-<a href=#906 id=906 data-nosnippet>906</a>            fixed_random_delay: <span class="bool-val">true</span>,
-<a href=#907 id=907 data-nosnippet>907</a>            last_trigger_usec: <span class="number">69</span>,
-<a href=#908 id=908 data-nosnippet>908</a>            last_trigger_usec_monotonic: <span class="number">69</span>,
-<a href=#909 id=909 data-nosnippet>909</a>            next_elapse_usec_monotonic: <span class="number">69</span>,
-<a href=#910 id=910 data-nosnippet>910</a>            next_elapse_usec_realtime: <span class="number">69</span>,
-<a href=#911 id=911 data-nosnippet>911</a>            persistent: <span class="bool-val">false</span>,
-<a href=#912 id=912 data-nosnippet>912</a>            randomized_delay_usec: <span class="number">69</span>,
-<a href=#913 id=913 data-nosnippet>913</a>            remain_after_elapse: <span class="bool-val">true</span>,
-<a href=#914 id=914 data-nosnippet>914</a>            service_unit_last_state_change_usec: <span class="number">69</span>,
-<a href=#915 id=915 data-nosnippet>915</a>            service_unit_last_state_change_usec_monotonic: <span class="number">69</span>,
-<a href=#916 id=916 data-nosnippet>916</a>        };
-<a href=#917 id=917 data-nosnippet>917</a>        stats
-<a href=#918 id=918 data-nosnippet>918</a>            .units
-<a href=#919 id=919 data-nosnippet>919</a>            .timer_stats
-<a href=#920 id=920 data-nosnippet>920</a>            .insert(timer_unit.clone(), timer_stats.clone());
-<a href=#921 id=921 data-nosnippet>921</a>        stats
-<a href=#922 id=922 data-nosnippet>922</a>            .machines
-<a href=#923 id=923 data-nosnippet>923</a>            .get_mut(<span class="string">"foo"</span>)
-<a href=#924 id=924 data-nosnippet>924</a>            .expect(<span class="string">"No machine foo? WTF"</span>)
-<a href=#925 id=925 data-nosnippet>925</a>            .units
-<a href=#926 id=926 data-nosnippet>926</a>            .timer_stats
-<a href=#927 id=927 data-nosnippet>927</a>            .insert(timer_unit, timer_stats);
-<a href=#928 id=928 data-nosnippet>928</a>        <span class="comment">// Ensure we escape keys correctly
-<a href=#929 id=929 data-nosnippet>929</a>        </span>stats.units.unit_states.insert(
-<a href=#930 id=930 data-nosnippet>930</a>            String::from(
-<a href=#931 id=931 data-nosnippet>931</a>                <span class="string">r"nvme\x2dWDC_CL_SN730_SDBQNTY\x2d512G\x2d2020_37222H80070511\x2dpart3.device"</span>,
-<a href=#932 id=932 data-nosnippet>932</a>            ),
-<a href=#933 id=933 data-nosnippet>933</a>            units::UnitStates {
-<a href=#934 id=934 data-nosnippet>934</a>                active_state: units::SystemdUnitActiveState::active,
-<a href=#935 id=935 data-nosnippet>935</a>                load_state: units::SystemdUnitLoadState::loaded,
-<a href=#936 id=936 data-nosnippet>936</a>                unhealthy: <span class="bool-val">false</span>,
-<a href=#937 id=937 data-nosnippet>937</a>                time_in_state_usecs: <span class="prelude-val">None</span>,
-<a href=#938 id=938 data-nosnippet>938</a>            },
-<a href=#939 id=939 data-nosnippet>939</a>        );
-<a href=#940 id=940 data-nosnippet>940</a>        <span class="comment">// Add boot blame stats
-<a href=#941 id=941 data-nosnippet>941</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>boot_blame = <span class="kw">crate</span>::boot::BootBlameStats::new();
-<a href=#942 id=942 data-nosnippet>942</a>        boot_blame.insert(String::from(<span class="string">"dnf5-automatic.service"</span>), <span class="number">204.159</span>);
-<a href=#943 id=943 data-nosnippet>943</a>        boot_blame.insert(String::from(<span class="string">"cpe_chef.service"</span>), <span class="number">103.050</span>);
-<a href=#944 id=944 data-nosnippet>944</a>        boot_blame.insert(String::from(<span class="string">"sys-module-fuse.device"</span>), <span class="number">16.210</span>);
-<a href=#945 id=945 data-nosnippet>945</a>        stats.boot_blame = <span class="prelude-val">Some</span>(boot_blame);
-<a href=#946 id=946 data-nosnippet>946</a>        stats
-<a href=#947 id=947 data-nosnippet>947</a>    }
-<a href=#948 id=948 data-nosnippet>948</a>
-<a href=#949 id=949 data-nosnippet>949</a>    <span class="attr">#[test]
-<a href=#950 id=950 data-nosnippet>950</a>    </span><span class="kw">fn </span>test_flatten_map() {
-<a href=#951 id=951 data-nosnippet>951</a>        <span class="kw">let </span>json_flat_map = flatten_stats(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="string">""</span>);
-<a href=#952 id=952 data-nosnippet>952</a>        <span class="macro">assert_eq!</span>(<span class="number">131</span>, json_flat_map.len());
-<a href=#953 id=953 data-nosnippet>953</a>    }
-<a href=#954 id=954 data-nosnippet>954</a>
-<a href=#955 id=955 data-nosnippet>955</a>    <span class="attr">#[test]
-<a href=#956 id=956 data-nosnippet>956</a>    </span><span class="kw">fn </span>test_collector_transport_serializes_as_integer_everywhere() {
-<a href=#957 id=957 data-nosnippet>957</a>        <span class="comment">// The repr discriminants are the gauge values, so json/json-pretty
-<a href=#958 id=958 data-nosnippet>958</a>        // report the same integers as json-flat — not strings.
-<a href=#959 id=959 data-nosnippet>959</a>        </span><span class="kw">let </span>usage = <span class="kw">crate</span>::VarlinkUsage {
-<a href=#960 id=960 data-nosnippet>960</a>            version: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink),
-<a href=#961 id=961 data-nosnippet>961</a>            units: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus),
-<a href=#962 id=962 data-nosnippet>962</a>            ..Default::default()
-<a href=#963 id=963 data-nosnippet>963</a>        };
-<a href=#964 id=964 data-nosnippet>964</a>        <span class="kw">let </span>value = serde_json::to_value(<span class="kw-2">&amp;</span>usage).expect(<span class="string">"serialize"</span>);
-<a href=#965 id=965 data-nosnippet>965</a>        <span class="macro">assert_eq!</span>(value[<span class="string">"version"</span>], serde_json::Value::from(<span class="number">1u64</span>));
-<a href=#966 id=966 data-nosnippet>966</a>        <span class="macro">assert_eq!</span>(value[<span class="string">"units"</span>], serde_json::Value::from(<span class="number">0u64</span>));
-<a href=#967 id=967 data-nosnippet>967</a>        <span class="macro">assert!</span>(value.get(<span class="string">"networkd"</span>).is_none());
-<a href=#968 id=968 data-nosnippet>968</a>    }
-<a href=#969 id=969 data-nosnippet>969</a>
-<a href=#970 id=970 data-nosnippet>970</a>    <span class="attr">#[test]
-<a href=#971 id=971 data-nosnippet>971</a>    </span><span class="kw">fn </span>test_flatten_varlink_usage_only_emits_ran_collectors() {
-<a href=#972 id=972 data-nosnippet>972</a>        <span class="comment">// Disabled collectors stay None and emit no gauge: count() over the
-<a href=#973 id=973 data-nosnippet>973</a>        // gauges is the enabled set, which is what makes sum/count a valid
-<a href=#974 id=974 data-nosnippet>974</a>        // Grafana adoption ratio without a separate enabled counter.
-<a href=#975 id=975 data-nosnippet>975</a>        </span><span class="kw">let </span>flat = flatten_varlink_usage(
-<a href=#976 id=976 data-nosnippet>976</a>            <span class="kw-2">&amp;</span><span class="kw">crate</span>::VarlinkUsage {
-<a href=#977 id=977 data-nosnippet>977</a>                version: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink),
-<a href=#978 id=978 data-nosnippet>978</a>                units: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus),
-<a href=#979 id=979 data-nosnippet>979</a>                ..Default::default()
-<a href=#980 id=980 data-nosnippet>980</a>            },
-<a href=#981 id=981 data-nosnippet>981</a>            <span class="string">""</span>,
-<a href=#982 id=982 data-nosnippet>982</a>        );
-<a href=#983 id=983 data-nosnippet>983</a>        <span class="macro">assert_eq!</span>(flat.len(), <span class="number">2</span>);
-<a href=#984 id=984 data-nosnippet>984</a>        <span class="macro">assert_eq!</span>(flat[<span class="string">"varlink_usage.version"</span>], serde_json::Value::from(<span class="number">1u64</span>));
-<a href=#985 id=985 data-nosnippet>985</a>        <span class="macro">assert_eq!</span>(flat[<span class="string">"varlink_usage.units"</span>], serde_json::Value::from(<span class="number">0u64</span>));
-<a href=#986 id=986 data-nosnippet>986</a>        <span class="macro">assert!</span>(flatten_varlink_usage(<span class="kw-2">&amp;</span><span class="kw">crate</span>::VarlinkUsage::default(), <span class="string">""</span>).is_empty());
-<a href=#987 id=987 data-nosnippet>987</a>    }
-<a href=#988 id=988 data-nosnippet>988</a>
-<a href=#989 id=989 data-nosnippet>989</a>    <span class="attr">#[test]
-<a href=#990 id=990 data-nosnippet>990</a>    </span><span class="kw">fn </span>test_flatten() {
-<a href=#991 id=991 data-nosnippet>991</a>        <span class="kw">let </span>json_flat = flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="string">""</span>).expect(<span class="string">"JSON serialize failed"</span>);
-<a href=#992 id=992 data-nosnippet>992</a>        <span class="macro">assert_eq!</span>(EXPECTED_FLAT_JSON, json_flat);
-<a href=#993 id=993 data-nosnippet>993</a>    }
-<a href=#994 id=994 data-nosnippet>994</a>
-<a href=#995 id=995 data-nosnippet>995</a>    <span class="attr">#[test]
-<a href=#996 id=996 data-nosnippet>996</a>    </span><span class="kw">fn </span>test_flatten_prefixed() {
-<a href=#997 id=997 data-nosnippet>997</a>        <span class="kw">let </span>json_flat =
-<a href=#998 id=998 data-nosnippet>998</a>            flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="string">"monitord"</span>).expect(<span class="string">"JSON serialize failed"</span>);
-<a href=#999 id=999 data-nosnippet>999</a>        <span class="kw">let </span>json_flat_unserialized: BTreeMap&lt;String, serde_json::Value&gt; =
-<a href=#1000 id=1000 data-nosnippet>1000</a>            serde_json::from_str(<span class="kw-2">&amp;</span>json_flat).expect(<span class="string">"JSON from_str failed"</span>);
-<a href=#1001 id=1001 data-nosnippet>1001</a>        <span class="kw">for </span>(key, _value) <span class="kw">in </span>json_flat_unserialized.iter() {
-<a href=#1002 id=1002 data-nosnippet>1002</a>            <span class="macro">assert!</span>(key.starts_with(<span class="string">"monitord."</span>));
-<a href=#1003 id=1003 data-nosnippet>1003</a>        }
-<a href=#1004 id=1004 data-nosnippet>1004</a>    }
-<a href=#1005 id=1005 data-nosnippet>1005</a>
-<a href=#1006 id=1006 data-nosnippet>1006</a>    <span class="doccomment">/// Ensure `UnitCounters` covers every scalar (non-hashmap) field of `SystemdUnitStats`.
-<a href=#1007 id=1007 data-nosnippet>1007</a>    ///
-<a href=#1008 id=1008 data-nosnippet>1008</a>    /// If a new counter field is added to `SystemdUnitStats` but not to `UnitCounters`
-<a href=#1009 id=1009 data-nosnippet>1009</a>    /// (and its `From` impl), this test will fail, preventing silent omissions from the
-<a href=#1010 id=1010 data-nosnippet>1010</a>    /// flat JSON output.
-<a href=#1011 id=1011 data-nosnippet>1011</a>    </span><span class="attr">#[test]
-<a href=#1012 id=1012 data-nosnippet>1012</a>    </span><span class="kw">fn </span>test_unit_counters_covers_all_scalar_fields() {
-<a href=#1013 id=1013 data-nosnippet>1013</a>        <span class="comment">// Fields of SystemdUnitStats that are nested maps, not scalar counters.
-<a href=#1014 id=1014 data-nosnippet>1014</a>        </span><span class="kw">const </span>NON_COUNTER_FIELDS: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = <span class="kw-2">&amp;</span>[
-<a href=#1015 id=1015 data-nosnippet>1015</a>            <span class="string">"unit_files"</span>,
-<a href=#1016 id=1016 data-nosnippet>1016</a>            <span class="string">"service_stats"</span>,
-<a href=#1017 id=1017 data-nosnippet>1017</a>            <span class="string">"timer_stats"</span>,
-<a href=#1018 id=1018 data-nosnippet>1018</a>            <span class="string">"unit_states"</span>,
-<a href=#1019 id=1019 data-nosnippet>1019</a>            <span class="string">"collection_timings"</span>,
-<a href=#1020 id=1020 data-nosnippet>1020</a>        ];
-<a href=#1021 id=1021 data-nosnippet>1021</a>
-<a href=#1022 id=1022 data-nosnippet>1022</a>        <span class="comment">// Scalar counter field names expected from SystemdUnitStats.
-<a href=#1023 id=1023 data-nosnippet>1023</a>        </span><span class="kw">let </span>expected: std::collections::BTreeSet&lt;<span class="kw-2">&amp;</span>str&gt; = units::UNIT_FIELD_NAMES
-<a href=#1024 id=1024 data-nosnippet>1024</a>            .iter()
-<a href=#1025 id=1025 data-nosnippet>1025</a>            .copied()
-<a href=#1026 id=1026 data-nosnippet>1026</a>            .filter(|f| !NON_COUNTER_FIELDS.contains(f))
-<a href=#1027 id=1027 data-nosnippet>1027</a>            .collect();
-<a href=#1028 id=1028 data-nosnippet>1028</a>
-<a href=#1029 id=1029 data-nosnippet>1029</a>        <span class="comment">// Field names actually present in UnitCounters (via serde serialization).
-<a href=#1030 id=1030 data-nosnippet>1030</a>        </span><span class="kw">let </span>counters_json =
-<a href=#1031 id=1031 data-nosnippet>1031</a>            serde_json::to_value(UnitCounters::from(<span class="kw-2">&amp;</span>units::SystemdUnitStats::default()))
-<a href=#1032 id=1032 data-nosnippet>1032</a>                .expect(<span class="string">"UnitCounters serialization failed"</span>);
-<a href=#1033 id=1033 data-nosnippet>1033</a>        <span class="kw">let </span>actual: std::collections::BTreeSet&lt;<span class="kw-2">&amp;</span>str&gt; = counters_json
-<a href=#1034 id=1034 data-nosnippet>1034</a>            .as_object()
-<a href=#1035 id=1035 data-nosnippet>1035</a>            .expect(<span class="string">"UnitCounters must serialize to a JSON object"</span>)
-<a href=#1036 id=1036 data-nosnippet>1036</a>            .keys()
-<a href=#1037 id=1037 data-nosnippet>1037</a>            .map(|s| s.as_str())
-<a href=#1038 id=1038 data-nosnippet>1038</a>            .collect();
-<a href=#1039 id=1039 data-nosnippet>1039</a>
-<a href=#1040 id=1040 data-nosnippet>1040</a>        <span class="macro">assert_eq!</span>(
-<a href=#1041 id=1041 data-nosnippet>1041</a>            expected,
-<a href=#1042 id=1042 data-nosnippet>1042</a>            actual,
-<a href=#1043 id=1043 data-nosnippet>1043</a>            <span class="string">"UnitCounters is out of sync with SystemdUnitStats scalar fields.\n\
-<a href=#1044 id=1044 data-nosnippet>1044</a>             Missing from UnitCounters: {:?}\n\
-<a href=#1045 id=1045 data-nosnippet>1045</a>             Extra in UnitCounters: {:?}"</span>,
-<a href=#1046 id=1046 data-nosnippet>1046</a>            expected.difference(<span class="kw-2">&amp;</span>actual).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;(),
-<a href=#1047 id=1047 data-nosnippet>1047</a>            actual.difference(<span class="kw-2">&amp;</span>expected).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;(),
-<a href=#1048 id=1048 data-nosnippet>1048</a>        );
-<a href=#1049 id=1049 data-nosnippet>1049</a>    }
-<a href=#1050 id=1050 data-nosnippet>1050</a>}
+<a href=#885 id=885 data-nosnippet>885</a>        stats.units.collection_timings = units::UnitsCollectionTimings {
+<a href=#886 id=886 data-nosnippet>886</a>            list_units_ms: <span class="number">5.0</span>,
+<a href=#887 id=887 data-nosnippet>887</a>            unit_files_ms: <span class="number">2.0</span>,
+<a href=#888 id=888 data-nosnippet>888</a>            per_unit_loop_ms: <span class="number">37.0</span>,
+<a href=#889 id=889 data-nosnippet>889</a>            timer_dbus_fetches: <span class="number">4</span>,
+<a href=#890 id=890 data-nosnippet>890</a>            state_dbus_fetches: <span class="number">0</span>,
+<a href=#891 id=891 data-nosnippet>891</a>            service_dbus_fetches: <span class="number">1</span>,
+<a href=#892 id=892 data-nosnippet>892</a>            slowest_units: <span class="macro">vec!</span>[
+<a href=#893 id=893 data-nosnippet>893</a>                (<span class="string">"unittest.service"</span>.to_string(), <span class="number">12.5</span>),
+<a href=#894 id=894 data-nosnippet>894</a>                (<span class="string">"unittest.timer"</span>.to_string(), <span class="number">8.25</span>),
+<a href=#895 id=895 data-nosnippet>895</a>            ],
+<a href=#896 id=896 data-nosnippet>896</a>        };
+<a href=#897 id=897 data-nosnippet>897</a>        <span class="kw">let </span>service_unit_name = String::from(<span class="string">"unittest.service"</span>);
+<a href=#898 id=898 data-nosnippet>898</a>        stats.units.service_stats.insert(
+<a href=#899 id=899 data-nosnippet>899</a>            service_unit_name.clone(),
+<a href=#900 id=900 data-nosnippet>900</a>            units::ServiceStats {
+<a href=#901 id=901 data-nosnippet>901</a>                <span class="comment">// Ensure json-flat handles negative i32s
+<a href=#902 id=902 data-nosnippet>902</a>                </span>status_errno: -<span class="number">69</span>,
+<a href=#903 id=903 data-nosnippet>903</a>                ..Default::default()
+<a href=#904 id=904 data-nosnippet>904</a>            },
+<a href=#905 id=905 data-nosnippet>905</a>        );
+<a href=#906 id=906 data-nosnippet>906</a>        stats.units.unit_states.insert(
+<a href=#907 id=907 data-nosnippet>907</a>            String::from(<span class="string">"unittest.service"</span>),
+<a href=#908 id=908 data-nosnippet>908</a>            units::UnitStates {
+<a href=#909 id=909 data-nosnippet>909</a>                active_state: units::SystemdUnitActiveState::active,
+<a href=#910 id=910 data-nosnippet>910</a>                load_state: units::SystemdUnitLoadState::loaded,
+<a href=#911 id=911 data-nosnippet>911</a>                unhealthy: <span class="bool-val">false</span>,
+<a href=#912 id=912 data-nosnippet>912</a>                time_in_state_usecs: <span class="prelude-val">Some</span>(<span class="number">69</span>),
+<a href=#913 id=913 data-nosnippet>913</a>            },
+<a href=#914 id=914 data-nosnippet>914</a>        );
+<a href=#915 id=915 data-nosnippet>915</a>        <span class="kw">let </span>timer_unit = String::from(<span class="string">"unittest.timer"</span>);
+<a href=#916 id=916 data-nosnippet>916</a>        <span class="kw">let </span>timer_stats = timer::TimerStats {
+<a href=#917 id=917 data-nosnippet>917</a>            accuracy_usec: <span class="number">69</span>,
+<a href=#918 id=918 data-nosnippet>918</a>            fixed_random_delay: <span class="bool-val">true</span>,
+<a href=#919 id=919 data-nosnippet>919</a>            last_trigger_usec: <span class="number">69</span>,
+<a href=#920 id=920 data-nosnippet>920</a>            last_trigger_usec_monotonic: <span class="number">69</span>,
+<a href=#921 id=921 data-nosnippet>921</a>            next_elapse_usec_monotonic: <span class="number">69</span>,
+<a href=#922 id=922 data-nosnippet>922</a>            next_elapse_usec_realtime: <span class="number">69</span>,
+<a href=#923 id=923 data-nosnippet>923</a>            persistent: <span class="bool-val">false</span>,
+<a href=#924 id=924 data-nosnippet>924</a>            randomized_delay_usec: <span class="number">69</span>,
+<a href=#925 id=925 data-nosnippet>925</a>            remain_after_elapse: <span class="bool-val">true</span>,
+<a href=#926 id=926 data-nosnippet>926</a>            service_unit_last_state_change_usec: <span class="number">69</span>,
+<a href=#927 id=927 data-nosnippet>927</a>            service_unit_last_state_change_usec_monotonic: <span class="number">69</span>,
+<a href=#928 id=928 data-nosnippet>928</a>        };
+<a href=#929 id=929 data-nosnippet>929</a>        stats
+<a href=#930 id=930 data-nosnippet>930</a>            .units
+<a href=#931 id=931 data-nosnippet>931</a>            .timer_stats
+<a href=#932 id=932 data-nosnippet>932</a>            .insert(timer_unit.clone(), timer_stats.clone());
+<a href=#933 id=933 data-nosnippet>933</a>        stats
+<a href=#934 id=934 data-nosnippet>934</a>            .machines
+<a href=#935 id=935 data-nosnippet>935</a>            .get_mut(<span class="string">"foo"</span>)
+<a href=#936 id=936 data-nosnippet>936</a>            .expect(<span class="string">"No machine foo? WTF"</span>)
+<a href=#937 id=937 data-nosnippet>937</a>            .units
+<a href=#938 id=938 data-nosnippet>938</a>            .timer_stats
+<a href=#939 id=939 data-nosnippet>939</a>            .insert(timer_unit, timer_stats);
+<a href=#940 id=940 data-nosnippet>940</a>        <span class="comment">// Ensure we escape keys correctly
+<a href=#941 id=941 data-nosnippet>941</a>        </span>stats.units.unit_states.insert(
+<a href=#942 id=942 data-nosnippet>942</a>            String::from(
+<a href=#943 id=943 data-nosnippet>943</a>                <span class="string">r"nvme\x2dWDC_CL_SN730_SDBQNTY\x2d512G\x2d2020_37222H80070511\x2dpart3.device"</span>,
+<a href=#944 id=944 data-nosnippet>944</a>            ),
+<a href=#945 id=945 data-nosnippet>945</a>            units::UnitStates {
+<a href=#946 id=946 data-nosnippet>946</a>                active_state: units::SystemdUnitActiveState::active,
+<a href=#947 id=947 data-nosnippet>947</a>                load_state: units::SystemdUnitLoadState::loaded,
+<a href=#948 id=948 data-nosnippet>948</a>                unhealthy: <span class="bool-val">false</span>,
+<a href=#949 id=949 data-nosnippet>949</a>                time_in_state_usecs: <span class="prelude-val">None</span>,
+<a href=#950 id=950 data-nosnippet>950</a>            },
+<a href=#951 id=951 data-nosnippet>951</a>        );
+<a href=#952 id=952 data-nosnippet>952</a>        <span class="comment">// Add boot blame stats
+<a href=#953 id=953 data-nosnippet>953</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>boot_blame = <span class="kw">crate</span>::boot::BootBlameStats::new();
+<a href=#954 id=954 data-nosnippet>954</a>        boot_blame.insert(String::from(<span class="string">"dnf5-automatic.service"</span>), <span class="number">204.159</span>);
+<a href=#955 id=955 data-nosnippet>955</a>        boot_blame.insert(String::from(<span class="string">"cpe_chef.service"</span>), <span class="number">103.050</span>);
+<a href=#956 id=956 data-nosnippet>956</a>        boot_blame.insert(String::from(<span class="string">"sys-module-fuse.device"</span>), <span class="number">16.210</span>);
+<a href=#957 id=957 data-nosnippet>957</a>        stats.boot_blame = <span class="prelude-val">Some</span>(boot_blame);
+<a href=#958 id=958 data-nosnippet>958</a>        stats
+<a href=#959 id=959 data-nosnippet>959</a>    }
+<a href=#960 id=960 data-nosnippet>960</a>
+<a href=#961 id=961 data-nosnippet>961</a>    <span class="attr">#[test]
+<a href=#962 id=962 data-nosnippet>962</a>    </span><span class="kw">fn </span>test_flatten_map() {
+<a href=#963 id=963 data-nosnippet>963</a>        <span class="kw">let </span>json_flat_map = flatten_stats(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="string">""</span>);
+<a href=#964 id=964 data-nosnippet>964</a>        <span class="macro">assert_eq!</span>(<span class="number">136</span>, json_flat_map.len());
+<a href=#965 id=965 data-nosnippet>965</a>    }
+<a href=#966 id=966 data-nosnippet>966</a>
+<a href=#967 id=967 data-nosnippet>967</a>    <span class="attr">#[test]
+<a href=#968 id=968 data-nosnippet>968</a>    </span><span class="kw">fn </span>test_collector_transport_serializes_as_integer_everywhere() {
+<a href=#969 id=969 data-nosnippet>969</a>        <span class="comment">// The repr discriminants are the gauge values, so json/json-pretty
+<a href=#970 id=970 data-nosnippet>970</a>        // report the same integers as json-flat — not strings.
+<a href=#971 id=971 data-nosnippet>971</a>        </span><span class="kw">let </span>usage = <span class="kw">crate</span>::VarlinkUsage {
+<a href=#972 id=972 data-nosnippet>972</a>            version: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink),
+<a href=#973 id=973 data-nosnippet>973</a>            units: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus),
+<a href=#974 id=974 data-nosnippet>974</a>            ..Default::default()
+<a href=#975 id=975 data-nosnippet>975</a>        };
+<a href=#976 id=976 data-nosnippet>976</a>        <span class="kw">let </span>value = serde_json::to_value(<span class="kw-2">&amp;</span>usage).expect(<span class="string">"serialize"</span>);
+<a href=#977 id=977 data-nosnippet>977</a>        <span class="macro">assert_eq!</span>(value[<span class="string">"version"</span>], serde_json::Value::from(<span class="number">1u64</span>));
+<a href=#978 id=978 data-nosnippet>978</a>        <span class="macro">assert_eq!</span>(value[<span class="string">"units"</span>], serde_json::Value::from(<span class="number">0u64</span>));
+<a href=#979 id=979 data-nosnippet>979</a>        <span class="macro">assert!</span>(value.get(<span class="string">"networkd"</span>).is_none());
+<a href=#980 id=980 data-nosnippet>980</a>    }
+<a href=#981 id=981 data-nosnippet>981</a>
+<a href=#982 id=982 data-nosnippet>982</a>    <span class="attr">#[test]
+<a href=#983 id=983 data-nosnippet>983</a>    </span><span class="kw">fn </span>test_flatten_varlink_usage_only_emits_ran_collectors() {
+<a href=#984 id=984 data-nosnippet>984</a>        <span class="comment">// Disabled collectors stay None and emit no gauge: count() over the
+<a href=#985 id=985 data-nosnippet>985</a>        // gauges is the enabled set, which is what makes sum/count a valid
+<a href=#986 id=986 data-nosnippet>986</a>        // Grafana adoption ratio without a separate enabled counter.
+<a href=#987 id=987 data-nosnippet>987</a>        </span><span class="kw">let </span>flat = flatten_varlink_usage(
+<a href=#988 id=988 data-nosnippet>988</a>            <span class="kw-2">&amp;</span><span class="kw">crate</span>::VarlinkUsage {
+<a href=#989 id=989 data-nosnippet>989</a>                version: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Varlink),
+<a href=#990 id=990 data-nosnippet>990</a>                units: <span class="prelude-val">Some</span>(<span class="kw">crate</span>::CollectorTransport::Dbus),
+<a href=#991 id=991 data-nosnippet>991</a>                ..Default::default()
+<a href=#992 id=992 data-nosnippet>992</a>            },
+<a href=#993 id=993 data-nosnippet>993</a>            <span class="string">""</span>,
+<a href=#994 id=994 data-nosnippet>994</a>        );
+<a href=#995 id=995 data-nosnippet>995</a>        <span class="macro">assert_eq!</span>(flat.len(), <span class="number">2</span>);
+<a href=#996 id=996 data-nosnippet>996</a>        <span class="macro">assert_eq!</span>(flat[<span class="string">"varlink_usage.version"</span>], serde_json::Value::from(<span class="number">1u64</span>));
+<a href=#997 id=997 data-nosnippet>997</a>        <span class="macro">assert_eq!</span>(flat[<span class="string">"varlink_usage.units"</span>], serde_json::Value::from(<span class="number">0u64</span>));
+<a href=#998 id=998 data-nosnippet>998</a>        <span class="macro">assert!</span>(flatten_varlink_usage(<span class="kw-2">&amp;</span><span class="kw">crate</span>::VarlinkUsage::default(), <span class="string">""</span>).is_empty());
+<a href=#999 id=999 data-nosnippet>999</a>    }
+<a href=#1000 id=1000 data-nosnippet>1000</a>
+<a href=#1001 id=1001 data-nosnippet>1001</a>    <span class="attr">#[test]
+<a href=#1002 id=1002 data-nosnippet>1002</a>    </span><span class="kw">fn </span>test_flatten() {
+<a href=#1003 id=1003 data-nosnippet>1003</a>        <span class="kw">let </span>json_flat = flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="string">""</span>).expect(<span class="string">"JSON serialize failed"</span>);
+<a href=#1004 id=1004 data-nosnippet>1004</a>        <span class="macro">assert_eq!</span>(EXPECTED_FLAT_JSON, json_flat);
+<a href=#1005 id=1005 data-nosnippet>1005</a>    }
+<a href=#1006 id=1006 data-nosnippet>1006</a>
+<a href=#1007 id=1007 data-nosnippet>1007</a>    <span class="attr">#[test]
+<a href=#1008 id=1008 data-nosnippet>1008</a>    </span><span class="kw">fn </span>test_flatten_prefixed() {
+<a href=#1009 id=1009 data-nosnippet>1009</a>        <span class="kw">let </span>json_flat =
+<a href=#1010 id=1010 data-nosnippet>1010</a>            flatten(<span class="kw-2">&amp;</span>return_monitord_stats(), <span class="string">"monitord"</span>).expect(<span class="string">"JSON serialize failed"</span>);
+<a href=#1011 id=1011 data-nosnippet>1011</a>        <span class="kw">let </span>json_flat_unserialized: BTreeMap&lt;String, serde_json::Value&gt; =
+<a href=#1012 id=1012 data-nosnippet>1012</a>            serde_json::from_str(<span class="kw-2">&amp;</span>json_flat).expect(<span class="string">"JSON from_str failed"</span>);
+<a href=#1013 id=1013 data-nosnippet>1013</a>        <span class="kw">for </span>(key, _value) <span class="kw">in </span>json_flat_unserialized.iter() {
+<a href=#1014 id=1014 data-nosnippet>1014</a>            <span class="macro">assert!</span>(key.starts_with(<span class="string">"monitord."</span>));
+<a href=#1015 id=1015 data-nosnippet>1015</a>        }
+<a href=#1016 id=1016 data-nosnippet>1016</a>    }
+<a href=#1017 id=1017 data-nosnippet>1017</a>
+<a href=#1018 id=1018 data-nosnippet>1018</a>    <span class="doccomment">/// Ensure `UnitCounters` covers every scalar (non-hashmap) field of `SystemdUnitStats`.
+<a href=#1019 id=1019 data-nosnippet>1019</a>    ///
+<a href=#1020 id=1020 data-nosnippet>1020</a>    /// If a new counter field is added to `SystemdUnitStats` but not to `UnitCounters`
+<a href=#1021 id=1021 data-nosnippet>1021</a>    /// (and its `From` impl), this test will fail, preventing silent omissions from the
+<a href=#1022 id=1022 data-nosnippet>1022</a>    /// flat JSON output.
+<a href=#1023 id=1023 data-nosnippet>1023</a>    </span><span class="attr">#[test]
+<a href=#1024 id=1024 data-nosnippet>1024</a>    </span><span class="kw">fn </span>test_unit_counters_covers_all_scalar_fields() {
+<a href=#1025 id=1025 data-nosnippet>1025</a>        <span class="comment">// Fields of SystemdUnitStats that are nested maps, not scalar counters.
+<a href=#1026 id=1026 data-nosnippet>1026</a>        </span><span class="kw">const </span>NON_COUNTER_FIELDS: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>str] = <span class="kw-2">&amp;</span>[
+<a href=#1027 id=1027 data-nosnippet>1027</a>            <span class="string">"unit_files"</span>,
+<a href=#1028 id=1028 data-nosnippet>1028</a>            <span class="string">"service_stats"</span>,
+<a href=#1029 id=1029 data-nosnippet>1029</a>            <span class="string">"timer_stats"</span>,
+<a href=#1030 id=1030 data-nosnippet>1030</a>            <span class="string">"unit_states"</span>,
+<a href=#1031 id=1031 data-nosnippet>1031</a>            <span class="string">"collection_timings"</span>,
+<a href=#1032 id=1032 data-nosnippet>1032</a>        ];
+<a href=#1033 id=1033 data-nosnippet>1033</a>
+<a href=#1034 id=1034 data-nosnippet>1034</a>        <span class="comment">// Scalar counter field names expected from SystemdUnitStats.
+<a href=#1035 id=1035 data-nosnippet>1035</a>        </span><span class="kw">let </span>expected: std::collections::BTreeSet&lt;<span class="kw-2">&amp;</span>str&gt; = units::UNIT_FIELD_NAMES
+<a href=#1036 id=1036 data-nosnippet>1036</a>            .iter()
+<a href=#1037 id=1037 data-nosnippet>1037</a>            .copied()
+<a href=#1038 id=1038 data-nosnippet>1038</a>            .filter(|f| !NON_COUNTER_FIELDS.contains(f))
+<a href=#1039 id=1039 data-nosnippet>1039</a>            .collect();
+<a href=#1040 id=1040 data-nosnippet>1040</a>
+<a href=#1041 id=1041 data-nosnippet>1041</a>        <span class="comment">// Field names actually present in UnitCounters (via serde serialization).
+<a href=#1042 id=1042 data-nosnippet>1042</a>        </span><span class="kw">let </span>counters_json =
+<a href=#1043 id=1043 data-nosnippet>1043</a>            serde_json::to_value(UnitCounters::from(<span class="kw-2">&amp;</span>units::SystemdUnitStats::default()))
+<a href=#1044 id=1044 data-nosnippet>1044</a>                .expect(<span class="string">"UnitCounters serialization failed"</span>);
+<a href=#1045 id=1045 data-nosnippet>1045</a>        <span class="kw">let </span>actual: std::collections::BTreeSet&lt;<span class="kw-2">&amp;</span>str&gt; = counters_json
+<a href=#1046 id=1046 data-nosnippet>1046</a>            .as_object()
+<a href=#1047 id=1047 data-nosnippet>1047</a>            .expect(<span class="string">"UnitCounters must serialize to a JSON object"</span>)
+<a href=#1048 id=1048 data-nosnippet>1048</a>            .keys()
+<a href=#1049 id=1049 data-nosnippet>1049</a>            .map(|s| s.as_str())
+<a href=#1050 id=1050 data-nosnippet>1050</a>            .collect();
+<a href=#1051 id=1051 data-nosnippet>1051</a>
+<a href=#1052 id=1052 data-nosnippet>1052</a>        <span class="macro">assert_eq!</span>(
+<a href=#1053 id=1053 data-nosnippet>1053</a>            expected,
+<a href=#1054 id=1054 data-nosnippet>1054</a>            actual,
+<a href=#1055 id=1055 data-nosnippet>1055</a>            <span class="string">"UnitCounters is out of sync with SystemdUnitStats scalar fields.\n\
+<a href=#1056 id=1056 data-nosnippet>1056</a>             Missing from UnitCounters: {:?}\n\
+<a href=#1057 id=1057 data-nosnippet>1057</a>             Extra in UnitCounters: {:?}"</span>,
+<a href=#1058 id=1058 data-nosnippet>1058</a>            expected.difference(<span class="kw-2">&amp;</span>actual).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;(),
+<a href=#1059 id=1059 data-nosnippet>1059</a>            actual.difference(<span class="kw-2">&amp;</span>expected).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;(),
+<a href=#1060 id=1060 data-nosnippet>1060</a>        );
+<a href=#1061 id=1061 data-nosnippet>1061</a>    }
+<a href=#1062 id=1062 data-nosnippet>1062</a>}
 </code></pre></div></section></main></body></html>
