@@ -86,8 +86,8 @@ impl UnitLookup {
 
 /// Whether a unit is a oneshot service.
 ///
-/// The varlink equivalent of `units::is_oneshot_service_by_name`, which the
-/// varlink path previously had to reach back to D-Bus for.
+/// The varlink equivalent of the D-Bus path's `Service.Type` check in
+/// `units::is_oneshot_service_unit`.
 pub fn is_oneshot(output: &ListOutput) -> bool {
     output
         .context
