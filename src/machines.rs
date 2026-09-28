@@ -3,11 +3,13 @@ use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use futures_util::stream::TryStreamExt;
 use thiserror::Error;
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error, warn};
 
 use crate::varlink::endpoint::VarlinkEndpoint;
+use crate::varlink::machine::{ListOutput, Machine, MACHINE_SOCKET_PATH};
 use crate::varlink::machine_connector::{self, MachineConnector, MachineSocket};
 use crate::MachineStats;
 use crate::MonitordStats;
@@ -50,6 +52,19 @@ pub enum MonitordMachinesError {
     ZbusError(#[from] zbus::Error),
 }
 
+/// Whether a machine is collected: containers only, honoring the
+/// allowlist/blocklist. Shared by the varlink and D-Bus enumerations.
+fn keep_machine(
+    name: &str,
+    class: &str,
+    allowlist: &HashSet<String>,
+    blocklist: &HashSet<String>,
+) -> bool {
+    class == "container"
+        && !blocklist.contains(name)
+        && (allowlist.is_empty() || allowlist.contains(name))
+}
+
 pub fn filter_machines(
     machines: Vec<crate::dbus::zbus_machines::ListedMachine>,
     allowlist: &HashSet<String>,
@@ -57,13 +72,98 @@ pub fn filter_machines(
 ) -> Vec<crate::dbus::zbus_machines::ListedMachine> {
     machines
         .into_iter()
-        .filter(|c| c.class == "container")
-        .filter(|c| !blocklist.contains(&c.name))
-        .filter(|c| allowlist.is_empty() || allowlist.contains(&c.name))
+        .filter(|c| keep_machine(&c.name, &c.class, allowlist, blocklist))
         .collect()
 }
 
+/// Enumerate machines and their leader PIDs, over machined's
+/// `io.systemd.Machine.List` varlink API (systemd v257+) when enabled,
+/// falling back to machined's D-Bus API. Records the transport used in the
+/// host's `varlink_usage.machines` gauge.
 pub async fn get_machines(
+    config: &crate::config::Config,
+    dbus_cell: &crate::DbusCell,
+    host_stats: &RwLock<MachineStats>,
+) -> anyhow::Result<HashMap<String, u32>> {
+    if config.use_varlink(&[config.machines.varlink]) {
+        let endpoint = VarlinkEndpoint::from(MACHINE_SOCKET_PATH);
+        match get_machines_varlink(endpoint, config).await {
+            Ok(machines) => {
+                host_stats.write().await.varlink_usage.machines =
+                    Some(crate::CollectorTransport::Varlink);
+                return Ok(machines);
+            }
+            Err(err) => {
+                crate::varlink_fallback::report_varlink_failure(
+                    config.varlink.no_fallback,
+                    "machines",
+                    "D-Bus",
+                    err,
+                )?;
+            }
+        }
+    }
+    // Set before the call (the lib.rs ordering): if the D-Bus enumeration
+    // errors, the gauge still says D-Bus rather than going stale or absent.
+    host_stats.write().await.varlink_usage.machines = Some(crate::CollectorTransport::Dbus);
+    let connection = crate::dbus_connection(dbus_cell, config.monitord.dbus_timeout).await?;
+    Ok(get_machines_dbus(&connection, config).await?)
+}
+
+/// Enumerate machines via `io.systemd.Machine.List`.
+///
+/// Runs on its own current-thread runtime like the streaming
+/// `io.systemd.Metrics.List` call in `varlink_units`: the zlink reply stream
+/// is `!Send`, so it cannot be held across an await on the main runtime.
+async fn get_machines_varlink(
+    endpoint: VarlinkEndpoint,
+    config: &crate::config::Config,
+) -> anyhow::Result<HashMap<String, u32>> {
+    let listed = tokio::task::spawn_blocking(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        rt.block_on(async move {
+            let mut conn = endpoint.connect().await?;
+            let stream = conn.list().await?;
+            futures_util::pin_mut!(stream);
+            let mut listed = Vec::new();
+            while let Some(reply) = stream.try_next().await? {
+                listed.push(
+                    reply.map_err(|e| anyhow::anyhow!("io.systemd.Machine.List error: {}", e))?,
+                );
+            }
+            anyhow::Ok(listed)
+        })
+    })
+    .await??;
+    Ok(filter_listed_machines(
+        listed,
+        &config.machines.allowlist,
+        &config.machines.blocklist,
+    ))
+}
+
+/// Filter `io.systemd.Machine.List` replies into machine name -> leader PID.
+fn filter_listed_machines(
+    listed: Vec<ListOutput>,
+    allowlist: &HashSet<String>,
+    blocklist: &HashSet<String>,
+) -> HashMap<String, u32> {
+    listed
+        .into_iter()
+        .filter(|m| keep_machine(&m.name, &m.class, allowlist, blocklist))
+        .filter_map(|m| match m.leader.and_then(|leader| leader.pid) {
+            Some(pid) => Some((m.name, pid)),
+            None => {
+                warn!("Machine {} has no leader PID, skipping", m.name);
+                None
+            }
+        })
+        .collect()
+}
+
+async fn get_machines_dbus(
     connection: &zbus::Connection,
     config: &crate::config::Config,
 ) -> Result<HashMap<String, u32>, MonitordMachinesError> {
@@ -251,14 +351,15 @@ fn machine_endpoint(
 
 pub async fn update_machines_stats(
     config: Arc<crate::config::Config>,
-    connection: zbus::Connection,
+    dbus_cell: crate::DbusCell,
+    host_stats: Arc<RwLock<MachineStats>>,
     locked_monitord_stats: Arc<RwLock<MonitordStats>>,
     cached_connections: Arc<Mutex<MachineConnections>>,
 ) -> anyhow::Result<()> {
     let locked_machine_stats: Arc<RwLock<MachineStats>> =
         Arc::new(RwLock::new(MachineStats::default()));
 
-    let current_machines = get_machines(&connection, &config).await?;
+    let current_machines = get_machines(&config, &dbus_cell, &host_stats).await?;
 
     evict_stale_connections(&cached_connections, &current_machines).await;
 
@@ -606,6 +707,35 @@ mod tests {
         assert_eq!(filtered.len(), 2);
         assert_eq!(filtered[0].name, "foo");
         assert_eq!(filtered[1].name, "baz");
+    }
+
+    #[test]
+    fn test_filter_listed_machines() {
+        let listed: Vec<crate::varlink::machine::ListOutput> = serde_json::from_str(
+            r#"[
+                {"name":"foo","class":"container","leader":{"pid":10}},
+                {"name":"bar","class":"container","leader":{"pid":11}},
+                {"name":"baz","class":"container","leader":{"pid":12}},
+                {"name":"vm0","class":"vm","leader":{"pid":13}},
+                {"name":".host","class":"host","leader":{"pid":1}},
+                {"name":"noleader","class":"container"}
+            ]"#,
+        )
+        .unwrap();
+        let blocklist = HashSet::from(["bar".to_string()]);
+
+        let all = super::filter_listed_machines(listed.clone(), &HashSet::new(), &blocklist);
+        assert_eq!(
+            all,
+            std::collections::HashMap::from([("foo".to_string(), 10), ("baz".to_string(), 12)])
+        );
+
+        let allowlist = HashSet::from(["baz".to_string(), "vm0".to_string()]);
+        let allowed = super::filter_listed_machines(listed, &allowlist, &blocklist);
+        assert_eq!(
+            allowed,
+            std::collections::HashMap::from([("baz".to_string(), 12)])
+        );
     }
 
     #[test]

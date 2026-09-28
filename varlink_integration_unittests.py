@@ -280,7 +280,7 @@ class VarlinkUsageTest(unittest.TestCase):
         "monitord.varlink_usage.system_state": 1,
         "monitord.varlink_usage.units": 1,
         "monitord.varlink_usage.networkd": 1,
-        "monitord.varlink_usage.machines": 0,
+        "monitord.varlink_usage.machines": 1,
         "monitord.varlink_usage.boot_blame": 1,
         "monitord.varlink_usage.verify": 1,
     }
@@ -289,11 +289,11 @@ class VarlinkUsageTest(unittest.TestCase):
         usage = vit.varlink_usage(self.STATS)
         self.assertEqual(len(usage), len(vit.EXPECTED_VARLINK_COLLECTORS))
         self.assertEqual(usage["version"], 1)
-        # Host machine enumeration is D-Bus-only, so always 0.
-        self.assertEqual(usage["machines"], 0)
+        # Host machine enumeration goes over io.systemd.Machine.List too.
+        self.assertEqual(usage["machines"], 1)
 
     def test_varlink_run_fully_adopted(self) -> None:
-        # Must not raise: every collector but enumeration on varlink.
+        # Must not raise: every collector, enumeration included, on varlink.
         vit.assert_varlink_usage(
             {"varlink": dict(self.STATS), "dbus": self.dbus_stats()}
         )
