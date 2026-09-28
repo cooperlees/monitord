@@ -204,6 +204,10 @@ enabled = true
 [services]
 foo.service
 
+# systemd version and system state (e.g. running, degraded)
+[system-state]
+enabled = true
+
 [timers]
 enabled = true
 
@@ -217,6 +221,8 @@ bar.timer
 [units]
 enabled = true
 state_stats = true
+# Also record how long each unit has been in its current state
+state_stats_time_in_state = true
 ignore_inactive_oneshot_services = true
 
 # Filter what services you want collect state stats for
@@ -238,6 +244,12 @@ foo
 
 [machines.blocklist]
 bar
+
+# Collect via systemd varlink APIs instead of D-Bus where available
+# (see the Varlink section below). Falls back to D-Bus unless no_fallback = true
+[varlink]
+enabled = false
+no_fallback = false
 
 # Boot blame metrics - shows the N slowest units at boot
 # Similar to `systemd-analyze blame`
