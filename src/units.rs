@@ -570,23 +570,6 @@ async fn is_oneshot_service_at_path(
     Ok(sp.type_().await? == "oneshot")
 }
 
-/// Check whether a service unit is `Type=oneshot`, resolving the unit name to
-/// a D-Bus object path first.
-///
-/// Used by the varlink units path, which knows unit names (from metric
-/// objects) but never sees D-Bus object paths.
-pub(crate) async fn is_oneshot_service_by_name(
-    connection: &zbus::Connection,
-    unit_name: &str,
-) -> Result<bool, MonitordUnitsError> {
-    let mp = crate::dbus::zbus_systemd::ManagerProxy::builder(connection)
-        .cache_properties(zbus::proxy::CacheProperties::No)
-        .build()
-        .await?;
-    let object_path = mp.get_unit(unit_name).await?;
-    is_oneshot_service_at_path(connection, &object_path).await
-}
-
 /// Parse a unit and add to overall counts of state, type etc.
 fn parse_unit(stats: &mut SystemdUnitStats, unit: &ListedUnit) {
     // Count unit type

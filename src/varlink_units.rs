@@ -13,8 +13,6 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use tokio::sync::RwLock;
-use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
 use tracing::debug;
 use tracing::error;
 
@@ -26,7 +24,6 @@ use crate::unit_constants::{
     SYSTEMD_SERVICE_SUFFIX, SYSTEMD_TIMER_SUFFIX,
 };
 use crate::units::SystemdUnitStats;
-use crate::units::UnitsCollectionTimings;
 use crate::varlink::metrics::{ListOutput, Metrics};
 use crate::MachineStats;
 use futures_util::stream::TryStreamExt;
@@ -488,81 +485,6 @@ pub fn select_oneshot_candidates(
         .collect()
 }
 
-/// Look up `Service.Type` for each candidate over D-Bus.
-///
-/// Service type is not exposed via the varlink metrics API, so the varlink
-/// path resolves it here to keep `unhealthy` in parity with the D-Bus path.
-/// (`io.systemd.Unit.List` does expose it as `context.Service.Type`, so this
-/// lookup can go away once monitord adopts that API — see #37.)
-/// Concurrency is bounded by `per_unit_concurrency`, like the D-Bus per-unit
-/// loop. A lookup failure for one unit is logged and omitted from the map
-/// (which `apply_oneshot_types` treats as "not oneshot") rather than failing
-/// the whole collection, mirroring `units::parse_state`.
-///
-/// Returns the resolved types plus the number of successful lookups, so the
-/// caller can account this phase in `UnitsCollectionTimings` like any other
-/// per-service D-Bus work.
-pub async fn fetch_oneshot_types(
-    connection: &zbus::Connection,
-    candidates: Vec<String>,
-    per_unit_concurrency: u64,
-) -> (HashMap<String, bool>, u64) {
-    let semaphore = Arc::new(Semaphore::new(per_unit_concurrency.max(1) as usize));
-    let mut join_set: JoinSet<(String, Option<bool>)> = JoinSet::new();
-    for name in candidates {
-        let semaphore = Arc::clone(&semaphore);
-        let connection = connection.clone();
-        join_set.spawn(async move {
-            let _permit = semaphore
-                .acquire()
-                .await
-                .expect("semaphore closed unexpectedly");
-            let is_oneshot =
-                match crate::units::is_oneshot_service_by_name(&connection, &name).await {
-                    Ok(is_oneshot) => Some(is_oneshot),
-                    Err(err) => {
-                        warn!(
-                            "Unable to get Service.Type for {} (assuming not oneshot): {:?}",
-                            name, err
-                        );
-                        None
-                    }
-                };
-            (name, is_oneshot)
-        });
-    }
-    let mut types = HashMap::new();
-    let mut successful_fetches: u64 = 0;
-    while let Some(res) = join_set.join_next().await {
-        match res {
-            Ok((name, Some(is_oneshot))) => {
-                types.insert(name, is_oneshot);
-                successful_fetches += 1;
-            }
-            Ok((_, None)) => {}
-            Err(err) => {
-                warn!("Oneshot type lookup task failed to join: {:?}", err);
-            }
-        }
-    }
-    (types, successful_fetches)
-}
-
-/// Account a completed oneshot lookup phase in the collection timings.
-///
-/// Successful `Service.Type` resolutions are per-service D-Bus property
-/// fetches, so they count toward `service_dbus_fetches`; the phase duration
-/// folds into `per_unit_loop_ms`, the same bucket the D-Bus path uses for
-/// its own per-unit work (including its oneshot checks).
-fn record_oneshot_lookup_timings(
-    timings: &mut UnitsCollectionTimings,
-    elapsed_ms: f64,
-    successful_fetches: u64,
-) {
-    timings.per_unit_loop_ms += elapsed_ms;
-    timings.service_dbus_fetches += successful_fetches;
-}
-
 /// Recompute `unhealthy` for tracked units given resolved service types.
 ///
 /// Units missing from `oneshot_types` (lookup failed or never a candidate)
@@ -584,37 +506,6 @@ pub fn apply_oneshot_types(
             config.ignore_inactive_oneshot_services,
         );
     }
-}
-
-/// Apply the oneshot health override to varlink-collected unit stats.
-///
-/// Runs candidate selection under a read lock, resolves service types over
-/// D-Bus without holding any lock, then applies the results under a write
-/// lock — so D-Bus round trips never block other collectors on the shared
-/// `MachineStats` lock.
-pub async fn apply_oneshot_dbus_override(
-    connection: &zbus::Connection,
-    locked_machine_stats: &Arc<RwLock<MachineStats>>,
-    config: &crate::config::UnitsConfig,
-) {
-    let candidates = {
-        let machine_stats = locked_machine_stats.read().await;
-        select_oneshot_candidates(&machine_stats.units, config)
-    };
-    if candidates.is_empty() {
-        return;
-    }
-    let fetch_start = Instant::now();
-    let (oneshot_types, successful_fetches) =
-        fetch_oneshot_types(connection, candidates, config.per_unit_concurrency).await;
-    let fetch_elapsed_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
-    let mut machine_stats = locked_machine_stats.write().await;
-    apply_oneshot_types(&mut machine_stats.units, &oneshot_types, config);
-    record_oneshot_lookup_timings(
-        &mut machine_stats.units.collection_timings,
-        fetch_elapsed_ms,
-        successful_fetches,
-    );
 }
 
 /// Refuse a `Unit.List` reply that carries no per-type context section.
@@ -660,7 +551,7 @@ fn require_unit_context(
 }
 
 /// Pick the timers to collect, applying the same `[timers]` gating as the
-/// D-Bus path in `timer::collect_all_timers_dbus`.
+/// D-Bus path in `units::parse_unit_state`.
 fn select_timers(timer_names: &[String], config: &crate::config::TimersConfig) -> Vec<String> {
     if !config.enabled {
         return Vec::new();
@@ -687,7 +578,7 @@ fn select_timers(timer_names: &[String], config: &crate::config::TimersConfig) -
 /// oneshot-type D-Bus fetches the varlink path used to fall back to.
 ///
 /// Selection runs under a read lock and the varlink round trips hold no lock at
-/// all, matching how the D-Bus override behaved.
+/// all, so they never block other collectors on the shared `MachineStats` lock.
 pub async fn apply_unit_details(
     endpoint: &crate::varlink::endpoint::VarlinkEndpoint,
     locked_machine_stats: &Arc<RwLock<MachineStats>>,
@@ -1902,25 +1793,6 @@ mod tests {
                 .expect("failed.service should have a unit_states entry")
                 .unhealthy
         );
-    }
-
-    #[test]
-    fn test_oneshot_lookup_timings_accumulate() {
-        // Lookup accounting adds to (never overwrites) the parse-phase values
-        // already recorded by parse_metrics.
-        let mut timings = UnitsCollectionTimings {
-            per_unit_loop_ms: 10.0,
-            service_dbus_fetches: 2,
-            ..Default::default()
-        };
-
-        record_oneshot_lookup_timings(&mut timings, 5.0, 3);
-
-        assert_eq!(timings.per_unit_loop_ms, 15.0);
-        assert_eq!(timings.service_dbus_fetches, 5);
-        // Untouched counters stay zero.
-        assert_eq!(timings.state_dbus_fetches, 0);
-        assert_eq!(timings.timer_dbus_fetches, 0);
     }
 
     #[test]
