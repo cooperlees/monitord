@@ -22,6 +22,22 @@ cargo run -- -c monitord.conf -l debug  # Run locally with debug logging
 
 **Non-Linux development:** Use the Docker container (`docker build .` — Fedora Rawhide with systemd). Tests and runtime require systemd.
 
+**Integration test (varlink, D-Bus, machines):** anything touching varlink, D-Bus
+collection, or machines (including dependency bumps like zbus/zlink) must be
+verified end to end with:
+
+```bash
+python3 varlink_integration_unittests.py              # helper unit tests
+python3 varlink_integration_test.py --repo "$PWD"     # needs docker
+```
+
+This is what the `varlink-integration` GitHub Action runs. It builds monitord
+in the Docker image, boots nspawn fixture machines (`testbox`,
+`testbox-current`), and asserts varlink/D-Bus output parity. It also covers
+machine collection per capability set (including the `MachineConnector`
+PID-namespace helper), so no root or host containers are needed. Run it
+yourself rather than leaving machine collection "untested".
+
 **D-Bus proxy regeneration:** `zbus-xmlgen system org.freedesktop.systemd1 /org/freedesktop/systemd1/unit/...` — output goes in `src/dbus/`.
 
 **Releasing a new version:**

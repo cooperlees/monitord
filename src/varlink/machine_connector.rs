@@ -28,6 +28,7 @@ use std::os::fd::OwnedFd;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use anyhow::Context;
 use thiserror::Error;
 
 /// Hidden first argument that makes monitord run as a machine connector
@@ -138,12 +139,16 @@ impl MachineConnector {
     pub async fn connect(
         self: &Arc<Self>,
         socket: MachineSocket,
-    ) -> anyhow::Result<zlink::unix::Connection> {
+    ) -> anyhow::Result<zlink::tokio::unix::Connection> {
         let this = Arc::clone(self);
         let stream = tokio::task::spawn_blocking(move || this.connect_blocking(socket)).await??;
-        stream.set_nonblocking(true)?;
-        let stream = tokio::net::UnixStream::from_std(stream)?;
-        Ok(zlink::unix::Connection::new(stream.into()))
+        let stream = stream.try_into().with_context(|| {
+            format!(
+                "machine connector for leader {}: wrapping {socket:?} socket for zlink",
+                self.leader_pid
+            )
+        })?;
+        Ok(zlink::tokio::unix::Connection::new(stream))
     }
 }
 
