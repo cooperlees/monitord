@@ -465,8 +465,7 @@ fn collect_system_dbus_broker_stale_fds() -> Option<u32> {
 }
 
 fn get_u32(dict: &Dict, key: &str) -> Option<u32> {
-    // zbus 6's typed `Dict::get` downcasts directly to `u32`, skipping the
-    // old match-on-`Variant` dance; a type mismatch surfaces as `Err`.
+    // Typed downcast (unwraps the `v` layer); a type mismatch is `Err` -> `None`.
     let value_key: Variant = key.into();
     dict.get::<_, u32>(&value_key).ok().flatten()
 }
@@ -1112,6 +1111,24 @@ mod tests {
             Variant::U32(20),
         )));
         assert!(parse_user_struct(&invalid).is_none());
+    }
+
+    #[test]
+    fn test_get_u32_and_get_u32_vec() {
+        // dbus-broker credentials/stats are a{sv}, so values are variant-wrapped
+        let mut dict = Dict::new(&zbus::Signature::Str, &zbus::Signature::Variant);
+        dict.add("UnixUserID", Variant::new(42u32)).unwrap();
+        dict.add("ProcessID", Variant::new(7u64)).unwrap();
+        dict.add("UnixGroupIDs", Variant::new(vec![1u32, 2u32]))
+            .unwrap();
+
+        assert_eq!(get_u32(&dict, "UnixUserID"), Some(42));
+        // Wrong type and missing keys both map to None
+        assert_eq!(get_u32(&dict, "ProcessID"), None);
+        assert_eq!(get_u32(&dict, "Missing"), None);
+        assert_eq!(get_u32_vec(&dict, "UnixGroupIDs"), Some(vec![1, 2]));
+        assert_eq!(get_u32_vec(&dict, "UnixUserID"), None);
+        assert_eq!(get_u32_vec(&dict, "Missing"), None);
     }
 
     #[test]
