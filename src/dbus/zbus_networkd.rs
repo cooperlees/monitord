@@ -23,7 +23,6 @@
 #![allow(clippy)]
 use zbus::proxy;
 #[proxy(
-    gen_blocking = false,
     interface = "org.freedesktop.network1.Manager",
     default_service = "org.freedesktop.network1",
     default_path = "/org/freedesktop/network1"
@@ -39,16 +38,13 @@ pub trait Manager {
     fn force_renew_link(&self, ifindex: i32) -> zbus::Result<()>;
 
     /// GetLinkByIndex method
-    fn get_link_by_index(
-        &self,
-        ifindex: i32,
-    ) -> zbus::Result<(String, zbus::zvariant::OwnedObjectPath)>;
+    fn get_link_by_index(&self, ifindex: i32) -> zbus::Result<(String, zbus::OwnedObjectPath)>;
 
     /// GetLinkByName method
-    fn get_link_by_name(&self, name: &str) -> zbus::Result<(i32, zbus::zvariant::OwnedObjectPath)>;
+    fn get_link_by_name(&self, name: &str) -> zbus::Result<(i32, zbus::OwnedObjectPath)>;
 
     /// ListLinks method
-    fn list_links(&self) -> zbus::Result<Vec<(i32, String, zbus::zvariant::OwnedObjectPath)>>;
+    fn list_links(&self) -> zbus::Result<Vec<(i32, String, zbus::OwnedObjectPath)>>;
 
     /// ReconfigureLink method
     fn reconfigure_link(&self, ifindex: i32) -> zbus::Result<()>;

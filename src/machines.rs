@@ -246,7 +246,7 @@ async fn get_or_create_connection(
         "unix:path=/proc/{}/root/run/dbus/system_bus_socket",
         leader_pid
     );
-    let conn = zbus::connection::Builder::address(container_address.as_str())?
+    let conn = zbus::connection::Builder::address(container_address.as_str())
         .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
         .build()
         .await?;
@@ -673,7 +673,7 @@ async fn collect_container_units_varlink(
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use zbus::zvariant::OwnedObjectPath;
+    use zbus::OwnedObjectPath;
 
     use super::{decide_cache_action, CacheAction};
 

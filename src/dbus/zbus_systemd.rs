@@ -23,7 +23,6 @@
 #![allow(clippy)]
 use zbus::proxy;
 #[proxy(
-    gen_blocking = false,
     interface = "org.freedesktop.systemd1.Manager",
     default_service = "org.freedesktop.systemd1",
     default_path = "/org/freedesktop/systemd1"
@@ -94,7 +93,7 @@ pub trait Manager {
     fn dump(&self) -> zbus::Result<String>;
 
     /// DumpByFileDescriptor method
-    fn dump_by_file_descriptor(&self) -> zbus::Result<zbus::zvariant::OwnedFd>;
+    fn dump_by_file_descriptor(&self) -> zbus::Result<zbus::OwnedFd>;
 
     /// DumpUnitFileDescriptorStore method
     fn dump_unit_file_descriptor_store(
@@ -109,7 +108,7 @@ pub trait Manager {
     fn dump_units_matching_patterns_by_file_descriptor(
         &self,
         patterns: &[&str],
-    ) -> zbus::Result<zbus::zvariant::OwnedFd>;
+    ) -> zbus::Result<zbus::OwnedFd>;
 
     /// EnableUnitFiles method
     fn enable_unit_files(
@@ -127,7 +126,7 @@ pub trait Manager {
     ) -> zbus::Result<(bool, Vec<(String, String, String)>)>;
 
     /// EnqueueMarkedJobs method
-    fn enqueue_marked_jobs(&self) -> zbus::Result<Vec<zbus::zvariant::OwnedObjectPath>>;
+    fn enqueue_marked_jobs(&self) -> zbus::Result<Vec<zbus::OwnedObjectPath>>;
 
     /// EnqueueUnitJob method
     #[allow(clippy::too_many_arguments)]
@@ -138,15 +137,15 @@ pub trait Manager {
         job_mode: &str,
     ) -> zbus::Result<(
         u32,
-        zbus::zvariant::OwnedObjectPath,
+        zbus::OwnedObjectPath,
         String,
-        zbus::zvariant::OwnedObjectPath,
+        zbus::OwnedObjectPath,
         String,
         Vec<(
             u32,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
             String,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
             String,
         )>,
     )>;
@@ -164,7 +163,7 @@ pub trait Manager {
     fn get_dynamic_users(&self) -> zbus::Result<Vec<(u32, String)>>;
 
     /// GetJob method
-    fn get_job(&self, id: u32) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn get_job(&self, id: u32) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// GetJobAfter method
     fn get_job_after(
@@ -176,8 +175,8 @@ pub trait Manager {
             String,
             String,
             String,
-            zbus::zvariant::OwnedObjectPath,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
+            zbus::OwnedObjectPath,
         )>,
     >;
 
@@ -191,37 +190,34 @@ pub trait Manager {
             String,
             String,
             String,
-            zbus::zvariant::OwnedObjectPath,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
+            zbus::OwnedObjectPath,
         )>,
     >;
 
     /// GetUnit method
-    fn get_unit(&self, name: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn get_unit(&self, name: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// GetUnitByControlGroup method
-    fn get_unit_by_control_group(
-        &self,
-        cgroup: &str,
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn get_unit_by_control_group(&self, cgroup: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// GetUnitByInvocationID method
     #[zbus(name = "GetUnitByInvocationID")]
     fn get_unit_by_invocation_id(
         &self,
         invocation_id: &[u8],
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    ) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// GetUnitByPID method
     #[zbus(name = "GetUnitByPID")]
-    fn get_unit_by_pid(&self, pid: u32) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn get_unit_by_pid(&self, pid: u32) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// GetUnitByPIDFD method
     #[zbus(name = "GetUnitByPIDFD")]
     fn get_unit_by_pidfd(
         &self,
-        pidfd: zbus::zvariant::Fd<'_>,
-    ) -> zbus::Result<(zbus::zvariant::OwnedObjectPath, String, Vec<u8>)>;
+        pidfd: zbus::Fd<'_>,
+    ) -> zbus::Result<(zbus::OwnedObjectPath, String, Vec<u8>)>;
 
     /// GetUnitFileLinks method
     fn get_unit_file_links(&self, name: &str, runtime: bool) -> zbus::Result<Vec<String>>;
@@ -259,8 +255,8 @@ pub trait Manager {
             String,
             String,
             String,
-            zbus::zvariant::OwnedObjectPath,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
+            zbus::OwnedObjectPath,
         )>,
     >;
 
@@ -285,10 +281,10 @@ pub trait Manager {
             String,
             String,
             String,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
             u32,
             String,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
         )>,
     >;
 
@@ -304,10 +300,10 @@ pub trait Manager {
             String,
             String,
             String,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
             u32,
             String,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
         )>,
     >;
 
@@ -324,10 +320,10 @@ pub trait Manager {
             String,
             String,
             String,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
             u32,
             String,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
         )>,
     >;
 
@@ -343,15 +339,15 @@ pub trait Manager {
             String,
             String,
             String,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
             u32,
             String,
-            zbus::zvariant::OwnedObjectPath,
+            zbus::OwnedObjectPath,
         )>,
     >;
 
     /// LoadUnit method
-    fn load_unit(&self, name: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn load_unit(&self, name: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// LookupDynamicUserByName method
     fn lookup_dynamic_user_by_name(&self, name: &str) -> zbus::Result<u32>;
@@ -437,21 +433,18 @@ pub trait Manager {
     fn reload(&self) -> zbus::Result<()>;
 
     /// ReloadOrRestartUnit method
-    fn reload_or_restart_unit(
-        &self,
-        name: &str,
-        mode: &str,
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn reload_or_restart_unit(&self, name: &str, mode: &str)
+        -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// ReloadOrTryRestartUnit method
     fn reload_or_try_restart_unit(
         &self,
         name: &str,
         mode: &str,
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    ) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// ReloadUnit method
-    fn reload_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn reload_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// ResetFailed method
     fn reset_failed(&self) -> zbus::Result<()>;
@@ -460,8 +453,7 @@ pub trait Manager {
     fn reset_failed_unit(&self, name: &str) -> zbus::Result<()>;
 
     /// RestartUnit method
-    fn restart_unit(&self, name: &str, mode: &str)
-        -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn restart_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// RevertUnitFiles method
     fn revert_unit_files(&self, files: &[&str]) -> zbus::Result<Vec<(String, String, String)>>;
@@ -487,7 +479,7 @@ pub trait Manager {
         &self,
         name: &str,
         runtime: bool,
-        properties: &[&(&str, &zbus::zvariant::Value<'_>)],
+        properties: &[&(&str, &zbus::Variant<'_>)],
     ) -> zbus::Result<()>;
 
     /// SoftReboot method
@@ -499,12 +491,12 @@ pub trait Manager {
         &self,
         name: &str,
         mode: &str,
-        properties: &[&(&str, &zbus::zvariant::Value<'_>)],
-        aux: &[&(&str, &[&(&str, &zbus::zvariant::Value<'_>)])],
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+        properties: &[&(&str, &zbus::Variant<'_>)],
+        aux: &[&(&str, &[&(&str, &zbus::Variant<'_>)])],
+    ) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// StartUnit method
-    fn start_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn start_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// StartUnitReplace method
     fn start_unit_replace(
@@ -512,7 +504,7 @@ pub trait Manager {
         old_unit: &str,
         new_unit: &str,
         mode: &str,
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    ) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// StartUnitWithFlags method
     fn start_unit_with_flags(
@@ -520,10 +512,10 @@ pub trait Manager {
         name: &str,
         mode: &str,
         flags: u64,
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    ) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// StopUnit method
-    fn stop_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn stop_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// Subscribe method
     fn subscribe(&self) -> zbus::Result<()>;
@@ -535,11 +527,7 @@ pub trait Manager {
     fn thaw_unit(&self, name: &str) -> zbus::Result<()>;
 
     /// TryRestartUnit method
-    fn try_restart_unit(
-        &self,
-        name: &str,
-        mode: &str,
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn try_restart_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// UnmaskUnitFiles method
     fn unmask_unit_files(
@@ -562,15 +550,14 @@ pub trait Manager {
 
     /// JobNew signal
     #[zbus(signal)]
-    fn job_new(&self, id: u32, job: zbus::zvariant::ObjectPath<'_>, unit: &str)
-        -> zbus::Result<()>;
+    fn job_new(&self, id: u32, job: zbus::ObjectPath<'_>, unit: &str) -> zbus::Result<()>;
 
     /// JobRemoved signal
     #[zbus(signal)]
     fn job_removed(
         &self,
         id: u32,
-        job: zbus::zvariant::ObjectPath<'_>,
+        job: zbus::ObjectPath<'_>,
         unit: &str,
         result: &str,
     ) -> zbus::Result<()>;
@@ -597,11 +584,11 @@ pub trait Manager {
 
     /// UnitNew signal
     #[zbus(signal)]
-    fn unit_new(&self, id: &str, unit: zbus::zvariant::ObjectPath<'_>) -> zbus::Result<()>;
+    fn unit_new(&self, id: &str, unit: zbus::ObjectPath<'_>) -> zbus::Result<()>;
 
     /// UnitRemoved signal
     #[zbus(signal)]
-    fn unit_removed(&self, id: &str, unit: zbus::zvariant::ObjectPath<'_>) -> zbus::Result<()>;
+    fn unit_removed(&self, id: &str, unit: zbus::ObjectPath<'_>) -> zbus::Result<()>;
 
     /// Architecture property
     #[zbus(property)]

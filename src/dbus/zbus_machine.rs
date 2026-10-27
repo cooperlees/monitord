@@ -23,7 +23,6 @@
 use zbus::proxy;
 
 #[proxy(
-    gen_blocking = false,
     interface = "org.freedesktop.machine1.Machine",
     default_service = "org.freedesktop.machine1"
 )]
@@ -65,14 +64,14 @@ pub trait Machine {
     fn kill(&self, who: &str, signal: i32) -> zbus::Result<()>;
 
     /// OpenLogin method
-    fn open_login(&self) -> zbus::Result<(zbus::zvariant::OwnedFd, String)>;
+    fn open_login(&self) -> zbus::Result<(zbus::OwnedFd, String)>;
 
     /// OpenPTY method
     #[zbus(name = "OpenPTY")]
-    fn open_pty(&self) -> zbus::Result<(zbus::zvariant::OwnedFd, String)>;
+    fn open_pty(&self) -> zbus::Result<(zbus::OwnedFd, String)>;
 
     /// OpenRootDirectory method
-    fn open_root_directory(&self) -> zbus::Result<zbus::zvariant::OwnedFd>;
+    fn open_root_directory(&self) -> zbus::Result<zbus::OwnedFd>;
 
     /// OpenShell method
     fn open_shell(
@@ -81,7 +80,7 @@ pub trait Machine {
         path: &str,
         args: &[&str],
         environment: &[&str],
-    ) -> zbus::Result<(zbus::zvariant::OwnedFd, String)>;
+    ) -> zbus::Result<(zbus::OwnedFd, String)>;
 
     /// Terminate method
     fn terminate(&self) -> zbus::Result<()>;

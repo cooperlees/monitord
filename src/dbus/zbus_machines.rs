@@ -21,7 +21,7 @@
 #![allow(warnings)]
 use serde_tuple::Deserialize_tuple;
 use zbus::proxy;
-use zbus::zvariant::Type;
+use zbus::Type;
 
 use crate::dbus::zbus_machine::MachineProxy;
 
@@ -30,11 +30,10 @@ pub struct ListedMachine {
     pub name: String,
     pub class: String,
     pub service: String,
-    pub path: zbus::zvariant::OwnedObjectPath,
+    pub path: zbus::OwnedObjectPath,
 }
 
 #[proxy(
-    gen_blocking = false,
     interface = "org.freedesktop.machine1.Manager",
     default_service = "org.freedesktop.machine1",
     default_path = "/org/freedesktop/machine1"
@@ -90,8 +89,8 @@ pub trait Manager {
         class: &str,
         leader: u32,
         root_directory: &str,
-        scope_properties: &[&(&str, &zbus::zvariant::Value<'_>)],
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+        scope_properties: &[&(&str, &zbus::Variant<'_>)],
+    ) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// CreateMachineWithNetwork method
     #[allow(clippy::too_many_arguments)]
@@ -104,11 +103,11 @@ pub trait Manager {
         leader: u32,
         root_directory: &str,
         ifindices: &[i32],
-        scope_properties: &[&(&str, &zbus::zvariant::Value<'_>)],
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+        scope_properties: &[&(&str, &zbus::Variant<'_>)],
+    ) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// GetImage method
-    fn get_image(&self, name: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn get_image(&self, name: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// GetImageHostname method
     fn get_image_hostname(&self, name: &str) -> zbus::Result<String>;
@@ -132,14 +131,14 @@ pub trait Manager {
 
     /// GetMachine method
     #[zbus(object = "Machine")]
-    fn get_machine(&self, name: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn get_machine(&self, name: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// GetMachineAddresses method
     fn get_machine_addresses(&self, name: &str) -> zbus::Result<Vec<(i32, Vec<u8>)>>;
 
     /// GetMachineByPID method
     #[zbus(name = "GetMachineByPID", object = "Machine")]
-    fn get_machine_by_pid(&self, pid: u32) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn get_machine_by_pid(&self, pid: u32) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// GetMachineOSRelease method
     #[zbus(name = "GetMachineOSRelease")]
@@ -158,17 +157,7 @@ pub trait Manager {
     /// ListImages method
     fn list_images(
         &self,
-    ) -> zbus::Result<
-        Vec<(
-            String,
-            String,
-            bool,
-            u64,
-            u64,
-            u64,
-            zbus::zvariant::OwnedObjectPath,
-        )>,
-    >;
+    ) -> zbus::Result<Vec<(String, String, bool, u64, u64, u64, zbus::OwnedObjectPath)>>;
 
     /// ListMachines method
     fn list_machines(&self) -> zbus::Result<Vec<ListedMachine>>;
@@ -183,26 +172,26 @@ pub trait Manager {
     fn map_to_machine_group(
         &self,
         gid_outer: u32,
-    ) -> zbus::Result<(String, zbus::zvariant::OwnedObjectPath, u32)>;
+    ) -> zbus::Result<(String, zbus::OwnedObjectPath, u32)>;
 
     /// MapToMachineUser method
     fn map_to_machine_user(
         &self,
         uid_outer: u32,
-    ) -> zbus::Result<(String, zbus::zvariant::OwnedObjectPath, u32)>;
+    ) -> zbus::Result<(String, zbus::OwnedObjectPath, u32)>;
 
     /// MarkImageReadOnly method
     fn mark_image_read_only(&self, name: &str, read_only: bool) -> zbus::Result<()>;
 
     /// OpenMachineLogin method
-    fn open_machine_login(&self, name: &str) -> zbus::Result<(zbus::zvariant::OwnedFd, String)>;
+    fn open_machine_login(&self, name: &str) -> zbus::Result<(zbus::OwnedFd, String)>;
 
     /// OpenMachinePTY method
     #[zbus(name = "OpenMachinePTY")]
-    fn open_machine_pty(&self, name: &str) -> zbus::Result<(zbus::zvariant::OwnedFd, String)>;
+    fn open_machine_pty(&self, name: &str) -> zbus::Result<(zbus::OwnedFd, String)>;
 
     /// OpenMachineRootDirectory method
-    fn open_machine_root_directory(&self, name: &str) -> zbus::Result<zbus::zvariant::OwnedFd>;
+    fn open_machine_root_directory(&self, name: &str) -> zbus::Result<zbus::OwnedFd>;
 
     /// OpenMachineShell method
     #[allow(clippy::too_many_arguments)]
@@ -213,7 +202,7 @@ pub trait Manager {
         path: &str,
         args: &[&str],
         environment: &[&str],
-    ) -> zbus::Result<(zbus::zvariant::OwnedFd, String)>;
+    ) -> zbus::Result<(zbus::OwnedFd, String)>;
 
     /// RegisterMachine method
     #[allow(clippy::too_many_arguments)]
@@ -225,7 +214,7 @@ pub trait Manager {
         class: &str,
         leader: u32,
         root_directory: &str,
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    ) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// RegisterMachineWithNetwork method
     #[allow(clippy::too_many_arguments)]
@@ -238,7 +227,7 @@ pub trait Manager {
         leader: u32,
         root_directory: &str,
         ifindices: &[i32],
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    ) -> zbus::Result<zbus::OwnedObjectPath>;
 
     /// RemoveImage method
     fn remove_image(&self, name: &str) -> zbus::Result<()>;
@@ -260,15 +249,11 @@ pub trait Manager {
 
     /// MachineNew signal
     #[zbus(signal)]
-    fn machine_new(&self, machine: &str, path: zbus::zvariant::ObjectPath<'_>) -> zbus::Result<()>;
+    fn machine_new(&self, machine: &str, path: zbus::ObjectPath<'_>) -> zbus::Result<()>;
 
     /// MachineRemoved signal
     #[zbus(signal)]
-    fn machine_removed(
-        &self,
-        machine: &str,
-        path: zbus::zvariant::ObjectPath<'_>,
-    ) -> zbus::Result<()>;
+    fn machine_removed(&self, machine: &str, path: zbus::ObjectPath<'_>) -> zbus::Result<()>;
 
     /// PoolLimit property
     #[zbus(property)]
