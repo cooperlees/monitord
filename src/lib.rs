@@ -396,6 +396,12 @@ pub async fn stat_collector(
             )
         });
 
+        // Likewise one io.systemd.Metrics.List per cycle: units and verify both
+        // read it, and a second stream would make PID 1 walk every unit again.
+        // Lazy, so a cycle served entirely over D-Bus sends nothing.
+        let manager_metrics =
+            crate::varlink_units::shared_metrics(crate::varlink_units::METRICS_SOCKET_PATH.into());
+
         // Always collect systemd version
         {
             let dbus_cell = Arc::clone(&dbus_cell);
@@ -525,17 +531,18 @@ pub async fn stat_collector(
             let config_clone = Arc::clone(&config);
             let dbus_cell = Arc::clone(&dbus_cell);
             let stats_clone = locked_machine_stats.clone();
+            let metrics = manager_metrics.clone();
             let no_fallback = config.varlink.no_fallback;
             spawn_timed(&mut join_set, "units", collect_start_time, async move {
                 if config_clone.use_varlink(&[config_clone.units.varlink]) {
                     match crate::varlink_units::update_unit_stats(
                         Arc::clone(&config_clone),
                         stats_clone.clone(),
-                        crate::varlink_units::METRICS_SOCKET_PATH.into(),
+                        metrics,
                     )
                     .await
                     {
-                        Ok(timer_names) => {
+                        Ok(discovery) => {
                             // Per-service stats, timer properties and service
                             // types all come from io.systemd.Unit.List. If that
                             // socket is unusable the whole units collection is
@@ -547,7 +554,7 @@ pub async fn stat_collector(
                                 &stats_clone,
                                 &config_clone,
                                 "",
-                                &timer_names,
+                                &discovery,
                             )
                             .await
                             {
@@ -659,6 +666,9 @@ pub async fn stat_collector(
             let dbus_cell = Arc::clone(&dbus_cell);
             let config_clone = Arc::clone(&config);
             let stats_clone = locked_machine_stats.clone();
+            let metrics = config
+                .use_varlink(&[config.verify.varlink])
+                .then(|| manager_metrics.clone());
             spawn_timed(&mut join_set, "verify", collect_start_time, async move {
                 crate::verify::update_verify_stats(
                     dbus_cell,
@@ -666,7 +676,7 @@ pub async fn stat_collector(
                     stats_clone,
                     config_clone.verify.allowlist.clone(),
                     config_clone.verify.blocklist.clone(),
-                    config_clone.use_varlink(&[config_clone.verify.varlink]),
+                    metrics,
                     config_clone.varlink.no_fallback,
                 )
                 .await

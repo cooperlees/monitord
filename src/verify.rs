@@ -220,13 +220,11 @@ pub async fn update_verify_stats(
     locked_machine_stats: Arc<RwLock<MachineStats>>,
     allowlist: HashSet<String>,
     blocklist: HashSet<String>,
-    varlink_enabled: bool,
+    metrics: Option<crate::varlink_units::SharedMetrics>,
     no_fallback: bool,
 ) -> anyhow::Result<()> {
-    let verify_stats = if varlink_enabled {
-        match crate::varlink_verify::list_unit_names(crate::varlink_verify::METRICS_SOCKET_PATH)
-            .await
-        {
+    let verify_stats = if let Some(metrics) = metrics {
+        match crate::varlink_verify::list_unit_names(metrics).await {
             Ok(all_units) => {
                 log_enumerated_units(&all_units);
                 locked_machine_stats.write().await.varlink_usage.verify =

@@ -659,9 +659,13 @@ async fn collect_container_units_varlink(
     container_root: &str,
 ) -> anyhow::Result<()> {
     let (metrics, manager) = endpoints?;
-    let timer_names =
-        crate::varlink_units::update_unit_stats(Arc::clone(config), stats.clone(), metrics).await?;
-    crate::varlink_units::apply_unit_details(&manager, stats, config, container_root, &timer_names)
+    let discovery = crate::varlink_units::update_unit_stats(
+        Arc::clone(config),
+        stats.clone(),
+        crate::varlink_units::shared_metrics(metrics),
+    )
+    .await?;
+    crate::varlink_units::apply_unit_details(&manager, stats, config, container_root, &discovery)
         .await?;
     if config.units.unit_files {
         let unit_files = crate::units::collect_unit_files_stats(container_root).await;

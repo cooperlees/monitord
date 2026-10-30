@@ -8,13 +8,14 @@
 //!
 //! Per the `varlink_unit` module docs, collectors that want every unit are
 //! served from the metrics stream: one streamed `List` instead of hundreds of
-//! per-unit round trips (over either transport).
+//! per-unit round trips (over either transport). That stream is the one the
+//! units collector reads in the same cycle (see
+//! [`crate::varlink_units::SharedMetrics`]).
 
 use tracing::debug;
 
 use crate::varlink::metrics::ListOutput;
-
-pub use crate::varlink_units::METRICS_SOCKET_PATH;
+use crate::varlink_units::SharedMetrics;
 
 /// Collect unit names from per-unit load-state metrics, sorted and deduplicated.
 ///
@@ -70,8 +71,8 @@ fn collect_unit_names(metrics: &[ListOutput]) -> anyhow::Result<Vec<String>> {
 }
 
 /// Enumerate all units over varlink.
-pub async fn list_unit_names(socket_path: &str) -> anyhow::Result<Vec<String>> {
-    let metrics = crate::varlink_units::collect_metrics(socket_path.into()).await?;
+pub async fn list_unit_names(metrics: SharedMetrics) -> anyhow::Result<Vec<String>> {
+    let metrics = crate::varlink_units::await_metrics(metrics).await?;
     collect_unit_names(&metrics)
 }
 

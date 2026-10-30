@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex;
 use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -26,9 +28,20 @@ use crate::unit_constants::{
 use crate::units::SystemdUnitStats;
 use crate::varlink::metrics::{ListOutput, Metrics};
 use crate::MachineStats;
+use futures_util::future::{BoxFuture, FutureExt, Shared};
 use futures_util::stream::TryStreamExt;
 
 pub const METRICS_SOCKET_PATH: &str = "/run/systemd/report/io.systemd.Manager";
+
+/// One `io.systemd.Metrics.List` stream, awaited by every collector that reads
+/// it in a cycle.
+///
+/// PID 1 serves varlink requests one at a time and the stream is its most
+/// expensive call after a full `Unit.List`, so a second stream per cycle would
+/// cost PID 1 the whole walk again and make both collectors wait on each other.
+/// `Shared` needs a cloneable output, hence the `Arc`s.
+pub type SharedMetrics =
+    Shared<BoxFuture<'static, Result<Arc<Vec<ListOutput>>, Arc<anyhow::Error>>>>;
 
 /// Parse a string value from a metric into an enum type, warning on failure
 fn parse_metric_enum<T: FromStr>(metric: &ListOutput) -> Option<T> {
@@ -418,12 +431,95 @@ pub(crate) async fn collect_metrics(
     .await?
 }
 
+/// What the units pass learned from the metrics stream that the detail pass
+/// needs next.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UnitDiscovery {
+    /// Every timer unit, sorted.
+    pub timer_names: Vec<String>,
+    /// `io.systemd.Manager.ReloadCount`, which invalidates cached oneshot types.
+    pub reload_count: Option<u64>,
+}
+
+/// More endpoints than this and [`OneshotTypeCache`] starts over, so machines
+/// coming and going cannot grow it forever.
+const MAX_CACHED_ENDPOINTS: usize = 64;
+
+/// Oneshot verdicts from the previous cycle, per varlink endpoint.
+///
+/// The oneshot override wants `Service.Type` for every inactive service, and
+/// `Unit.List` has no way to ask for less than the whole ~7KB reply: on a host
+/// with 103 such services that is ~140ms of PID 1 per cycle, most of a run, for
+/// an answer that only changes when unit files are reloaded.
+///
+/// Entries live as long as `ReloadCount` holds still. Compared with `!=` since a
+/// `daemon-reexec` resets it to 0 rather than bumping it. Only units that were
+/// candidates last cycle are kept, so a service that ran or went away since is
+/// asked about again.
+///
+/// A process static because the exporter calls `stat_collector` once per scrape,
+/// so nothing owned by that call would outlive a cycle.
+#[derive(Debug, Default)]
+struct OneshotTypeCache {
+    endpoints: HashMap<String, (u64, HashMap<String, bool>)>,
+}
+
+static ONESHOT_TYPE_CACHE: LazyLock<Mutex<OneshotTypeCache>> = LazyLock::new(Mutex::default);
+
+impl OneshotTypeCache {
+    /// Hand over what is still valid for `endpoint`, leaving nothing behind:
+    /// `store` puts back the set this cycle actually used.
+    fn take(&mut self, endpoint: &str, reload_count: Option<u64>) -> HashMap<String, bool> {
+        match (self.endpoints.remove(endpoint), reload_count) {
+            (Some((cached_count, types)), Some(reload_count)) if cached_count == reload_count => {
+                types
+            }
+            _ => HashMap::new(),
+        }
+    }
+
+    /// Without a `ReloadCount` nothing could ever invalidate the entry, so it
+    /// is not kept.
+    fn store(&mut self, endpoint: String, reload_count: Option<u64>, types: HashMap<String, bool>) {
+        let Some(reload_count) = reload_count else {
+            return;
+        };
+        if self.endpoints.len() >= MAX_CACHED_ENDPOINTS {
+            self.endpoints.clear();
+        }
+        self.endpoints.insert(endpoint, (reload_count, types));
+    }
+}
+
+/// Prepare the shared metrics stream for one collection cycle.
+///
+/// Nothing is sent until a collector awaits it, so building this for a cycle
+/// where every reader uses D-Bus costs nothing.
+pub fn shared_metrics(endpoint: crate::varlink::endpoint::VarlinkEndpoint) -> SharedMetrics {
+    async move {
+        collect_metrics(endpoint)
+            .await
+            .map(Arc::new)
+            .map_err(Arc::new)
+    }
+    .boxed()
+    .shared()
+}
+
+/// Await the shared stream, turning its shared error back into an owned one.
+pub(crate) async fn await_metrics(shared: SharedMetrics) -> anyhow::Result<Arc<Vec<ListOutput>>> {
+    shared
+        .await
+        .map_err(|err| anyhow::anyhow!("{:#}", err))
+        .map_err(|err| err.context("io.systemd.Metrics.List failed"))
+}
+
 pub async fn parse_metrics(
     stats: &mut SystemdUnitStats,
-    endpoint: &crate::varlink::endpoint::VarlinkEndpoint,
+    metrics: SharedMetrics,
     config: &crate::config::UnitsConfig,
     services: &HashSet<String>,
-) -> anyhow::Result<Vec<String>> {
+) -> anyhow::Result<UnitDiscovery> {
     // Parity with the D-Bus path's UnitsCollectionTimings: list_units_ms is the
     // bulk fetch (varlink List on io.systemd.Manager), per_unit_loop_ms is the
     // local parse loop plus the io.systemd.Unit.List detail pass that follows
@@ -432,7 +528,7 @@ pub async fn parse_metrics(
     // which cannot reach their own varlink sockets (#211), or when the unit
     // socket is unusable and the whole collection is redone over D-Bus.
     let bulk_fetch_start = Instant::now();
-    let metrics = collect_metrics(endpoint.clone()).await?;
+    let metrics = await_metrics(metrics).await?;
     let bulk_fetch_elapsed = bulk_fetch_start.elapsed();
     stats.collection_timings.list_units_ms = bulk_fetch_elapsed.as_secs_f64() * 1000.0;
 
@@ -440,7 +536,7 @@ pub async fn parse_metrics(
     let has_load_state_totals = metrics
         .iter()
         .any(|metric| metric.name_suffix() == "UnitsByLoadStateTotal");
-    for metric in &metrics {
+    for metric in metrics.iter() {
         parse_one_metric(stats, metric, config, services, has_load_state_totals)?;
     }
     // Timer units are enumerated from the metrics we already have rather than
@@ -457,7 +553,15 @@ pub async fn parse_metrics(
     let parse_loop_elapsed = parse_loop_start.elapsed();
     stats.collection_timings.per_unit_loop_ms = parse_loop_elapsed.as_secs_f64() * 1000.0;
 
-    Ok(timer_names.into_iter().collect())
+    let reload_count = metrics
+        .iter()
+        .find(|metric| metric.name_suffix() == "ReloadCount")
+        .and_then(|metric| metric.value().as_u64());
+
+    Ok(UnitDiscovery {
+        timer_names: timer_names.into_iter().collect(),
+        reload_count,
+    })
 }
 
 /// Select unit names whose health needs a service-type check.
@@ -584,13 +688,13 @@ pub async fn apply_unit_details(
     locked_machine_stats: &Arc<RwLock<MachineStats>>,
     config: &crate::config::Config,
     fs_root: &str,
-    timer_names: &[String],
+    discovery: &UnitDiscovery,
 ) -> anyhow::Result<()> {
     let candidates = {
         let machine_stats = locked_machine_stats.read().await;
         select_oneshot_candidates(&machine_stats.units, &config.units)
     };
-    let timers = select_timers(timer_names, &config.timers);
+    let timers = select_timers(&discovery.timer_names, &config.timers);
     if candidates.is_empty() && config.services.is_empty() && timers.is_empty() {
         return Ok(());
     }
@@ -660,14 +764,25 @@ pub async fn apply_unit_details(
         );
     }
 
+    let cache_key = endpoint.to_string();
+    let known_types = ONESHOT_TYPE_CACHE
+        .lock()
+        .expect("oneshot type cache poisoned")
+        .take(&cache_key, discovery.reload_count);
     let mut oneshot_types: HashMap<String, bool> = HashMap::new();
     for name in candidates {
-        if let Some(output) = lookup.get(&name).await? {
+        if let Some(is_oneshot) = known_types.get(&name) {
+            oneshot_types.insert(name, *is_oneshot);
+        } else if let Some(output) = lookup.get(&name).await? {
             let output = output.clone();
             require_unit_context(&name, &output)?;
             oneshot_types.insert(name, crate::varlink_unit::is_oneshot(&output));
         }
     }
+    ONESHOT_TYPE_CACHE
+        .lock()
+        .expect("oneshot type cache poisoned")
+        .store(cache_key, discovery.reload_count, oneshot_types.clone());
 
     // Timers need a second unit each — the one they trigger — for its state
     // change timestamps. That unit is often already in [services], which is
@@ -700,10 +815,11 @@ pub async fn apply_unit_details(
 
     let fetch_elapsed_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
     debug!(
-        "Varlink unit details: {} unit(s) fetched for {} service(s) + {} oneshot candidate(s) in {:.2}ms",
+        "Varlink unit details: {} unit(s) fetched for {} service(s) + {} oneshot candidate(s) ({} cached) in {:.2}ms",
         lookup.fetches(),
         config.services.len(),
         oneshot_types.len(),
+        known_types.len(),
         fetch_elapsed_ms
     );
     let mut machine_stats = locked_machine_stats.write().await;
@@ -742,8 +858,8 @@ fn sum_units_by_type(stats: &SystemdUnitStats) -> u64 {
 
 pub async fn get_unit_stats(
     config: &crate::config::Config,
-    endpoint: &crate::varlink::endpoint::VarlinkEndpoint,
-) -> anyhow::Result<(SystemdUnitStats, Vec<String>)> {
+    metrics: SharedMetrics,
+) -> anyhow::Result<(SystemdUnitStats, UnitDiscovery)> {
     if !config.units.state_stats_allowlist.is_empty() {
         debug!(
             "Using unit state allowlist: {:?}",
@@ -762,7 +878,7 @@ pub async fn get_unit_stats(
 
     // Always collect metrics to get aggregate counts (UnitsByTypeTotal, UnitsByStateTotal)
     // as well as per-unit state data when config.units.state_stats is enabled.
-    let timer_names = parse_metrics(&mut stats, endpoint, &config.units, &config.services).await?;
+    let discovery = parse_metrics(&mut stats, metrics, &config.units, &config.services).await?;
 
     // Prefer the UnitsTotal metric when present: it is exact, including unit
     // types we do not map (e.g. swap). Fall back to summing per-type counts
@@ -772,25 +888,122 @@ pub async fn get_unit_stats(
     }
 
     debug!("unit stats: {:?}", stats);
-    Ok((stats, timer_names))
+    Ok((stats, discovery))
 }
 
 /// Async wrapper that can update unit stats when passed a locked struct.
 pub async fn update_unit_stats(
     config: Arc<crate::config::Config>,
     locked_machine_stats: Arc<RwLock<MachineStats>>,
-    endpoint: crate::varlink::endpoint::VarlinkEndpoint,
-) -> anyhow::Result<Vec<String>> {
-    let (units_stats, timer_names) = get_unit_stats(&config, &endpoint).await?;
+    metrics: SharedMetrics,
+) -> anyhow::Result<UnitDiscovery> {
+    let (units_stats, discovery) = get_unit_stats(&config, metrics).await?;
     let mut machine_stats = locked_machine_stats.write().await;
     machine_stats.units = units_stats;
-    Ok(timer_names)
+    Ok(discovery)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn test_shared_metrics_streams_once_for_every_awaiter() {
+        // PID 1 walks every unit per stream, so two collectors in one cycle
+        // must land on one connection, not two.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("metrics.sock");
+        let listener = tokio::net::UnixListener::bind(&path).expect("bind");
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept");
+            let mut request = vec![0u8; 4096];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await;
+            tokio::io::AsyncWriteExt::write_all(
+                &mut socket,
+                b"{\"parameters\":{\"name\":\"io.systemd.Manager.UnitsTotal\",\"value\":1}}\0",
+            )
+            .await
+            .expect("write reply");
+            // Stays bound and is never accepted again: a second connection
+            // would never get a reply and trip the timeout below.
+            listener
+        });
+
+        let shared = shared_metrics(path.to_str().expect("utf-8 path").into());
+        let (first, second) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(await_metrics(shared.clone()), await_metrics(shared))
+        })
+        .await
+        .expect("a second stream was opened");
+        let (first, second) = (first.expect("first"), second.expect("second"));
+        assert_eq!(first.len(), 1);
+        assert!(Arc::ptr_eq(&first, &second));
+        server.await.expect("server");
+    }
+
+    fn types(names: &[(&str, bool)]) -> HashMap<String, bool> {
+        names
+            .iter()
+            .map(|(name, is_oneshot)| (name.to_string(), *is_oneshot))
+            .collect()
+    }
+
+    #[test]
+    fn test_oneshot_cache_hits_while_reload_count_holds() {
+        let mut cache = OneshotTypeCache::default();
+        assert!(cache.take("host", Some(9)).is_empty());
+        cache.store("host".to_string(), Some(9), types(&[("a.service", true)]));
+        assert_eq!(cache.take("host", Some(9)), types(&[("a.service", true)]));
+    }
+
+    #[test]
+    fn test_oneshot_cache_invalidated_by_any_reload_count_change() {
+        // A daemon-reload bumps the count, a daemon-reexec resets it to 0:
+        // going backwards has to invalidate just the same.
+        for next in [10, 0] {
+            let mut cache = OneshotTypeCache::default();
+            cache.store("host".to_string(), Some(9), types(&[("a.service", true)]));
+            assert!(cache.take("host", Some(next)).is_empty());
+        }
+    }
+
+    #[test]
+    fn test_oneshot_cache_needs_a_reload_count() {
+        // Nothing could invalidate the entry, so it must never be served.
+        let mut cache = OneshotTypeCache::default();
+        cache.store("host".to_string(), None, types(&[("a.service", true)]));
+        assert!(cache.take("host", None).is_empty());
+        cache.store("host".to_string(), Some(1), types(&[("a.service", true)]));
+        assert!(cache.take("host", None).is_empty());
+    }
+
+    #[test]
+    fn test_oneshot_cache_keeps_endpoints_apart() {
+        let mut cache = OneshotTypeCache::default();
+        cache.store("host".to_string(), Some(1), types(&[("a.service", true)]));
+        assert!(cache.take("machine", Some(1)).is_empty());
+        assert!(!cache.take("host", Some(1)).is_empty());
+    }
+
+    #[test]
+    fn test_oneshot_cache_stays_bounded() {
+        let mut cache = OneshotTypeCache::default();
+        for leader in 0..MAX_CACHED_ENDPOINTS * 3 {
+            cache.store(format!("machine {leader}"), Some(1), HashMap::new());
+            assert!(cache.endpoints.len() <= MAX_CACHED_ENDPOINTS);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_shared_metrics_failure_reaches_every_awaiter() {
+        // Each reader falls back on its own, so an error has to reach them all.
+        let shared = shared_metrics("/nonexistent/io.systemd.Manager".into());
+        let (first, second) = tokio::join!(await_metrics(shared.clone()), await_metrics(shared));
+        assert!(first.is_err());
+        assert!(second.is_err());
+    }
 
     fn string_value(s: &str) -> serde_json::Value {
         serde_json::json!(s)
