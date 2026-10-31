@@ -466,6 +466,15 @@ struct OneshotTypeCache {
 
 static ONESHOT_TYPE_CACHE: LazyLock<Mutex<OneshotTypeCache>> = LazyLock::new(Mutex::default);
 
+/// A poisoned lock only means a panic elsewhere mid-update. The worst that
+/// leaves behind is a missing entry, which costs a lookup, so it must not take
+/// the units collector down with it.
+fn oneshot_type_cache() -> std::sync::MutexGuard<'static, OneshotTypeCache> {
+    ONESHOT_TYPE_CACHE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 impl OneshotTypeCache {
     /// Hand over what is still valid for `endpoint`, leaving nothing behind:
     /// `store` puts back the set this cycle actually used.
@@ -482,6 +491,7 @@ impl OneshotTypeCache {
     /// is not kept.
     fn store(&mut self, endpoint: String, reload_count: Option<u64>, types: HashMap<String, bool>) {
         let Some(reload_count) = reload_count else {
+            debug!("No ReloadCount metric, not caching oneshot types for {endpoint}");
             return;
         };
         if self.endpoints.len() >= MAX_CACHED_ENDPOINTS {
@@ -765,10 +775,7 @@ pub async fn apply_unit_details(
     }
 
     let cache_key = endpoint.to_string();
-    let known_types = ONESHOT_TYPE_CACHE
-        .lock()
-        .expect("oneshot type cache poisoned")
-        .take(&cache_key, discovery.reload_count);
+    let known_types = oneshot_type_cache().take(&cache_key, discovery.reload_count);
     let mut oneshot_types: HashMap<String, bool> = HashMap::new();
     for name in candidates {
         if let Some(is_oneshot) = known_types.get(&name) {
@@ -779,10 +786,7 @@ pub async fn apply_unit_details(
             oneshot_types.insert(name, crate::varlink_unit::is_oneshot(&output));
         }
     }
-    ONESHOT_TYPE_CACHE
-        .lock()
-        .expect("oneshot type cache poisoned")
-        .store(cache_key, discovery.reload_count, oneshot_types.clone());
+    oneshot_type_cache().store(cache_key, discovery.reload_count, oneshot_types.clone());
 
     // Timers need a second unit each — the one they trigger — for its state
     // change timestamps. That unit is often already in [services], which is
