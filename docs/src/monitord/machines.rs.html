@@ -659,98 +659,102 @@
 <a href=#659 id=659 data-nosnippet>659</a>    container_root: <span class="kw-2">&amp;</span>str,
 <a href=#660 id=660 data-nosnippet>660</a>) -&gt; anyhow::Result&lt;()&gt; {
 <a href=#661 id=661 data-nosnippet>661</a>    <span class="kw">let </span>(metrics, manager) = endpoints<span class="question-mark">?</span>;
-<a href=#662 id=662 data-nosnippet>662</a>    <span class="kw">let </span>timer_names =
-<a href=#663 id=663 data-nosnippet>663</a>        <span class="kw">crate</span>::varlink_units::update_unit_stats(Arc::clone(config), stats.clone(), metrics).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#664 id=664 data-nosnippet>664</a>    <span class="kw">crate</span>::varlink_units::apply_unit_details(<span class="kw-2">&amp;</span>manager, stats, config, container_root, <span class="kw-2">&amp;</span>timer_names)
-<a href=#665 id=665 data-nosnippet>665</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#666 id=666 data-nosnippet>666</a>    <span class="kw">if </span>config.units.unit_files {
-<a href=#667 id=667 data-nosnippet>667</a>        <span class="kw">let </span>unit_files = <span class="kw">crate</span>::units::collect_unit_files_stats(container_root).<span class="kw">await</span>;
-<a href=#668 id=668 data-nosnippet>668</a>        stats.write().<span class="kw">await</span>.units.unit_files = unit_files;
-<a href=#669 id=669 data-nosnippet>669</a>    }
-<a href=#670 id=670 data-nosnippet>670</a>    <span class="prelude-val">Ok</span>(())
-<a href=#671 id=671 data-nosnippet>671</a>}
-<a href=#672 id=672 data-nosnippet>672</a>
-<a href=#673 id=673 data-nosnippet>673</a><span class="attr">#[cfg(test)]
-<a href=#674 id=674 data-nosnippet>674</a></span><span class="kw">mod </span>tests {
-<a href=#675 id=675 data-nosnippet>675</a>    <span class="kw">use </span>std::collections::HashSet;
-<a href=#676 id=676 data-nosnippet>676</a>    <span class="kw">use </span>zbus::zvariant::OwnedObjectPath;
-<a href=#677 id=677 data-nosnippet>677</a>
-<a href=#678 id=678 data-nosnippet>678</a>    <span class="kw">use super</span>::{decide_cache_action, CacheAction};
-<a href=#679 id=679 data-nosnippet>679</a>
-<a href=#680 id=680 data-nosnippet>680</a>    <span class="attr">#[test]
-<a href=#681 id=681 data-nosnippet>681</a>    </span><span class="kw">fn </span>test_filter_machines() {
-<a href=#682 id=682 data-nosnippet>682</a>        <span class="kw">let </span>machines = <span class="macro">vec!</span>[
-<a href=#683 id=683 data-nosnippet>683</a>            <span class="kw">crate</span>::dbus::zbus_machines::ListedMachine {
-<a href=#684 id=684 data-nosnippet>684</a>                name: <span class="string">"foo"</span>.to_string(),
-<a href=#685 id=685 data-nosnippet>685</a>                class: <span class="string">"container"</span>.to_string(),
-<a href=#686 id=686 data-nosnippet>686</a>                service: <span class="string">""</span>.to_string(),
-<a href=#687 id=687 data-nosnippet>687</a>                path: OwnedObjectPath::try_from(<span class="string">"/sample/object"</span>).unwrap(),
-<a href=#688 id=688 data-nosnippet>688</a>            },
-<a href=#689 id=689 data-nosnippet>689</a>            <span class="kw">crate</span>::dbus::zbus_machines::ListedMachine {
-<a href=#690 id=690 data-nosnippet>690</a>                name: <span class="string">"bar"</span>.to_string(),
-<a href=#691 id=691 data-nosnippet>691</a>                class: <span class="string">"container"</span>.to_string(),
-<a href=#692 id=692 data-nosnippet>692</a>                service: <span class="string">""</span>.to_string(),
-<a href=#693 id=693 data-nosnippet>693</a>                path: OwnedObjectPath::try_from(<span class="string">"/sample/object"</span>).unwrap(),
-<a href=#694 id=694 data-nosnippet>694</a>            },
-<a href=#695 id=695 data-nosnippet>695</a>            <span class="kw">crate</span>::dbus::zbus_machines::ListedMachine {
-<a href=#696 id=696 data-nosnippet>696</a>                name: <span class="string">"baz"</span>.to_string(),
-<a href=#697 id=697 data-nosnippet>697</a>                class: <span class="string">"container"</span>.to_string(),
-<a href=#698 id=698 data-nosnippet>698</a>                service: <span class="string">""</span>.to_string(),
-<a href=#699 id=699 data-nosnippet>699</a>                path: OwnedObjectPath::try_from(<span class="string">"/sample/object"</span>).unwrap(),
-<a href=#700 id=700 data-nosnippet>700</a>            },
-<a href=#701 id=701 data-nosnippet>701</a>        ];
-<a href=#702 id=702 data-nosnippet>702</a>        <span class="kw">let </span>allowlist = HashSet::from([<span class="string">"foo"</span>.to_string(), <span class="string">"baz"</span>.to_string()]);
-<a href=#703 id=703 data-nosnippet>703</a>        <span class="kw">let </span>blocklist = HashSet::from([<span class="string">"bar"</span>.to_string()]);
-<a href=#704 id=704 data-nosnippet>704</a>
-<a href=#705 id=705 data-nosnippet>705</a>        <span class="kw">let </span>filtered = <span class="kw">super</span>::filter_machines(machines, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist);
-<a href=#706 id=706 data-nosnippet>706</a>
-<a href=#707 id=707 data-nosnippet>707</a>        <span class="macro">assert_eq!</span>(filtered.len(), <span class="number">2</span>);
-<a href=#708 id=708 data-nosnippet>708</a>        <span class="macro">assert_eq!</span>(filtered[<span class="number">0</span>].name, <span class="string">"foo"</span>);
-<a href=#709 id=709 data-nosnippet>709</a>        <span class="macro">assert_eq!</span>(filtered[<span class="number">1</span>].name, <span class="string">"baz"</span>);
-<a href=#710 id=710 data-nosnippet>710</a>    }
-<a href=#711 id=711 data-nosnippet>711</a>
-<a href=#712 id=712 data-nosnippet>712</a>    <span class="attr">#[test]
-<a href=#713 id=713 data-nosnippet>713</a>    </span><span class="kw">fn </span>test_filter_listed_machines() {
-<a href=#714 id=714 data-nosnippet>714</a>        <span class="kw">let </span>listed: Vec&lt;<span class="kw">crate</span>::varlink::machine::ListOutput&gt; = serde_json::from_str(
-<a href=#715 id=715 data-nosnippet>715</a>            <span class="string">r#"[
-<a href=#716 id=716 data-nosnippet>716</a>                {"name":"foo","class":"container","leader":{"pid":10}},
-<a href=#717 id=717 data-nosnippet>717</a>                {"name":"bar","class":"container","leader":{"pid":11}},
-<a href=#718 id=718 data-nosnippet>718</a>                {"name":"baz","class":"container","leader":{"pid":12}},
-<a href=#719 id=719 data-nosnippet>719</a>                {"name":"vm0","class":"vm","leader":{"pid":13}},
-<a href=#720 id=720 data-nosnippet>720</a>                {"name":".host","class":"host","leader":{"pid":1}},
-<a href=#721 id=721 data-nosnippet>721</a>                {"name":"noleader","class":"container"}
-<a href=#722 id=722 data-nosnippet>722</a>            ]"#</span>,
-<a href=#723 id=723 data-nosnippet>723</a>        )
-<a href=#724 id=724 data-nosnippet>724</a>        .unwrap();
-<a href=#725 id=725 data-nosnippet>725</a>        <span class="kw">let </span>blocklist = HashSet::from([<span class="string">"bar"</span>.to_string()]);
-<a href=#726 id=726 data-nosnippet>726</a>
-<a href=#727 id=727 data-nosnippet>727</a>        <span class="kw">let </span>all = <span class="kw">super</span>::filter_listed_machines(listed.clone(), <span class="kw-2">&amp;</span>HashSet::new(), <span class="kw-2">&amp;</span>blocklist);
-<a href=#728 id=728 data-nosnippet>728</a>        <span class="macro">assert_eq!</span>(
-<a href=#729 id=729 data-nosnippet>729</a>            all,
-<a href=#730 id=730 data-nosnippet>730</a>            std::collections::HashMap::from([(<span class="string">"foo"</span>.to_string(), <span class="number">10</span>), (<span class="string">"baz"</span>.to_string(), <span class="number">12</span>)])
-<a href=#731 id=731 data-nosnippet>731</a>        );
-<a href=#732 id=732 data-nosnippet>732</a>
-<a href=#733 id=733 data-nosnippet>733</a>        <span class="kw">let </span>allowlist = HashSet::from([<span class="string">"baz"</span>.to_string(), <span class="string">"vm0"</span>.to_string()]);
-<a href=#734 id=734 data-nosnippet>734</a>        <span class="kw">let </span>allowed = <span class="kw">super</span>::filter_listed_machines(listed, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist);
-<a href=#735 id=735 data-nosnippet>735</a>        <span class="macro">assert_eq!</span>(
-<a href=#736 id=736 data-nosnippet>736</a>            allowed,
-<a href=#737 id=737 data-nosnippet>737</a>            std::collections::HashMap::from([(<span class="string">"baz"</span>.to_string(), <span class="number">12</span>)])
-<a href=#738 id=738 data-nosnippet>738</a>        );
-<a href=#739 id=739 data-nosnippet>739</a>    }
-<a href=#740 id=740 data-nosnippet>740</a>
-<a href=#741 id=741 data-nosnippet>741</a>    <span class="attr">#[test]
-<a href=#742 id=742 data-nosnippet>742</a>    </span><span class="kw">fn </span>test_decide_cache_action_reuse_on_same_pid() {
-<a href=#743 id=743 data-nosnippet>743</a>        <span class="macro">assert_eq!</span>(decide_cache_action(<span class="prelude-val">Some</span>(<span class="number">42</span>), <span class="number">42</span>), CacheAction::Reuse);
-<a href=#744 id=744 data-nosnippet>744</a>    }
-<a href=#745 id=745 data-nosnippet>745</a>
-<a href=#746 id=746 data-nosnippet>746</a>    <span class="attr">#[test]
-<a href=#747 id=747 data-nosnippet>747</a>    </span><span class="kw">fn </span>test_decide_cache_action_replace_on_pid_change() {
-<a href=#748 id=748 data-nosnippet>748</a>        <span class="macro">assert_eq!</span>(decide_cache_action(<span class="prelude-val">Some</span>(<span class="number">42</span>), <span class="number">99</span>), CacheAction::Replace);
-<a href=#749 id=749 data-nosnippet>749</a>    }
-<a href=#750 id=750 data-nosnippet>750</a>
-<a href=#751 id=751 data-nosnippet>751</a>    <span class="attr">#[test]
-<a href=#752 id=752 data-nosnippet>752</a>    </span><span class="kw">fn </span>test_decide_cache_action_create_on_miss() {
-<a href=#753 id=753 data-nosnippet>753</a>        <span class="macro">assert_eq!</span>(decide_cache_action(<span class="prelude-val">None</span>, <span class="number">42</span>), CacheAction::Create);
-<a href=#754 id=754 data-nosnippet>754</a>    }
-<a href=#755 id=755 data-nosnippet>755</a>}
+<a href=#662 id=662 data-nosnippet>662</a>    <span class="kw">let </span>discovery = <span class="kw">crate</span>::varlink_units::update_unit_stats(
+<a href=#663 id=663 data-nosnippet>663</a>        Arc::clone(config),
+<a href=#664 id=664 data-nosnippet>664</a>        stats.clone(),
+<a href=#665 id=665 data-nosnippet>665</a>        <span class="kw">crate</span>::varlink_units::shared_metrics(metrics),
+<a href=#666 id=666 data-nosnippet>666</a>    )
+<a href=#667 id=667 data-nosnippet>667</a>    .<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#668 id=668 data-nosnippet>668</a>    <span class="kw">crate</span>::varlink_units::apply_unit_details(<span class="kw-2">&amp;</span>manager, stats, config, container_root, <span class="kw-2">&amp;</span>discovery)
+<a href=#669 id=669 data-nosnippet>669</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#670 id=670 data-nosnippet>670</a>    <span class="kw">if </span>config.units.unit_files {
+<a href=#671 id=671 data-nosnippet>671</a>        <span class="kw">let </span>unit_files = <span class="kw">crate</span>::units::collect_unit_files_stats(container_root).<span class="kw">await</span>;
+<a href=#672 id=672 data-nosnippet>672</a>        stats.write().<span class="kw">await</span>.units.unit_files = unit_files;
+<a href=#673 id=673 data-nosnippet>673</a>    }
+<a href=#674 id=674 data-nosnippet>674</a>    <span class="prelude-val">Ok</span>(())
+<a href=#675 id=675 data-nosnippet>675</a>}
+<a href=#676 id=676 data-nosnippet>676</a>
+<a href=#677 id=677 data-nosnippet>677</a><span class="attr">#[cfg(test)]
+<a href=#678 id=678 data-nosnippet>678</a></span><span class="kw">mod </span>tests {
+<a href=#679 id=679 data-nosnippet>679</a>    <span class="kw">use </span>std::collections::HashSet;
+<a href=#680 id=680 data-nosnippet>680</a>    <span class="kw">use </span>zbus::zvariant::OwnedObjectPath;
+<a href=#681 id=681 data-nosnippet>681</a>
+<a href=#682 id=682 data-nosnippet>682</a>    <span class="kw">use super</span>::{decide_cache_action, CacheAction};
+<a href=#683 id=683 data-nosnippet>683</a>
+<a href=#684 id=684 data-nosnippet>684</a>    <span class="attr">#[test]
+<a href=#685 id=685 data-nosnippet>685</a>    </span><span class="kw">fn </span>test_filter_machines() {
+<a href=#686 id=686 data-nosnippet>686</a>        <span class="kw">let </span>machines = <span class="macro">vec!</span>[
+<a href=#687 id=687 data-nosnippet>687</a>            <span class="kw">crate</span>::dbus::zbus_machines::ListedMachine {
+<a href=#688 id=688 data-nosnippet>688</a>                name: <span class="string">"foo"</span>.to_string(),
+<a href=#689 id=689 data-nosnippet>689</a>                class: <span class="string">"container"</span>.to_string(),
+<a href=#690 id=690 data-nosnippet>690</a>                service: <span class="string">""</span>.to_string(),
+<a href=#691 id=691 data-nosnippet>691</a>                path: OwnedObjectPath::try_from(<span class="string">"/sample/object"</span>).unwrap(),
+<a href=#692 id=692 data-nosnippet>692</a>            },
+<a href=#693 id=693 data-nosnippet>693</a>            <span class="kw">crate</span>::dbus::zbus_machines::ListedMachine {
+<a href=#694 id=694 data-nosnippet>694</a>                name: <span class="string">"bar"</span>.to_string(),
+<a href=#695 id=695 data-nosnippet>695</a>                class: <span class="string">"container"</span>.to_string(),
+<a href=#696 id=696 data-nosnippet>696</a>                service: <span class="string">""</span>.to_string(),
+<a href=#697 id=697 data-nosnippet>697</a>                path: OwnedObjectPath::try_from(<span class="string">"/sample/object"</span>).unwrap(),
+<a href=#698 id=698 data-nosnippet>698</a>            },
+<a href=#699 id=699 data-nosnippet>699</a>            <span class="kw">crate</span>::dbus::zbus_machines::ListedMachine {
+<a href=#700 id=700 data-nosnippet>700</a>                name: <span class="string">"baz"</span>.to_string(),
+<a href=#701 id=701 data-nosnippet>701</a>                class: <span class="string">"container"</span>.to_string(),
+<a href=#702 id=702 data-nosnippet>702</a>                service: <span class="string">""</span>.to_string(),
+<a href=#703 id=703 data-nosnippet>703</a>                path: OwnedObjectPath::try_from(<span class="string">"/sample/object"</span>).unwrap(),
+<a href=#704 id=704 data-nosnippet>704</a>            },
+<a href=#705 id=705 data-nosnippet>705</a>        ];
+<a href=#706 id=706 data-nosnippet>706</a>        <span class="kw">let </span>allowlist = HashSet::from([<span class="string">"foo"</span>.to_string(), <span class="string">"baz"</span>.to_string()]);
+<a href=#707 id=707 data-nosnippet>707</a>        <span class="kw">let </span>blocklist = HashSet::from([<span class="string">"bar"</span>.to_string()]);
+<a href=#708 id=708 data-nosnippet>708</a>
+<a href=#709 id=709 data-nosnippet>709</a>        <span class="kw">let </span>filtered = <span class="kw">super</span>::filter_machines(machines, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist);
+<a href=#710 id=710 data-nosnippet>710</a>
+<a href=#711 id=711 data-nosnippet>711</a>        <span class="macro">assert_eq!</span>(filtered.len(), <span class="number">2</span>);
+<a href=#712 id=712 data-nosnippet>712</a>        <span class="macro">assert_eq!</span>(filtered[<span class="number">0</span>].name, <span class="string">"foo"</span>);
+<a href=#713 id=713 data-nosnippet>713</a>        <span class="macro">assert_eq!</span>(filtered[<span class="number">1</span>].name, <span class="string">"baz"</span>);
+<a href=#714 id=714 data-nosnippet>714</a>    }
+<a href=#715 id=715 data-nosnippet>715</a>
+<a href=#716 id=716 data-nosnippet>716</a>    <span class="attr">#[test]
+<a href=#717 id=717 data-nosnippet>717</a>    </span><span class="kw">fn </span>test_filter_listed_machines() {
+<a href=#718 id=718 data-nosnippet>718</a>        <span class="kw">let </span>listed: Vec&lt;<span class="kw">crate</span>::varlink::machine::ListOutput&gt; = serde_json::from_str(
+<a href=#719 id=719 data-nosnippet>719</a>            <span class="string">r#"[
+<a href=#720 id=720 data-nosnippet>720</a>                {"name":"foo","class":"container","leader":{"pid":10}},
+<a href=#721 id=721 data-nosnippet>721</a>                {"name":"bar","class":"container","leader":{"pid":11}},
+<a href=#722 id=722 data-nosnippet>722</a>                {"name":"baz","class":"container","leader":{"pid":12}},
+<a href=#723 id=723 data-nosnippet>723</a>                {"name":"vm0","class":"vm","leader":{"pid":13}},
+<a href=#724 id=724 data-nosnippet>724</a>                {"name":".host","class":"host","leader":{"pid":1}},
+<a href=#725 id=725 data-nosnippet>725</a>                {"name":"noleader","class":"container"}
+<a href=#726 id=726 data-nosnippet>726</a>            ]"#</span>,
+<a href=#727 id=727 data-nosnippet>727</a>        )
+<a href=#728 id=728 data-nosnippet>728</a>        .unwrap();
+<a href=#729 id=729 data-nosnippet>729</a>        <span class="kw">let </span>blocklist = HashSet::from([<span class="string">"bar"</span>.to_string()]);
+<a href=#730 id=730 data-nosnippet>730</a>
+<a href=#731 id=731 data-nosnippet>731</a>        <span class="kw">let </span>all = <span class="kw">super</span>::filter_listed_machines(listed.clone(), <span class="kw-2">&amp;</span>HashSet::new(), <span class="kw-2">&amp;</span>blocklist);
+<a href=#732 id=732 data-nosnippet>732</a>        <span class="macro">assert_eq!</span>(
+<a href=#733 id=733 data-nosnippet>733</a>            all,
+<a href=#734 id=734 data-nosnippet>734</a>            std::collections::HashMap::from([(<span class="string">"foo"</span>.to_string(), <span class="number">10</span>), (<span class="string">"baz"</span>.to_string(), <span class="number">12</span>)])
+<a href=#735 id=735 data-nosnippet>735</a>        );
+<a href=#736 id=736 data-nosnippet>736</a>
+<a href=#737 id=737 data-nosnippet>737</a>        <span class="kw">let </span>allowlist = HashSet::from([<span class="string">"baz"</span>.to_string(), <span class="string">"vm0"</span>.to_string()]);
+<a href=#738 id=738 data-nosnippet>738</a>        <span class="kw">let </span>allowed = <span class="kw">super</span>::filter_listed_machines(listed, <span class="kw-2">&amp;</span>allowlist, <span class="kw-2">&amp;</span>blocklist);
+<a href=#739 id=739 data-nosnippet>739</a>        <span class="macro">assert_eq!</span>(
+<a href=#740 id=740 data-nosnippet>740</a>            allowed,
+<a href=#741 id=741 data-nosnippet>741</a>            std::collections::HashMap::from([(<span class="string">"baz"</span>.to_string(), <span class="number">12</span>)])
+<a href=#742 id=742 data-nosnippet>742</a>        );
+<a href=#743 id=743 data-nosnippet>743</a>    }
+<a href=#744 id=744 data-nosnippet>744</a>
+<a href=#745 id=745 data-nosnippet>745</a>    <span class="attr">#[test]
+<a href=#746 id=746 data-nosnippet>746</a>    </span><span class="kw">fn </span>test_decide_cache_action_reuse_on_same_pid() {
+<a href=#747 id=747 data-nosnippet>747</a>        <span class="macro">assert_eq!</span>(decide_cache_action(<span class="prelude-val">Some</span>(<span class="number">42</span>), <span class="number">42</span>), CacheAction::Reuse);
+<a href=#748 id=748 data-nosnippet>748</a>    }
+<a href=#749 id=749 data-nosnippet>749</a>
+<a href=#750 id=750 data-nosnippet>750</a>    <span class="attr">#[test]
+<a href=#751 id=751 data-nosnippet>751</a>    </span><span class="kw">fn </span>test_decide_cache_action_replace_on_pid_change() {
+<a href=#752 id=752 data-nosnippet>752</a>        <span class="macro">assert_eq!</span>(decide_cache_action(<span class="prelude-val">Some</span>(<span class="number">42</span>), <span class="number">99</span>), CacheAction::Replace);
+<a href=#753 id=753 data-nosnippet>753</a>    }
+<a href=#754 id=754 data-nosnippet>754</a>
+<a href=#755 id=755 data-nosnippet>755</a>    <span class="attr">#[test]
+<a href=#756 id=756 data-nosnippet>756</a>    </span><span class="kw">fn </span>test_decide_cache_action_create_on_miss() {
+<a href=#757 id=757 data-nosnippet>757</a>        <span class="macro">assert_eq!</span>(decide_cache_action(<span class="prelude-val">None</span>, <span class="number">42</span>), CacheAction::Create);
+<a href=#758 id=758 data-nosnippet>758</a>    }
+<a href=#759 id=759 data-nosnippet>759</a>}
 </code></pre></div></section></main></body></html>

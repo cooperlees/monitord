@@ -86,8 +86,8 @@
 <a href=#86 id=86 data-nosnippet>86</a>
 <a href=#87 id=87 data-nosnippet>87</a><span class="doccomment">/// Whether a unit is a oneshot service.
 <a href=#88 id=88 data-nosnippet>88</a>///
-<a href=#89 id=89 data-nosnippet>89</a>/// The varlink equivalent of `units::is_oneshot_service_by_name`, which the
-<a href=#90 id=90 data-nosnippet>90</a>/// varlink path previously had to reach back to D-Bus for.
+<a href=#89 id=89 data-nosnippet>89</a>/// The varlink equivalent of the D-Bus path's `Service.Type` check in
+<a href=#90 id=90 data-nosnippet>90</a>/// `units::is_oneshot_service_unit`.
 <a href=#91 id=91 data-nosnippet>91</a></span><span class="kw">pub fn </span>is_oneshot(output: <span class="kw-2">&amp;</span>ListOutput) -&gt; bool {
 <a href=#92 id=92 data-nosnippet>92</a>    output
 <a href=#93 id=93 data-nosnippet>93</a>        .context
