@@ -19,6 +19,8 @@ jobs:
 
       - name: Cargo doc
         uses: actions-rs/cargo@v1
+        env:
+          RUSTDOCFLAGS: -D warnings
         with:
           command: doc
           args: --no-deps
