@@ -81,7 +81,7 @@ pub enum SystemdSystemState {
 /// rather than these fields — today it feature-detects instead, by looking for
 /// the metrics a systemd release added.
 ///
-/// Format: "major[.minor][.revision][.os]" (e.g. "256.1.fc40",
+/// Format: `major[.minor][.revision][.os]` (e.g. "256.1.fc40",
 /// "255.6-9.9.hs+fb.el9", "260~rc1-5.fc45", "262-1.fc46").
 ///
 /// [uapi]: https://uapi-group.org/specifications/specs/version_format_specification/
