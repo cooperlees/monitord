@@ -34,9 +34,7 @@ tracing-core = "0.1"
 tracing-glog = "0.4"
 tracing-subscriber = "0.3"
 uzers = "0.12"
-zbus = { version = "5.14", features = ["tokio"], default-features = false }
-zvariant = "5.15"
-zvariant_derive = "5.15"
+zbus = { version = "6.1", features = ["tokio", "proxy"], default-features = false }
 zlink = "0.7"
 
 [target.'cfg(target_os = "linux")'.dependencies]

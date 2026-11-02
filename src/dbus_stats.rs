@@ -16,7 +16,7 @@ use tracing::{debug, error};
 use uzers::get_user_by_uid;
 use zbus::fdo::{DBusProxy, StatsProxy};
 use zbus::names::BusName;
-use zvariant::{Dict, OwnedValue, Value};
+use zbus::{Dict, OwnedVariant, Variant};
 
 use crate::MachineStats;
 
@@ -465,21 +465,19 @@ fn collect_system_dbus_broker_stale_fds() -> Option<u32> {
 }
 
 fn get_u32(dict: &Dict, key: &str) -> Option<u32> {
-    let value_key: Value = key.into();
-    dict.get(&value_key).ok().and_then(|v| match v.flatten() {
-        Some(Value::U32(val)) => Some(*val),
-        _ => None,
-    })
+    // Typed downcast (unwraps the `v` layer); a type mismatch is `Err` -> `None`.
+    let value_key: Variant = key.into();
+    dict.get::<_, u32>(&value_key).ok().flatten()
 }
 
 fn get_u32_vec(dict: &Dict, key: &str) -> Option<Vec<u32>> {
-    let value_key: Value = key.into();
+    let value_key: Variant = key.into();
     dict.get(&value_key).ok().and_then(|v| match v.flatten() {
-        Some(Value::Array(array)) => {
+        Some(Variant::Array(array)) => {
             let vec: Vec<u32> = array
                 .iter()
                 .filter_map(|item| {
-                    if let Value::U32(num) = item {
+                    if let Variant::U32(num) = item {
                         Some(*num)
                     } else {
                         None
@@ -493,7 +491,7 @@ fn get_u32_vec(dict: &Dict, key: &str) -> Option<Vec<u32>> {
     })
 }
 
-/* Parse DBusBrokerPeerAccounting from OwnedValue.
+/* Parse DBusBrokerPeerAccounting from OwnedVariant.
  * Expected structure:
  * struct {
  *     string ":1.2197907"
@@ -515,16 +513,16 @@ fn get_u32_vec(dict: &Dict, key: &str) -> Option<Vec<u32>> {
  */
 
 fn parse_peer_struct(
-    peer_value: &Value,
+    peer_value: &Variant,
     well_known_to_peer_names: &HashMap<String, String>,
 ) -> Option<DBusBrokerPeerAccounting> {
     let peer_struct = match peer_value {
-        Value::Structure(peer_struct) => peer_struct,
+        Variant::Structure(peer_struct) => peer_struct,
         _ => return None,
     };
 
     match peer_struct.fields() {
-        [Value::Str(id), Value::Dict(credentials), Value::Dict(stats), ..] => {
+        [Variant::Str(id), Variant::Dict(credentials), Variant::Dict(stats), ..] => {
             Some(DBusBrokerPeerAccounting {
                 id: id.to_string(),
                 well_known_name: well_known_to_peer_names.get(id.as_str()).cloned(),
@@ -550,7 +548,7 @@ fn parse_peer_struct(
 async fn parse_peer_accounting(
     connection: &zbus::Connection,
     config: &crate::config::Config,
-    owned_value: Option<&OwnedValue>,
+    owned_value: Option<&OwnedVariant>,
 ) -> Result<Option<Vec<DBusBrokerPeerAccounting>>, MonitordDbusStatsError> {
     // need to keep collecting peer stats when cgroup_stats=true
     // since cgroup_stats is a derivative of peer stats
@@ -558,13 +556,13 @@ async fn parse_peer_accounting(
         return Ok(None);
     }
 
-    let value: &Value = match owned_value {
+    let value: &Variant = match owned_value {
         Some(v) => v,
         None => return Ok(None),
     };
 
     let peers_value = match value {
-        Value::Array(peers_value) => peers_value,
+        Variant::Array(peers_value) => peers_value,
         _ => return Ok(None),
     };
 
@@ -661,7 +659,7 @@ fn filter_and_collect_cgroup_accounting(
     Some(result)
 }
 
-/* Parse DBusBrokerUserAccounting from OwnedValue.
+/* Parse DBusBrokerUserAccounting from OwnedVariant.
  * Expected structure:
  * struct {
  *     uint32 0
@@ -691,18 +689,18 @@ fn filter_and_collect_cgroup_accounting(
  * }
  */
 
-fn parse_user_struct(user_value: &Value) -> Option<DBusBrokerUserAccounting> {
+fn parse_user_struct(user_value: &Variant) -> Option<DBusBrokerUserAccounting> {
     let user_struct = match user_value {
-        Value::Structure(user_struct) => user_struct,
+        Variant::Structure(user_struct) => user_struct,
         _ => return None,
     };
 
     match user_struct.fields() {
-        [Value::U32(uid), Value::Array(user_stats), ..] => {
+        [Variant::U32(uid), Variant::Array(user_stats), ..] => {
             let mut user = DBusBrokerUserAccounting::new(*uid);
             for user_stat in user_stats.iter() {
-                if let Value::Structure(user_stat) = user_stat {
-                    if let [Value::Str(name), Value::U32(cur), Value::U32(max), ..] =
+                if let Variant::Structure(user_stat) = user_stat {
+                    if let [Variant::Str(name), Variant::U32(cur), Variant::U32(max), ..] =
                         user_stat.fields()
                     {
                         let pair = CurMaxPair {
@@ -728,16 +726,16 @@ fn parse_user_struct(user_value: &Value) -> Option<DBusBrokerUserAccounting> {
 
 fn parse_user_accounting(
     config: &crate::config::Config,
-    owned_value: &OwnedValue,
+    owned_value: &OwnedVariant,
 ) -> Option<HashMap<u32, DBusBrokerUserAccounting>> {
     // reject collecting user stats when told so
     if !config.dbus_stats.user_stats {
         return None;
     }
 
-    let value: &Value = owned_value;
+    let value: &Variant = owned_value;
     let users_value = match value {
-        Value::Array(users_value) => users_value,
+        Variant::Array(users_value) => users_value,
         _ => return None,
     };
 
@@ -943,7 +941,7 @@ async fn update_dbus_stats_inner(
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
-    use zvariant::{Array, OwnedValue, Str, Structure, Value};
+    use zbus::{Array, OwnedVariant, Str, Structure, Variant};
 
     fn write_fake_proc_process(proc_root: &Path, pid: u32, ppid: u32, cmdline: &[&str]) {
         let pid_dir = proc_root.join(pid.to_string());
@@ -1088,31 +1086,49 @@ mod tests {
         // When user_stats=false, should return None
         let mut cfg = crate::config::Config::default();
         cfg.dbus_stats.user_stats = false;
-        let empty_val = Value::Array(Array::from(Vec::<Value>::new()));
-        let empty_owned = OwnedValue::try_from(empty_val).expect("owned value conversion");
+        let empty_val = Variant::Array(Array::from(Vec::<Variant>::new()));
+        let empty_owned = OwnedVariant::try_from(empty_val).expect("owned value conversion");
         assert!(parse_user_accounting(&cfg, &empty_owned).is_none());
 
         // When user_stats=true, empty array should return Some(empty map)
         cfg.dbus_stats.user_stats = true;
-        let empty_val = Value::Array(Array::from(Vec::<Value>::new()));
-        let owned = OwnedValue::try_from(empty_val).expect("should convert empty array");
+        let empty_val = Variant::Array(Array::from(Vec::<Variant>::new()));
+        let owned = OwnedVariant::try_from(empty_val).expect("should convert empty array");
         let parsed = parse_user_accounting(&cfg, &owned).expect("should parse empty");
         assert_eq!(parsed.len(), 0);
 
         // Non-array input should return None
-        let non_array = OwnedValue::try_from(Value::U32(0)).expect("should convert u32 value");
+        let non_array = OwnedVariant::try_from(Variant::U32(0)).expect("should convert u32 value");
         assert!(parse_user_accounting(&cfg, &non_array).is_none());
     }
 
     #[test]
     fn test_parse_user_struct_invalid_returns_none() {
         // Build an invalid structure (wrong field types/order) to ensure None is returned
-        let invalid = Value::Structure(Structure::from((
-            Value::Str(Str::from_static("not_uid")),
-            Value::U32(10),
-            Value::U32(20),
+        let invalid = Variant::Structure(Structure::from((
+            Variant::Str(Str::from_static("not_uid")),
+            Variant::U32(10),
+            Variant::U32(20),
         )));
         assert!(parse_user_struct(&invalid).is_none());
+    }
+
+    #[test]
+    fn test_get_u32_and_get_u32_vec() {
+        // dbus-broker credentials/stats are a{sv}, so values are variant-wrapped
+        let mut dict = Dict::new(&zbus::Signature::Str, &zbus::Signature::Variant);
+        dict.add("UnixUserID", Variant::new(42u32)).unwrap();
+        dict.add("ProcessID", Variant::new(7u64)).unwrap();
+        dict.add("UnixGroupIDs", Variant::new(vec![1u32, 2u32]))
+            .unwrap();
+
+        assert_eq!(get_u32(&dict, "UnixUserID"), Some(42));
+        // Wrong type and missing keys both map to None
+        assert_eq!(get_u32(&dict, "ProcessID"), None);
+        assert_eq!(get_u32(&dict, "Missing"), None);
+        assert_eq!(get_u32_vec(&dict, "UnixGroupIDs"), Some(vec![1, 2]));
+        assert_eq!(get_u32_vec(&dict, "UnixUserID"), None);
+        assert_eq!(get_u32_vec(&dict, "Missing"), None);
     }
 
     #[test]

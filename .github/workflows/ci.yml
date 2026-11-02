@@ -28,12 +28,8 @@ jobs:
         with:
           command: test
 
-      - name: Check with zbus blocking support enabled
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --all-targets --features zbus/blocking-api
-
+      # zbus 6 removed the blocking API (and its `blocking-api` feature)
+      # entirely, so there is no blocking feature combination left to check.
       - name: Cargo release + all feature build
         uses: actions-rs/cargo@v1
         with:
