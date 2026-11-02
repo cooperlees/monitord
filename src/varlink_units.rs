@@ -437,51 +437,69 @@ pub(crate) async fn collect_metrics(
 pub struct UnitDiscovery {
     /// Every timer unit, sorted.
     pub timer_names: Vec<String>,
-    /// `io.systemd.Manager.ReloadCount`, which invalidates cached oneshot types.
+    /// `io.systemd.Manager.ReloadCount`, which invalidates every [`ReloadCache`].
     pub reload_count: Option<u64>,
+    /// Realtime `StateChangeTimestamp` of every unit in the stream, which says
+    /// whether a cached timer is still current.
+    pub state_changes: HashMap<String, u64>,
 }
 
-/// More endpoints than this and [`OneshotTypeCache`] starts over, so machines
+/// More endpoints than this and a [`ReloadCache`] starts over, so machines
 /// coming and going cannot grow it forever.
 const MAX_CACHED_ENDPOINTS: usize = 64;
 
-/// Oneshot verdicts from the previous cycle, per varlink endpoint.
+/// Per-unit answers from the previous cycle, per varlink endpoint, that only
+/// change when unit files are reloaded.
 ///
-/// The oneshot override wants `Service.Type` for every inactive service, and
-/// `Unit.List` has no way to ask for less than the whole ~7KB reply: on a host
-/// with 103 such services that is ~140ms of PID 1 per cycle, most of a run, for
-/// an answer that only changes when unit files are reloaded.
+/// `Unit.List` has no way to ask for less than the whole ~7KB reply, and PID 1
+/// serves those one at a time, so every lookup skipped here is PID 1 time saved
+/// on each cycle.
 ///
 /// Entries live as long as `ReloadCount` holds still. Compared with `!=` since a
-/// `daemon-reexec` resets it to 0 rather than bumping it. Only units that were
-/// candidates last cycle are kept, so a service that ran or went away since is
-/// asked about again.
+/// `daemon-reexec` resets it to 0 rather than bumping it. Only units used last
+/// cycle are kept, so one that ran or went away since is asked about again.
 ///
 /// A process static because the exporter calls `stat_collector` once per scrape,
 /// so nothing owned by that call would outlive a cycle.
-#[derive(Debug, Default)]
-struct OneshotTypeCache {
-    endpoints: HashMap<String, (u64, HashMap<String, bool>)>,
+#[derive(Debug)]
+struct ReloadCache<V> {
+    endpoints: HashMap<String, (u64, HashMap<String, V>)>,
 }
 
-static ONESHOT_TYPE_CACHE: LazyLock<Mutex<OneshotTypeCache>> = LazyLock::new(Mutex::default);
+impl<V> Default for ReloadCache<V> {
+    fn default() -> Self {
+        Self {
+            endpoints: HashMap::new(),
+        }
+    }
+}
+
+/// Oneshot verdicts. The oneshot override wants `Service.Type` for every
+/// inactive service: on a host with 103 of them that is ~140ms of PID 1 a cycle.
+static ONESHOT_TYPE_CACHE: LazyLock<Mutex<ReloadCache<bool>>> = LazyLock::new(Mutex::default);
+
+/// Timer stats. Each timer costs two lookups, itself and the unit it triggers:
+/// on a host with 26 timers that is ~80ms of PID 1 a cycle.
+static TIMER_STATS_CACHE: LazyLock<Mutex<ReloadCache<CachedTimer>>> = LazyLock::new(Mutex::default);
 
 /// A poisoned lock only means a panic elsewhere mid-update. The worst that
 /// leaves behind is a missing entry, which costs a lookup, so it must not take
 /// the units collector down with it.
-fn oneshot_type_cache() -> std::sync::MutexGuard<'static, OneshotTypeCache> {
-    ONESHOT_TYPE_CACHE
+fn lock_cache<V>(
+    cache: &'static Mutex<ReloadCache<V>>,
+) -> std::sync::MutexGuard<'static, ReloadCache<V>> {
+    cache
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-impl OneshotTypeCache {
+impl<V> ReloadCache<V> {
     /// Hand over what is still valid for `endpoint`, leaving nothing behind:
     /// `store` puts back the set this cycle actually used.
-    fn take(&mut self, endpoint: &str, reload_count: Option<u64>) -> HashMap<String, bool> {
+    fn take(&mut self, endpoint: &str, reload_count: Option<u64>) -> HashMap<String, V> {
         match (self.endpoints.remove(endpoint), reload_count) {
-            (Some((cached_count, types)), Some(reload_count)) if cached_count == reload_count => {
-                types
+            (Some((cached_count, entries)), Some(reload_count)) if cached_count == reload_count => {
+                entries
             }
             _ => HashMap::new(),
         }
@@ -489,15 +507,59 @@ impl OneshotTypeCache {
 
     /// Without a `ReloadCount` nothing could ever invalidate the entry, so it
     /// is not kept.
-    fn store(&mut self, endpoint: String, reload_count: Option<u64>, types: HashMap<String, bool>) {
+    fn store(&mut self, endpoint: String, reload_count: Option<u64>, entries: HashMap<String, V>) {
         let Some(reload_count) = reload_count else {
-            debug!("No ReloadCount metric, not caching oneshot types for {endpoint}");
+            debug!("No ReloadCount metric, not caching unit details for {endpoint}");
             return;
         };
         if self.endpoints.len() >= MAX_CACHED_ENDPOINTS {
             self.endpoints.clear();
         }
-        self.endpoints.insert(endpoint, (reload_count, types));
+        self.endpoints.insert(endpoint, (reload_count, entries));
+    }
+}
+
+/// A timer's stats, and the state change timestamps they were read under.
+///
+/// Every field of [`TimerStats`] is either config, which only a reload changes,
+/// or moves with a state change that bumps one of these two timestamps. PID 1's
+/// `timer_set_state()` calls `unit_notify()`, which stamps the unit on every
+/// low-level state change, even one that maps to the same active state: firing,
+/// re-arming and the recalculation after a clock or timezone change all go
+/// through it, so `LastTrigger` and the next elapse cannot move on their own.
+/// The two service fields are the triggered unit's own `StateChangeTimestamp`.
+///
+/// The timestamps come from the metrics stream, which is read before the lookups.
+/// A timer firing in between leaves a key older than its stats, which only
+/// costs a refetch next cycle, never a stale answer.
+#[derive(Clone, Debug, PartialEq)]
+struct CachedTimer {
+    timer_changed: u64,
+    triggered: String,
+    triggered_changed: u64,
+    stats: TimerStats,
+}
+
+impl CachedTimer {
+    /// `None` when the stream lacks either timestamp, so the timer is not cached.
+    fn new(
+        timer: &str,
+        triggered: &str,
+        state_changes: &HashMap<String, u64>,
+        stats: TimerStats,
+    ) -> Option<Self> {
+        Some(Self {
+            timer_changed: *state_changes.get(timer)?,
+            triggered: triggered.to_string(),
+            triggered_changed: *state_changes.get(triggered)?,
+            stats,
+        })
+    }
+
+    /// Neither the timer nor the unit it triggers has changed state since.
+    fn is_current(&self, timer: &str, state_changes: &HashMap<String, u64>) -> bool {
+        state_changes.get(timer) == Some(&self.timer_changed)
+            && state_changes.get(&self.triggered) == Some(&self.triggered_changed)
     }
 }
 
@@ -568,9 +630,18 @@ pub async fn parse_metrics(
         .find(|metric| metric.name_suffix() == "ReloadCount")
         .and_then(|metric| metric.value().as_u64());
 
+    // Read regardless of the state_stats gating in parse_one_metric: these are
+    // cache keys, not output.
+    let state_changes = metrics
+        .iter()
+        .filter(|metric| metric.name_suffix() == "StateChangeTimestamp")
+        .filter_map(|metric| Some((metric.object()?.to_string(), metric.value().as_u64()?)))
+        .collect();
+
     Ok(UnitDiscovery {
         timer_names: timer_names.into_iter().collect(),
         reload_count,
+        state_changes,
     })
 }
 
@@ -775,7 +846,7 @@ pub async fn apply_unit_details(
     }
 
     let cache_key = endpoint.to_string();
-    let known_types = oneshot_type_cache().take(&cache_key, discovery.reload_count);
+    let known_types = lock_cache(&ONESHOT_TYPE_CACHE).take(&cache_key, discovery.reload_count);
     let mut oneshot_types: HashMap<String, bool> = HashMap::new();
     for name in candidates {
         if let Some(is_oneshot) = known_types.get(&name) {
@@ -786,13 +857,30 @@ pub async fn apply_unit_details(
             oneshot_types.insert(name, crate::varlink_unit::is_oneshot(&output));
         }
     }
-    oneshot_type_cache().store(cache_key, discovery.reload_count, oneshot_types.clone());
+    lock_cache(&ONESHOT_TYPE_CACHE).store(
+        cache_key.clone(),
+        discovery.reload_count,
+        oneshot_types.clone(),
+    );
 
     // Timers need a second unit each — the one they trigger — for its state
     // change timestamps. That unit is often already in [services], which is
-    // where the lookup cache earns its place.
+    // where the lookup cache earns its place. A timer whose two units have not
+    // changed state since last cycle skips both lookups (see `CachedTimer`).
+    let known_timers = lock_cache(&TIMER_STATS_CACHE).take(&cache_key, discovery.reload_count);
+    let mut cached_timers: HashMap<String, CachedTimer> = HashMap::new();
     let mut timer_stats: HashMap<String, TimerStats> = HashMap::new();
+    let mut timers_from_cache = 0;
     for name in timers {
+        if let Some(entry) = known_timers
+            .get(&name)
+            .filter(|entry| entry.is_current(&name, &discovery.state_changes))
+        {
+            timer_stats.insert(name.clone(), entry.stats.clone());
+            cached_timers.insert(name, entry.clone());
+            timers_from_cache += 1;
+            continue;
+        }
         let Some(output) = lookup.get(&name).await? else {
             continue;
         };
@@ -804,26 +892,37 @@ pub async fn apply_unit_details(
         // errors and the whole per-timer fetch is abandoned. Keeping it is the
         // more useful of the two: a timer whose target is unloaded still has a
         // real accuracy, next elapse and last trigger worth reporting.
-        let triggered = match crate::varlink_unit::timer_triggered_unit(&output) {
+        let triggered_name = crate::varlink_unit::timer_triggered_unit(&output);
+        let triggered = match triggered_name {
             Some(triggered) => lookup.get(triggered).await?.cloned(),
             None => {
                 error!("{}: No service unit name found for timer.", name);
                 None
             }
         };
-        timer_stats.insert(
-            name,
-            crate::varlink_unit::map_timer_stats(&output, triggered.as_ref()),
-        );
+        let stats = crate::varlink_unit::map_timer_stats(&output, triggered.as_ref());
+        // An unresolved trigger is asked about again rather than cached.
+        if let Some(entry) = triggered_name
+            .filter(|_| triggered.is_some())
+            .and_then(|triggered| {
+                CachedTimer::new(&name, triggered, &discovery.state_changes, stats.clone())
+            })
+        {
+            cached_timers.insert(name.clone(), entry);
+        }
+        timer_stats.insert(name, stats);
     }
+    lock_cache(&TIMER_STATS_CACHE).store(cache_key, discovery.reload_count, cached_timers);
 
     let fetch_elapsed_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
     debug!(
-        "Varlink unit details: {} unit(s) fetched for {} service(s) + {} oneshot candidate(s) ({} cached) in {:.2}ms",
+        "Varlink unit details: {} unit(s) fetched for {} service(s) + {} oneshot candidate(s) ({} cached) + {} timer(s) ({} cached) in {:.2}ms",
         lookup.fetches(),
         config.services.len(),
         oneshot_types.len(),
         known_types.len(),
+        timer_stats.len(),
+        timers_from_cache,
         fetch_elapsed_ms
     );
     let mut machine_stats = locked_machine_stats.write().await;
@@ -956,7 +1055,7 @@ mod tests {
 
     #[test]
     fn test_oneshot_cache_hits_while_reload_count_holds() {
-        let mut cache = OneshotTypeCache::default();
+        let mut cache = ReloadCache::<bool>::default();
         assert!(cache.take("host", Some(9)).is_empty());
         cache.store("host".to_string(), Some(9), types(&[("a.service", true)]));
         assert_eq!(cache.take("host", Some(9)), types(&[("a.service", true)]));
@@ -967,7 +1066,7 @@ mod tests {
         // A daemon-reload bumps the count, a daemon-reexec resets it to 0:
         // going backwards has to invalidate just the same.
         for next in [10, 0] {
-            let mut cache = OneshotTypeCache::default();
+            let mut cache = ReloadCache::<bool>::default();
             cache.store("host".to_string(), Some(9), types(&[("a.service", true)]));
             assert!(cache.take("host", Some(next)).is_empty());
         }
@@ -976,7 +1075,7 @@ mod tests {
     #[test]
     fn test_oneshot_cache_needs_a_reload_count() {
         // Nothing could invalidate the entry, so it must never be served.
-        let mut cache = OneshotTypeCache::default();
+        let mut cache = ReloadCache::<bool>::default();
         cache.store("host".to_string(), None, types(&[("a.service", true)]));
         assert!(cache.take("host", None).is_empty());
         cache.store("host".to_string(), Some(1), types(&[("a.service", true)]));
@@ -985,7 +1084,7 @@ mod tests {
 
     #[test]
     fn test_oneshot_cache_keeps_endpoints_apart() {
-        let mut cache = OneshotTypeCache::default();
+        let mut cache = ReloadCache::<bool>::default();
         cache.store("host".to_string(), Some(1), types(&[("a.service", true)]));
         assert!(cache.take("machine", Some(1)).is_empty());
         assert!(!cache.take("host", Some(1)).is_empty());
@@ -993,11 +1092,116 @@ mod tests {
 
     #[test]
     fn test_oneshot_cache_stays_bounded() {
-        let mut cache = OneshotTypeCache::default();
+        let mut cache = ReloadCache::<bool>::default();
         for leader in 0..MAX_CACHED_ENDPOINTS * 3 {
             cache.store(format!("machine {leader}"), Some(1), HashMap::new());
             assert!(cache.endpoints.len() <= MAX_CACHED_ENDPOINTS);
         }
+    }
+
+    fn changes(entries: &[(&str, u64)]) -> HashMap<String, u64> {
+        entries
+            .iter()
+            .map(|(name, usec)| (name.to_string(), *usec))
+            .collect()
+    }
+
+    fn timer_stats(last_trigger_usec: u64) -> TimerStats {
+        TimerStats {
+            last_trigger_usec,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_cached_timer_current_while_neither_unit_changes_state() {
+        let before = changes(&[("a.timer", 100), ("a.service", 90), ("b.service", 5)]);
+        let entry = CachedTimer::new("a.timer", "a.service", &before, timer_stats(100))
+            .expect("both timestamps present");
+        assert!(entry.is_current("a.timer", &before));
+        // Another unit moving is none of this timer's business.
+        let other = changes(&[("a.timer", 100), ("a.service", 90), ("b.service", 6)]);
+        assert!(entry.is_current("a.timer", &other));
+    }
+
+    #[test]
+    fn test_cached_timer_stale_once_either_unit_changes_state() {
+        let before = changes(&[("a.timer", 100), ("a.service", 90)]);
+        let entry = CachedTimer::new("a.timer", "a.service", &before, timer_stats(100))
+            .expect("both timestamps present");
+        // The timer fired (or re-armed), the service was started by hand, or
+        // either fell out of the stream: all have to refetch.
+        for after in [
+            changes(&[("a.timer", 200), ("a.service", 90)]),
+            changes(&[("a.timer", 100), ("a.service", 150)]),
+            changes(&[("a.service", 90)]),
+            changes(&[("a.timer", 100)]),
+        ] {
+            assert!(!entry.is_current("a.timer", &after), "{after:?}");
+        }
+    }
+
+    #[test]
+    fn test_cached_timer_needs_both_timestamps() {
+        // Without a key nothing could ever invalidate the entry.
+        let only_timer = changes(&[("a.timer", 100)]);
+        assert!(CachedTimer::new("a.timer", "a.service", &only_timer, timer_stats(1)).is_none());
+        let only_service = changes(&[("a.service", 90)]);
+        assert!(CachedTimer::new("a.timer", "a.service", &only_service, timer_stats(1)).is_none());
+    }
+
+    #[test]
+    fn test_timer_cache_invalidated_by_reload() {
+        // A reload can change the timer's config without stamping either unit.
+        let state = changes(&[("a.timer", 100), ("a.service", 90)]);
+        let entry = CachedTimer::new("a.timer", "a.service", &state, timer_stats(100))
+            .expect("both timestamps present");
+        let mut cache = ReloadCache::<CachedTimer>::default();
+        cache.store(
+            "host".to_string(),
+            Some(3),
+            HashMap::from([("a.timer".to_string(), entry.clone())]),
+        );
+        assert!(cache.take("host", Some(4)).is_empty());
+        cache.store(
+            "host".to_string(),
+            Some(4),
+            HashMap::from([("a.timer".to_string(), entry.clone())]),
+        );
+        assert_eq!(cache.take("host", Some(4)).get("a.timer"), Some(&entry));
+    }
+
+    #[tokio::test]
+    async fn test_parse_metrics_collects_state_changes_regardless_of_gating() {
+        let metric = |object: &str, value: i64| ListOutput {
+            name: "io.systemd.Manager.StateChangeTimestamp".to_string(),
+            value: int_value(value),
+            object: Some(object.to_string()),
+            fields: None,
+        };
+        let shared: SharedMetrics = futures_util::future::ready(Ok(Arc::new(vec![
+            metric("a.timer", 100),
+            metric("a.service", 90),
+        ])))
+        .boxed()
+        .shared();
+        // They are cache keys, so turning off the time-in-state output must not
+        // turn off timer caching with it.
+        let mut config = default_units_config();
+        config.state_stats = false;
+        let discovery = parse_metrics(
+            &mut SystemdUnitStats::default(),
+            shared,
+            &config,
+            &HashSet::new(),
+        )
+        .await
+        .expect("parse");
+        assert_eq!(
+            discovery.state_changes,
+            changes(&[("a.timer", 100), ("a.service", 90)])
+        );
+        assert_eq!(discovery.timer_names, vec!["a.timer".to_string()]);
     }
 
     #[tokio::test]
