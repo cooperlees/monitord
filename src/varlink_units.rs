@@ -437,7 +437,7 @@ pub(crate) async fn collect_metrics(
 pub struct UnitDiscovery {
     /// Every timer unit, sorted.
     pub timer_names: Vec<String>,
-    /// `io.systemd.Manager.ReloadCount`, which invalidates every [`ReloadCache`].
+    /// `io.systemd.Manager.ReloadCount`, which invalidates every reload cache.
     pub reload_count: Option<u64>,
     /// Realtime `StateChangeTimestamp` of every unit in the stream, which says
     /// whether a cached timer is still current.
