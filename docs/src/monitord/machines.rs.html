@@ -246,8 +246,8 @@
 <a href=#246 id=246 data-nosnippet>246</a>        <span class="string">"unix:path=/proc/{}/root/run/dbus/system_bus_socket"</span>,
 <a href=#247 id=247 data-nosnippet>247</a>        leader_pid
 <a href=#248 id=248 data-nosnippet>248</a>    );
-<a href=#249 id=249 data-nosnippet>249</a>    <span class="kw">let </span>conn = zbus::connection::Builder::address(container_address.as_str())<span class="question-mark">?
-<a href=#250 id=250 data-nosnippet>250</a>        </span>.method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
+<a href=#249 id=249 data-nosnippet>249</a>    <span class="kw">let </span>conn = zbus::connection::Builder::address(container_address.as_str())
+<a href=#250 id=250 data-nosnippet>250</a>        .method_timeout(std::time::Duration::from_secs(config.monitord.dbus_timeout))
 <a href=#251 id=251 data-nosnippet>251</a>        .build()
 <a href=#252 id=252 data-nosnippet>252</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#253 id=253 data-nosnippet>253</a>
@@ -677,7 +677,7 @@
 <a href=#677 id=677 data-nosnippet>677</a><span class="attr">#[cfg(test)]
 <a href=#678 id=678 data-nosnippet>678</a></span><span class="kw">mod </span>tests {
 <a href=#679 id=679 data-nosnippet>679</a>    <span class="kw">use </span>std::collections::HashSet;
-<a href=#680 id=680 data-nosnippet>680</a>    <span class="kw">use </span>zbus::zvariant::OwnedObjectPath;
+<a href=#680 id=680 data-nosnippet>680</a>    <span class="kw">use </span>zbus::OwnedObjectPath;
 <a href=#681 id=681 data-nosnippet>681</a>
 <a href=#682 id=682 data-nosnippet>682</a>    <span class="kw">use super</span>::{decide_cache_action, CacheAction};
 <a href=#683 id=683 data-nosnippet>683</a>

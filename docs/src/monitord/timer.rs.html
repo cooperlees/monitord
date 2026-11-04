@@ -55,8 +55,8 @@
 <a href=#55 id=55 data-nosnippet>55</a>
 <a href=#56 id=56 data-nosnippet>56</a>    <span class="kw">let </span>pt = <span class="kw">crate</span>::dbus::zbus_timer::TimerProxy::builder(connection)
 <a href=#57 id=57 data-nosnippet>57</a>        .cache_properties(zbus::proxy::CacheProperties::No)
-<a href=#58 id=58 data-nosnippet>58</a>        .path(unit.unit_object_path.clone())<span class="question-mark">?
-<a href=#59 id=59 data-nosnippet>59</a>        </span>.build()
+<a href=#58 id=58 data-nosnippet>58</a>        .path(unit.unit_object_path.clone())
+<a href=#59 id=59 data-nosnippet>59</a>        .build()
 <a href=#60 id=60 data-nosnippet>60</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#61 id=61 data-nosnippet>61</a>    <span class="comment">// Get service unit name to check when it last ran to ensure
 <a href=#62 id=62 data-nosnippet>62</a>    // we are triggers the configured service with times set
@@ -75,8 +75,8 @@
 <a href=#75 id=75 data-nosnippet>75</a>        <span class="comment">// Create a UnitProxy with the unit path to async get the two counters we want
 <a href=#76 id=76 data-nosnippet>76</a>        </span><span class="kw">let </span>up = <span class="kw">crate</span>::dbus::zbus_unit::UnitProxy::builder(connection)
 <a href=#77 id=77 data-nosnippet>77</a>            .cache_properties(zbus::proxy::CacheProperties::No)
-<a href=#78 id=78 data-nosnippet>78</a>            .path(service_unit_path)<span class="question-mark">?
-<a href=#79 id=79 data-nosnippet>79</a>            </span>.build()
+<a href=#78 id=78 data-nosnippet>78</a>            .path(service_unit_path)
+<a href=#79 id=79 data-nosnippet>79</a>            .build()
 <a href=#80 id=80 data-nosnippet>80</a>            .<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#81 id=81 data-nosnippet>81</a>
 <a href=#82 id=82 data-nosnippet>82</a>        (
