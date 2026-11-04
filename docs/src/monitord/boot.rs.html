@@ -13,7 +13,7 @@
 <a href=#13 id=13 data-nosnippet>13</a><span class="kw">use </span>anyhow::{anyhow, <span class="prelude-ty">Result</span>};
 <a href=#14 id=14 data-nosnippet>14</a><span class="kw">use </span>tokio::sync::RwLock;
 <a href=#15 id=15 data-nosnippet>15</a><span class="kw">use </span>tracing::debug;
-<a href=#16 id=16 data-nosnippet>16</a><span class="kw">use </span>zbus::zvariant::ObjectPath;
+<a href=#16 id=16 data-nosnippet>16</a><span class="kw">use </span>zbus::ObjectPath;
 <a href=#17 id=17 data-nosnippet>17</a>
 <a href=#18 id=18 data-nosnippet>18</a><span class="kw">use </span><span class="kw">crate</span>::config::Config;
 <a href=#19 id=19 data-nosnippet>19</a><span class="kw">use </span><span class="kw">crate</span>::dbus::zbus_systemd::ManagerProxy;
@@ -193,8 +193,8 @@
 <a href=#193 id=193 data-nosnippet>193</a>) -&gt; <span class="prelude-ty">Result</span>&lt;f64&gt; {
 <a href=#194 id=194 data-nosnippet>194</a>    <span class="kw">let </span>unit_proxy = UnitProxy::builder(connection)
 <a href=#195 id=195 data-nosnippet>195</a>        .cache_properties(zbus::proxy::CacheProperties::No)
-<a href=#196 id=196 data-nosnippet>196</a>        .path(unit_path)<span class="question-mark">?
-<a href=#197 id=197 data-nosnippet>197</a>        </span>.build()
+<a href=#196 id=196 data-nosnippet>196</a>        .path(unit_path)
+<a href=#197 id=197 data-nosnippet>197</a>        .build()
 <a href=#198 id=198 data-nosnippet>198</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#199 id=199 data-nosnippet>199</a>
 <a href=#200 id=200 data-nosnippet>200</a>    <span class="kw">let </span>inactive_exit = unit_proxy.inactive_exit_timestamp().<span class="kw">await</span><span class="question-mark">?</span>;

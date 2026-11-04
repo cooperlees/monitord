@@ -19,8 +19,8 @@
 <a href=#19 id=19 data-nosnippet>19</a><span class="kw">use </span>tracing::error;
 <a href=#20 id=20 data-nosnippet>20</a><span class="kw">use </span>tracing::warn;
 <a href=#21 id=21 data-nosnippet>21</a><span class="kw">use </span>tracing::Instrument;
-<a href=#22 id=22 data-nosnippet>22</a><span class="kw">use </span>zbus::zvariant::ObjectPath;
-<a href=#23 id=23 data-nosnippet>23</a><span class="kw">use </span>zbus::zvariant::OwnedObjectPath;
+<a href=#22 id=22 data-nosnippet>22</a><span class="kw">use </span>zbus::ObjectPath;
+<a href=#23 id=23 data-nosnippet>23</a><span class="kw">use </span>zbus::OwnedObjectPath;
 <a href=#24 id=24 data-nosnippet>24</a>
 <a href=#25 id=25 data-nosnippet>25</a><span class="attr">#[derive(Error, Debug)]
 <a href=#26 id=26 data-nosnippet>26</a></span><span class="kw">pub enum </span>MonitordUnitsError {
@@ -296,13 +296,13 @@
 <a href=#296 id=296 data-nosnippet>296</a>
 <a href=#297 id=297 data-nosnippet>297</a>    <span class="kw">let </span>sp = <span class="kw">crate</span>::dbus::zbus_service::ServiceProxy::builder(connection)
 <a href=#298 id=298 data-nosnippet>298</a>        .cache_properties(zbus::proxy::CacheProperties::No)
-<a href=#299 id=299 data-nosnippet>299</a>        .path(object_path.clone())<span class="question-mark">?
-<a href=#300 id=300 data-nosnippet>300</a>        </span>.build()
+<a href=#299 id=299 data-nosnippet>299</a>        .path(object_path.clone())
+<a href=#300 id=300 data-nosnippet>300</a>        .build()
 <a href=#301 id=301 data-nosnippet>301</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#302 id=302 data-nosnippet>302</a>    <span class="kw">let </span>up = <span class="kw">crate</span>::dbus::zbus_unit::UnitProxy::builder(connection)
 <a href=#303 id=303 data-nosnippet>303</a>        .cache_properties(zbus::proxy::CacheProperties::No)
-<a href=#304 id=304 data-nosnippet>304</a>        .path(object_path.clone())<span class="question-mark">?
-<a href=#305 id=305 data-nosnippet>305</a>        </span>.build()
+<a href=#304 id=304 data-nosnippet>304</a>        .path(object_path.clone())
+<a href=#305 id=305 data-nosnippet>305</a>        .build()
 <a href=#306 id=306 data-nosnippet>306</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#307 id=307 data-nosnippet>307</a>
 <a href=#308 id=308 data-nosnippet>308</a>    <span class="comment">// The cgroup path gates the filesystem read; the main and control PIDs
@@ -460,8 +460,8 @@
 <a href=#460 id=460 data-nosnippet>460</a>        <span class="prelude-val">Some</span>(c) =&gt; {
 <a href=#461 id=461 data-nosnippet>461</a>            <span class="kw">let </span>up = <span class="kw">crate</span>::dbus::zbus_unit::UnitProxy::builder(c)
 <a href=#462 id=462 data-nosnippet>462</a>                .cache_properties(zbus::proxy::CacheProperties::No)
-<a href=#463 id=463 data-nosnippet>463</a>                .path(ObjectPath::from(unit.unit_object_path.clone()))<span class="question-mark">?
-<a href=#464 id=464 data-nosnippet>464</a>                </span>.build()
+<a href=#463 id=463 data-nosnippet>463</a>                .path(ObjectPath::from(unit.unit_object_path.clone()))
+<a href=#464 id=464 data-nosnippet>464</a>                .build()
 <a href=#465 id=465 data-nosnippet>465</a>                .<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#466 id=466 data-nosnippet>466</a>            <span class="kw">let </span>now: u64 = SystemTime::now().duration_since(UNIX_EPOCH)<span class="question-mark">?</span>.as_secs() * <span class="number">1_000_000</span>;
 <a href=#467 id=467 data-nosnippet>467</a>            <span class="kw">let </span>state_change_timestamp = <span class="kw">match </span>up.state_change_timestamp().<span class="kw">await </span>{
@@ -564,8 +564,8 @@
 <a href=#564 id=564 data-nosnippet>564</a>) -&gt; <span class="prelude-ty">Result</span>&lt;bool, MonitordUnitsError&gt; {
 <a href=#565 id=565 data-nosnippet>565</a>    <span class="kw">let </span>sp = <span class="kw">crate</span>::dbus::zbus_service::ServiceProxy::builder(connection)
 <a href=#566 id=566 data-nosnippet>566</a>        .cache_properties(zbus::proxy::CacheProperties::No)
-<a href=#567 id=567 data-nosnippet>567</a>        .path(ObjectPath::from(object_path.clone()))<span class="question-mark">?
-<a href=#568 id=568 data-nosnippet>568</a>        </span>.build()
+<a href=#567 id=567 data-nosnippet>567</a>        .path(ObjectPath::from(object_path.clone()))
+<a href=#568 id=568 data-nosnippet>568</a>        .build()
 <a href=#569 id=569 data-nosnippet>569</a>        .<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#570 id=570 data-nosnippet>570</a>    <span class="prelude-val">Ok</span>(sp.type_().<span class="kw">await</span><span class="question-mark">? </span>== <span class="string">"oneshot"</span>)
 <a href=#571 id=571 data-nosnippet>571</a>}
