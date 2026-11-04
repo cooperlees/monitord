@@ -323,7 +323,7 @@ pub(crate) async fn dbus_connection(
     dbus_timeout: u64,
 ) -> Result<zbus::Connection, MonitordError> {
     cell.get_or_try_init(|| async {
-        zbus::connection::Builder::system()?
+        zbus::connection::Builder::system()
             .method_timeout(std::time::Duration::from_secs(dbus_timeout))
             .build()
             .await

@@ -55,7 +55,7 @@ pub async fn collect_timer_stats(
 
     let pt = crate::dbus::zbus_timer::TimerProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
-        .path(unit.unit_object_path.clone())?
+        .path(unit.unit_object_path.clone())
         .build()
         .await?;
     // Get service unit name to check when it last ran to ensure
@@ -75,7 +75,7 @@ pub async fn collect_timer_stats(
         // Create a UnitProxy with the unit path to async get the two counters we want
         let up = crate::dbus::zbus_unit::UnitProxy::builder(connection)
             .cache_properties(zbus::proxy::CacheProperties::No)
-            .path(service_unit_path)?
+            .path(service_unit_path)
             .build()
             .await?;
 

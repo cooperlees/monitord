@@ -19,8 +19,8 @@ use tracing::debug;
 use tracing::error;
 use tracing::warn;
 use tracing::Instrument;
-use zbus::zvariant::ObjectPath;
-use zbus::zvariant::OwnedObjectPath;
+use zbus::ObjectPath;
+use zbus::OwnedObjectPath;
 
 #[derive(Error, Debug)]
 pub enum MonitordUnitsError {
@@ -296,12 +296,12 @@ async fn parse_service(
 
     let sp = crate::dbus::zbus_service::ServiceProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
-        .path(object_path.clone())?
+        .path(object_path.clone())
         .build()
         .await?;
     let up = crate::dbus::zbus_unit::UnitProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
-        .path(object_path.clone())?
+        .path(object_path.clone())
         .build()
         .await?;
 
@@ -460,7 +460,7 @@ async fn get_time_in_state(
         Some(c) => {
             let up = crate::dbus::zbus_unit::UnitProxy::builder(c)
                 .cache_properties(zbus::proxy::CacheProperties::No)
-                .path(ObjectPath::from(unit.unit_object_path.clone()))?
+                .path(ObjectPath::from(unit.unit_object_path.clone()))
                 .build()
                 .await?;
             let now: u64 = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() * 1_000_000;
@@ -564,7 +564,7 @@ async fn is_oneshot_service_at_path(
 ) -> Result<bool, MonitordUnitsError> {
     let sp = crate::dbus::zbus_service::ServiceProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
-        .path(ObjectPath::from(object_path.clone()))?
+        .path(ObjectPath::from(object_path.clone()))
         .build()
         .await?;
     Ok(sp.type_().await? == "oneshot")

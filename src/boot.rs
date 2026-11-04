@@ -13,7 +13,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use tokio::sync::RwLock;
 use tracing::debug;
-use zbus::zvariant::ObjectPath;
+use zbus::ObjectPath;
 
 use crate::config::Config;
 use crate::dbus::zbus_systemd::ManagerProxy;
@@ -193,7 +193,7 @@ async fn get_unit_activation_time(
 ) -> Result<f64> {
     let unit_proxy = UnitProxy::builder(connection)
         .cache_properties(zbus::proxy::CacheProperties::No)
-        .path(unit_path)?
+        .path(unit_path)
         .build()
         .await?;
 
