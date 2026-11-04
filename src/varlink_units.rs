@@ -493,6 +493,18 @@ fn lock_cache<V>(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// The `ReloadCount` to key the timer cache on, or None to skip it.
+///
+/// PID 1 does not serialize `ReloadCount`, so a `daemon-reexec` resets it to 0.
+/// From a nonzero count that is a change like any reload, but from 0 it is
+/// not, and a reexec keeps every unit's StateChangeTimestamp while timers
+/// re-enter waiting with a freshly drawn `RandomizedDelaySec`. A count of 0
+/// therefore can't tell us a cached deadline is still right. Hosts leave 0 at
+/// their first reload, so this costs the cache little in practice.
+fn timer_cache_reload_count(reload_count: Option<u64>) -> Option<u64> {
+    reload_count.filter(|&count| count != 0)
+}
+
 impl<V> ReloadCache<V> {
     /// Hand over what is still valid for `endpoint`, leaving nothing behind:
     /// `store` puts back the set this cycle actually used.
@@ -505,11 +517,11 @@ impl<V> ReloadCache<V> {
         }
     }
 
-    /// Without a `ReloadCount` nothing could ever invalidate the entry, so it
-    /// is not kept.
+    /// Without a usable `ReloadCount` nothing could ever invalidate the entry,
+    /// so it is not kept.
     fn store(&mut self, endpoint: String, reload_count: Option<u64>, entries: HashMap<String, V>) {
         let Some(reload_count) = reload_count else {
-            debug!("No ReloadCount metric, not caching unit details for {endpoint}");
+            debug!("No usable ReloadCount, not caching unit details for {endpoint}");
             return;
         };
         if self.endpoints.len() >= MAX_CACHED_ENDPOINTS {
@@ -867,7 +879,8 @@ pub async fn apply_unit_details(
     // change timestamps. That unit is often already in [services], which is
     // where the lookup cache earns its place. A timer whose two units have not
     // changed state since last cycle skips both lookups (see `CachedTimer`).
-    let known_timers = lock_cache(&TIMER_STATS_CACHE).take(&cache_key, discovery.reload_count);
+    let timer_reload_count = timer_cache_reload_count(discovery.reload_count);
+    let known_timers = lock_cache(&TIMER_STATS_CACHE).take(&cache_key, timer_reload_count);
     let mut cached_timers: HashMap<String, CachedTimer> = HashMap::new();
     let mut timer_stats: HashMap<String, TimerStats> = HashMap::new();
     let mut timers_from_cache = 0;
@@ -912,7 +925,7 @@ pub async fn apply_unit_details(
         }
         timer_stats.insert(name, stats);
     }
-    lock_cache(&TIMER_STATS_CACHE).store(cache_key, discovery.reload_count, cached_timers);
+    lock_cache(&TIMER_STATS_CACHE).store(cache_key, timer_reload_count, cached_timers);
 
     let fetch_elapsed_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
     debug!(
@@ -1169,6 +1182,26 @@ mod tests {
             HashMap::from([("a.timer".to_string(), entry.clone())]),
         );
         assert_eq!(cache.take("host", Some(4)).get("a.timer"), Some(&entry));
+    }
+
+    #[test]
+    fn test_timer_cache_skipped_at_reload_count_zero() {
+        // A daemon-reexec from ReloadCount 0 leaves it at 0 and keeps both
+        // StateChangeTimestamps, yet redraws RandomizedDelaySec.
+        let state = changes(&[("a.timer", 100), ("a.service", 90)]);
+        let entry = CachedTimer::new("a.timer", "a.service", &state, timer_stats(100))
+            .expect("both timestamps present");
+        let mut cache = ReloadCache::<CachedTimer>::default();
+        cache.store(
+            "host".to_string(),
+            timer_cache_reload_count(Some(0)),
+            HashMap::from([("a.timer".to_string(), entry.clone())]),
+        );
+        assert!(cache
+            .take("host", timer_cache_reload_count(Some(0)))
+            .is_empty());
+        assert_eq!(timer_cache_reload_count(Some(1)), Some(1));
+        assert_eq!(timer_cache_reload_count(None), None);
     }
 
     #[tokio::test]
