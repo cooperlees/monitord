@@ -43,6 +43,7 @@ pub mod logging;
 pub mod machines;
 pub mod networkd;
 pub mod pid1;
+pub mod report;
 pub mod system;
 pub mod timer;
 pub mod unit_constants;
@@ -370,6 +371,19 @@ pub async fn stat_collector(
     let dbus_timeout = config.monitord.dbus_timeout;
     let mut join_set: tokio::task::JoinSet<TimedCollectorOutput> = tokio::task::JoinSet::new();
     let mut had_error;
+
+    // Counters for the systemd-report server. Kept even when the server is
+    // off: recording a run costs a few integer bumps.
+    let report_state = Arc::new(std::sync::Mutex::new(report::ReportState::default()));
+    if config.monitord.daemon && config.report.enabled {
+        if let Err(e) = report::spawn_server(
+            report::REPORT_DIR.into(),
+            locked_monitord_stats.clone(),
+            report_state.clone(),
+        ) {
+            error!("Unable to start the systemd-report server thread: {:?}", e);
+        }
+    }
 
     loop {
         let collect_start_time = Instant::now();
@@ -753,6 +767,10 @@ pub async fn stat_collector(
             monitord_stats.verify_stats = machine_stats.verify_stats.clone();
             monitord_stats.varlink_usage = machine_stats.varlink_usage.clone();
             set_stat_collection_run_time(&mut monitord_stats, elapsed_runtime);
+            report_state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .record_run(&timings, had_error);
             monitord_stats.collector_timings = timings;
         }
 

@@ -425,5 +425,70 @@ class ShippedUnitPropertiesTest(unittest.TestCase):
             self.assertFalse(any(v.startswith(key) for v in values), key)
 
 
+class ReportSocketTest(unittest.TestCase):
+    SERVICE = """\
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/monitord -c /etc/monitord.conf
+User=monitord
+Group=monitord
+ProtectSystem=strict
+"""
+
+    def test_report_conf_switches_daemon_and_report_on(self) -> None:
+        conf = vit.build_report_conf(
+            "[monitord]\ndaemon = false\ndaemon_stats_refresh_secs = 60\n"
+            "[report]\nenabled = false\n"
+        )
+        self.assertIn("daemon = true", conf)
+        self.assertIn("daemon_stats_refresh_secs = 2", conf)
+        self.assertIn("[report]\nenabled = true", conf)
+
+    def test_report_conf_missing_section_fails_loudly(self) -> None:
+        with self.assertRaises(SystemExit):
+            vit.build_report_conf("[monitord]\ndaemon = false\ndaemon_stats_refresh_secs = 60\n")
+
+    def test_report_service_keeps_hardening(self) -> None:
+        unit = vit.build_report_service(self.SERVICE, "/ctarget/monitord", "/run/c.conf", "ci")
+        self.assertIn("Type=exec", unit)
+        self.assertIn("ExecStart=/ctarget/monitord -c /run/c.conf -l debug", unit)
+        self.assertIn("User=ci\nGroup=ci", unit)
+        self.assertIn("ProtectSystem=strict", unit)
+
+    def test_report_service_drift_fails_loudly(self) -> None:
+        with self.assertRaises(SystemExit):
+            vit.build_report_service(
+                self.SERVICE.replace("Type=oneshot", "Type=simple"), "b", "c", "u"
+            )
+
+    def test_parse_json_seq(self) -> None:
+        records = vit.parse_json_seq('\x1e{"name": "a"}\n\x1e{"name": "b"}\n')
+        self.assertEqual(records, [{"name": "a"}, {"name": "b"}])
+
+    def healthy_metrics(self) -> list[dict]:
+        metrics = [{"name": name, "value": 0} for name in vit.REPORT_FAMILIES]
+        for metric in metrics:
+            if metric["name"] in ("io.monitord.healthy", "io.monitord.collectorSuccess"):
+                metric["value"] = 1
+        return metrics
+
+    def test_healthy_reply_passes(self) -> None:
+        self.assertEqual(vit.check_report_metrics(self.healthy_metrics()), [])
+
+    def test_unhealthy_and_missing_reported(self) -> None:
+        metrics = [
+            m for m in self.healthy_metrics() if m["name"] != "io.monitord.varlinkUsage"
+        ]
+        for metric in metrics:
+            if metric["name"] == "io.monitord.healthy":
+                metric["value"] = 0
+        metrics.append(
+            {"name": "io.monitord.collectorSuccess", "object": "units", "value": 0}
+        )
+        metrics.append({"name": "monitord.stray", "value": 1})
+        problems = vit.check_report_metrics(metrics)
+        self.assertEqual(len(problems), 4, problems)
+
+
 if __name__ == "__main__":
     unittest.main()

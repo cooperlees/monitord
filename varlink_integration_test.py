@@ -306,6 +306,7 @@ REQUIRED_CONTAINER_TOOLS: dict[str, str] = {
     "useradd": "the unprivileged user of the capability matrix",
     "dnf": "installing the pinned fixture machine root",
     "cargo": "building monitord",
+    "varlinkctl": "querying monitord's systemd-report socket",
 }
 
 
@@ -1083,6 +1084,7 @@ def shipped_unit_properties(repo: Path) -> list[str]:
 
 CAPS_USER = "monitord-ci"
 CAPS_CONF = "/run/monitord-caps-ci.conf"
+REPORT_USER = "monitord-report-ci"
 
 
 def run_monitord_as_user(
@@ -1242,6 +1244,192 @@ def assert_connector_caching(container: str) -> None:
     print("PASS: no connector outlives monitord")
 
 
+REPORT_SOCKET = "/run/systemd/report/io.monitord"
+# /run, not /tmp: the shipped unit has PrivateTmp=yes.
+REPORT_CONF = "/run/monitord-report-ci.conf"
+REPORT_UNIT_DIR = "/run/systemd/system"
+# Families present once a collection run has finished.
+REPORT_FAMILIES = {
+    "io.monitord.collectionErrorsTotal",
+    "io.monitord.collectionRunTimeMs",
+    "io.monitord.collectionRunsTotal",
+    "io.monitord.collectorElapsedMs",
+    "io.monitord.collectorFailuresTotal",
+    "io.monitord.collectorSuccess",
+    "io.monitord.healthy",
+    "io.monitord.lastCollectionTimestamp",
+    "io.monitord.varlinkUsage",
+    "io.monitord.version",
+}
+
+
+def replace_once(text: str, old: str, new: str) -> str:
+    """`str.replace` that fails loudly unless `old` occurs exactly once."""
+    if text.count(old) != 1:
+        raise SystemExit(f"FAIL: expected exactly one {old!r} to replace")
+    return text.replace(old, new)
+
+
+def build_report_conf(varlink_conf: str) -> str:
+    """The varlink CI config, switched to daemon mode with [report] on.
+
+    A short refresh so several runs land within the test's polling window.
+    """
+    conf = replace_once(varlink_conf, "daemon = false", "daemon = true")
+    conf = replace_once(
+        conf, "daemon_stats_refresh_secs = 60", "daemon_stats_refresh_secs = 2"
+    )
+    return replace_once(conf, "[report]\nenabled = false", "[report]\nenabled = true")
+
+
+def build_report_service(service_text: str, binary: str, conf: str, user: str) -> str:
+    """The shipped monitord.service with the README's daemon-mode drop-in applied.
+
+    Kept as the shipped file (hardening included) so the test serves the
+    socket under the real deployment shape: only ExecStart, the user, and
+    Type=oneshot -> Type=exec (the documented drop-in) change.
+    """
+    text = replace_once(service_text, "Type=oneshot", "Type=exec")
+    text = replace_once(
+        text,
+        "ExecStart=/usr/bin/monitord -c /etc/monitord.conf",
+        f"ExecStart={binary} -c {conf} -l debug",
+    )
+    text = replace_once(text, "User=monitord", f"User={user}")
+    return replace_once(text, "Group=monitord", f"Group={user}")
+
+
+def parse_json_seq(text: str) -> list[dict]:
+    """Parse `varlinkctl --more -j` output: RS-separated JSON records."""
+    return [
+        json.loads(record)
+        for record in text.replace("\x1e", "\n").splitlines()
+        if record.strip()
+    ]
+
+
+def check_report_metrics(metrics: list[dict]) -> list[str]:
+    """Problems with an io.monitord List reply after a clean run."""
+    problems = []
+    names = {m.get("name") for m in metrics}
+    missing = REPORT_FAMILIES - names
+    if missing:
+        problems.append(f"missing families {sorted(missing)}")
+    stray = sorted(n for n in names if not str(n).startswith("io.monitord."))
+    if stray:
+        problems.append(f"names systemd-report would drop: {stray}")
+    healthy = [m.get("value") for m in metrics if m.get("name") == "io.monitord.healthy"]
+    if healthy != [1]:
+        problems.append(f"io.monitord.healthy is {healthy}, expected [1]")
+    failed = sorted(
+        m.get("object")
+        for m in metrics
+        if m.get("name") == "io.monitord.collectorSuccess" and m.get("value") != 1
+    )
+    if failed:
+        problems.append(f"collectors not successful: {failed}")
+    return problems
+
+
+def assert_report_socket(container: str, repo: Path) -> None:
+    step("Asserting systemd-report sees monitord (monitord-report.socket)")
+    # The README's recommended deployment: the shipped socket unit, plus the
+    # shipped service switched to daemon mode, run as an unprivileged user
+    # that could not bind in /run/systemd/report itself.
+    # Ignores failure: the user survives from an earlier run on a kept container.
+    subprocess.run(
+        ["docker", "exec", container, "useradd", "--system", "--no-create-home", REPORT_USER],
+        capture_output=True,
+    )
+    write_container_file(
+        container,
+        REPORT_CONF,
+        build_report_conf(docker_exec(container, "cat", VARLINK_CONF)),
+    )
+    write_container_file(
+        container,
+        f"{REPORT_UNIT_DIR}/monitord.service",
+        build_report_service(
+            (repo / "monitord.service").read_text(),
+            f"{CONTAINER_TARGET_DIR}/release/monitord",
+            REPORT_CONF,
+            REPORT_USER,
+        ),
+    )
+    write_container_file(
+        container,
+        f"{REPORT_UNIT_DIR}/monitord-report.socket",
+        (repo / "monitord-report.socket").read_text(),
+    )
+    docker_exec(container, "systemctl", "daemon-reload")
+    docker_exec(container, "systemctl", "start", "monitord-report.socket")
+    try:
+        mode = docker_exec(container, "stat", "-c", "%a %F", REPORT_SOCKET).strip()
+        if mode != "666 socket":
+            raise SystemExit(f"FAIL: {REPORT_SOCKET} is {mode!r}, expected '666 socket'")
+
+        # The first call activates monitord.service; healthy turns 1 once a
+        # collection run finishes, so poll for it.
+        problems: list[str] = []
+        for poll in range(1, 30):
+            listed = parse_json_seq(
+                docker_exec(
+                    container, "varlinkctl", "call", "--more", "-j",
+                    REPORT_SOCKET, "io.systemd.Metrics.List", "{}",
+                )
+            )
+            problems = check_report_metrics(listed)
+            if not problems:
+                break
+            time.sleep(2)
+        else:
+            journal = docker_exec(
+                container, "journalctl", "-u", "monitord.service", "--no-pager", "-n", "50"
+            )
+            raise SystemExit(
+                f"FAIL: io.monitord metrics never became healthy: {problems}\n{journal}"
+            )
+        print(f"PASS: io.monitord List healthy after {poll} polls ({len(listed)} metrics)")
+
+        described = parse_json_seq(
+            docker_exec(
+                container, "varlinkctl", "call", "--more", "-j",
+                REPORT_SOCKET, "io.systemd.Metrics.Describe", "{}",
+            )
+        )
+        if {d.get("name") for d in described} != REPORT_FAMILIES:
+            raise SystemExit(f"FAIL: Describe families differ: {described}")
+        print(f"PASS: io.monitord Describe lists {len(described)} families")
+
+        report_bin = docker_exec(
+            container, "sh", "-c",
+            "command -v systemd-report || ls /usr/lib/systemd/systemd-report 2>/dev/null || true",
+        ).strip()
+        if report_bin:
+            output = docker_exec(
+                container, report_bin, "metrics", "io.monitord", "--json=short"
+            )
+            seen = {m.get("name") for m in parse_json_seq(output)}
+            if not REPORT_FAMILIES <= seen:
+                raise SystemExit(
+                    f"FAIL: {report_bin} metrics io.monitord is missing "
+                    f"{sorted(REPORT_FAMILIES - seen)}"
+                )
+            print(f"PASS: {report_bin} metrics io.monitord returns every family")
+        else:
+            print("SKIP: no systemd-report binary in the image; varlinkctl checks only")
+    finally:
+        docker_exec(
+            container, "systemctl", "stop", "monitord-report.socket", "monitord.service"
+        )
+    # RemoveOnStop=yes must take only our socket, not systemd's directory.
+    gone = subprocess.run(["docker", "exec", container, "test", "-e", REPORT_SOCKET])
+    if gone.returncode == 0:
+        raise SystemExit(f"FAIL: {REPORT_SOCKET} left behind after stop")
+    docker_exec(container, "test", "-S", METRICS_SOCKET)
+    print("PASS: stopping removes io.monitord and leaves the other report sources")
+
+
 def comparable(stats: Stats) -> Stats:
     return {
         key: value
@@ -1383,6 +1571,7 @@ def main() -> None:
     assert_dead_bus_run(args.container)
     assert_capability_matrix(args.container, repo)
     assert_connector_caching(args.container)
+    assert_report_socket(args.container, repo)
     print(
         f"\nContainer {args.container} left running; --fresh rebuilds the image "
         "without the cache and recreates it."
