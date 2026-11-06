@@ -354,7 +354,10 @@ does not start with the socket's name. monitord gets the socket in one of two wa
   Then run `systemctl enable --now monitord-report.socket monitord.service`.
 - **Self-bind.** Without a passed socket, monitord binds
   `/run/systemd/report/io.monitord` itself (mode 0666). That needs write
-  access to the directory, so in practice root. monitord never creates the
+  access to the directory, so in practice root. A socket file someone is
+  still serving (another monitord, or `monitord-report.socket`) is never
+  replaced: monitord logs a warning and keeps collecting. A stale one left by
+  a process that died is replaced. monitord never creates the
   directory: if it is missing, systemd is older than 260, so monitord logs a
   warning and keeps collecting.
 

@@ -16,8 +16,8 @@
 //! sources already publish.
 
 use std::collections::BTreeMap;
-use std::os::fd::{FromRawFd, OwnedFd};
-use std::os::unix::fs::PermissionsExt;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -263,6 +263,23 @@ impl MetricsService {
     pub fn new(stats: Arc<RwLock<MonitordStats>>, state: Arc<Mutex<ReportState>>) -> Self {
         Self { stats, state }
     }
+
+    /// Every `List` reply, built from one consistent run.
+    ///
+    /// Same lock order as the writer in `stat_collector`, which records a
+    /// run in `ReportState` while it holds the stats write lock: take the
+    /// stats read lock first, then copy the state under it. Copying the state
+    /// first would let a run finish in between, and the reply would mix the
+    /// old run's `healthy`/counters with the new run's timings.
+    async fn snapshot(&self) -> Vec<MetricReply> {
+        let stats = self.stats.read().await;
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        build_metrics(&stats, &state)
+    }
 }
 
 #[zlink::service(
@@ -282,12 +299,7 @@ impl MetricsService {
         if !more {
             return futures_util::future::Either::Left(expected_more());
         }
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        let metrics = build_metrics(&*self.stats.read().await, &state);
+        let metrics = self.snapshot().await;
         futures_util::future::Either::Right(into_stream(metrics))
     }
 
@@ -317,7 +329,11 @@ impl MetricsService {
 /// Follows `sd_listen_fds(3)`: only when `LISTEN_PID` is our pid, using the
 /// first fd. The env vars are then cleared, and the fd is set close-on-exec
 /// so the machine helpers monitord re-execs don't inherit it.
-fn take_activation_fd() -> Option<OwnedFd> {
+///
+/// Call it before starting anything that may spawn a process, as
+/// [`spawn_server`] does: close-on-exec only protects later spawns, and a
+/// helper started earlier keeps its copy of the listener.
+pub fn take_activation_fd() -> Option<OwnedFd> {
     let pid = std::env::var("LISTEN_PID").ok()?.parse::<u32>().ok()?;
     if pid != std::process::id() {
         return None;
@@ -334,19 +350,67 @@ fn take_activation_fd() -> Option<OwnedFd> {
     }
     // SAFETY: systemd hands this fd to us and nothing else in monitord
     // uses it; taking ownership once is how sd_listen_fds consumers work.
-    unsafe {
-        libc::fcntl(SD_LISTEN_FDS_START, libc::F_SETFD, libc::FD_CLOEXEC);
-        Some(OwnedFd::from_raw_fd(SD_LISTEN_FDS_START))
+    let fd = unsafe { OwnedFd::from_raw_fd(SD_LISTEN_FDS_START) };
+    if unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) } != 0 {
+        warn!(
+            "Unable to mark the socket-activated fd close-on-exec: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+    Some(fd)
+}
+
+/// Bind `path`, replacing a socket file only if nobody is serving on it.
+///
+/// Binding first means a live listener's file is never unlinked: only on
+/// `AddrInUse` is the existing file probed. A refused connection means it
+/// is stale (its owner died without removing it) and it is replaced; a
+/// connection that succeeds means another monitord, or
+/// `monitord-report.socket`, is serving there and this one backs off.
+/// Anything that isn't a socket is left alone.
+fn bind_unless_served(path: &Path) -> anyhow::Result<zlink::tokio::unix::Listener> {
+    match zlink::tokio::unix::bind(path) {
+        Ok(listener) => return Ok(listener),
+        Err(zlink::Error::Io(e)) if e.kind() == std::io::ErrorKind::AddrInUse => {}
+        Err(e) => return Err(e.into()),
+    }
+    let file_type = std::fs::symlink_metadata(path)?.file_type();
+    if !file_type.is_socket() {
+        anyhow::bail!(
+            "{} exists and is not a socket; not replacing it",
+            path.display()
+        );
+    }
+    match std::os::unix::net::UnixStream::connect(path) {
+        Ok(_) => anyhow::bail!(
+            "{} is already being served (another monitord or monitord-report.socket)",
+            path.display()
+        ),
+        Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+            debug!("Replacing stale {}", path.display());
+            std::fs::remove_file(path)?;
+            Ok(zlink::tokio::unix::bind(path)?)
+        }
+        Err(e) => Err(anyhow::anyhow!(
+            "Unable to tell whether {} is in use: {e}",
+            path.display()
+        )),
     }
 }
 
-/// Listener for the report server: the socket-activated fd if systemd
-/// passed one, otherwise a socket monitord binds in `dir` itself.
+/// Listener for the report server: `activation_fd` (from
+/// [`take_activation_fd`]) if systemd passed one, otherwise a socket
+/// monitord binds in `dir` itself.
 ///
-/// `dir` is never created: a missing `/run/systemd/report` means systemd
-/// predates the report framework, and the directory belongs to systemd.
-pub fn listener(dir: &Path) -> anyhow::Result<zlink::tokio::unix::Listener> {
-    if let Some(fd) = take_activation_fd() {
+/// Must run inside the runtime that will serve it, as the listener
+/// registers with that runtime's reactor. `dir` is never created: a
+/// missing `/run/systemd/report` means systemd predates the report
+/// framework, and the directory belongs to systemd.
+pub fn listener(
+    dir: &Path,
+    activation_fd: Option<OwnedFd>,
+) -> anyhow::Result<zlink::tokio::unix::Listener> {
+    if let Some(fd) = activation_fd {
         info!("Serving {REPORT_SOCKET_NAME} metrics on the socket-activated fd");
         return Ok(zlink::tokio::unix::Listener::try_from(fd)?);
     }
@@ -357,12 +421,7 @@ pub fn listener(dir: &Path) -> anyhow::Result<zlink::tokio::unix::Listener> {
         );
     }
     let path = dir.join(REPORT_SOCKET_NAME);
-    match std::fs::remove_file(&path) {
-        Ok(()) => debug!("Removed stale {}", path.display()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e.into()),
-    }
-    let listener = zlink::tokio::unix::bind(&path)?;
+    let listener = bind_unless_served(&path)?;
     // Read-only health data, so let unprivileged systemd-report read it,
     // as systemd's own report sockets do (SocketMode=0666).
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666))?;
@@ -391,11 +450,16 @@ pub async fn serve(
 /// Public so library users with their own collection loop (e.g.
 /// monitord-exporter) can serve their stats and state too. A failure is
 /// logged and ends only the server thread, never collection.
+///
+/// The socket-activated fd is claimed and marked close-on-exec here, on
+/// the calling thread before this returns, so no process spawned after the
+/// call can inherit it. Call it before starting collection.
 pub fn spawn_server(
     dir: PathBuf,
     stats: Arc<RwLock<MonitordStats>>,
     state: Arc<Mutex<ReportState>>,
 ) -> std::io::Result<std::thread::JoinHandle<()>> {
+    let activation_fd = take_activation_fd();
     std::thread::Builder::new()
         .name("monitord-report".to_string())
         .spawn(move || {
@@ -412,7 +476,7 @@ pub fn spawn_server(
             runtime.block_on(async move {
                 // The listener registers with the reactor, so it has to be
                 // made inside this runtime rather than the caller's.
-                let listener = match listener(&dir) {
+                let listener = match listener(&dir, activation_fd) {
                     Ok(listener) => listener,
                     Err(e) => {
                         warn!("Not serving systemd-report metrics: {e:?}");
@@ -578,9 +642,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_snapshot_never_mixes_two_runs() {
+        // A clean run is on record when a List arrives mid-collection...
+        let stats = Arc::new(RwLock::new(MonitordStats {
+            collector_timings: vec![timing("units", true)],
+            ..Default::default()
+        }));
+        let state = Arc::new(Mutex::new(ReportState::default()));
+        state
+            .lock()
+            .unwrap()
+            .record_run(&[timing("units", true)], false);
+        let service = MetricsService::new(stats.clone(), state.clone());
+
+        // ...while the writer holds the stats lock to publish a failed run.
+        let mut writer = stats.write().await;
+        let mut reply = std::pin::pin!(service.snapshot());
+        assert!(futures_util::poll!(reply.as_mut()).is_pending());
+        writer.collector_timings = vec![timing("units", false)];
+        state
+            .lock()
+            .unwrap()
+            .record_run(&writer.collector_timings, true);
+        drop(writer);
+
+        // The reply must describe the failed run throughout, not the old
+        // run's healthy=1 next to the new run's failed collector.
+        let metrics = reply.await;
+        let value = |name: &str| {
+            metrics
+                .iter()
+                .find(|m| m.name == name)
+                .unwrap_or_else(|| panic!("missing {name}"))
+                .value
+                .0
+                .clone()
+        };
+        assert_eq!(value("io.monitord.healthy"), serde_json::json!(0));
+        assert_eq!(value("io.monitord.collectorSuccess"), serde_json::json!(0));
+        assert_eq!(
+            value("io.monitord.collectionErrorsTotal"),
+            serde_json::json!(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_self_bind_refuses_a_served_socket() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let _serving = listener(dir.path(), None).expect("first listener");
+        let err = listener(dir.path(), None).expect_err("second listener must back off");
+        assert!(err.to_string().contains("already being served"), "{err}");
+        // The first listener's socket file is still there and still answers.
+        std::os::unix::net::UnixStream::connect(dir.path().join(REPORT_SOCKET_NAME))
+            .expect("original listener still reachable");
+    }
+
+    #[tokio::test]
+    async fn test_self_bind_reclaims_a_stale_socket() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(REPORT_SOCKET_NAME);
+        // A dead owner: the socket file stays behind after its listener closes.
+        drop(std::os::unix::net::UnixListener::bind(&path).expect("bind"));
+        assert!(path.exists());
+        let _listener = listener(dir.path(), None).expect("stale socket replaced");
+        std::os::unix::net::UnixStream::connect(&path).expect("new listener reachable");
+    }
+
+    #[tokio::test]
+    async fn test_self_bind_leaves_non_sockets_alone() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(REPORT_SOCKET_NAME);
+        std::fs::write(&path, "not a socket").expect("write");
+        let err = listener(dir.path(), None).expect_err("must not replace a file");
+        assert!(err.to_string().contains("not a socket"), "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not a socket");
+    }
+
+    #[tokio::test]
     async fn test_server_round_trip() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let listener = listener(dir.path()).expect("listener");
+        let listener = listener(dir.path(), None).expect("listener");
         let socket = dir.path().join(REPORT_SOCKET_NAME);
         let mode = std::fs::metadata(&socket).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o666);
