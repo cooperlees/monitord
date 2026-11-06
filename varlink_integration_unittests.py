@@ -490,5 +490,111 @@ ProtectSystem=strict
         self.assertEqual(len(problems), 4, problems)
 
 
+class CheckReportStatsTest(unittest.TestCase):
+    SOURCE = "io.systemd.Basic"
+    SOURCE_METRICS = [
+        {"name": "io.systemd.Basic.Hostname", "value": "box"},
+        # Not compared: numbers move between calls, objects need fields
+        {"name": "io.systemd.Basic.Uptime", "value": 69},
+        {"name": "io.systemd.Basic.Cpu", "object": "cpu0", "value": "x"},
+    ]
+
+    def stats(self) -> dict:
+        return {
+            "monitord.report.io.systemd.Basic.up": 1,
+            "monitord.report.io.systemd.Basic.dropped_metrics": 0,
+            "monitord.report.io.systemd.Basic.colliding_metrics": 0,
+            "monitord.report.io.systemd.Basic.metrics.Hostname": "box",
+            "monitord.report.io.systemd.Basic.metrics.Uptime": 70,
+        }
+
+    def check(self, stats: dict, metrics=None) -> list:
+        return vit.check_report_stats(
+            stats, self.SOURCE, self.SOURCE_METRICS if metrics is None else metrics
+        )
+
+    def test_matching_stats_pass(self) -> None:
+        self.assertEqual(self.check(self.stats()), [])
+
+    def test_source_down_fails(self) -> None:
+        stats = self.stats()
+        stats["monitord.report.io.systemd.Basic.up"] = 0
+        self.assertEqual(len(self.check(stats)), 1)
+
+    def test_dropped_metrics_fail(self) -> None:
+        stats = self.stats()
+        stats["monitord.report.io.systemd.Basic.dropped_metrics"] = 2
+        self.assertEqual(len(self.check(stats)), 1)
+
+    def test_colliding_metrics_fail(self) -> None:
+        stats = self.stats()
+        stats["monitord.report.io.systemd.Basic.colliding_metrics"] = 1
+        self.assertEqual(len(self.check(stats)), 1)
+
+    def test_string_mismatch_fails(self) -> None:
+        stats = self.stats()
+        stats["monitord.report.io.systemd.Basic.metrics.Hostname"] = "other"
+        self.assertEqual(len(self.check(stats)), 1)
+
+    def test_missing_source_fails_loudly(self) -> None:
+        self.assertGreaterEqual(len(self.check({})), 3)
+
+    BLOCKED_METRICS = SOURCE_METRICS + [
+        {"name": "io.systemd.Basic.MachineID", "value": "7000"},
+        {"name": "io.systemd.Basic.SMBIOS.SystemVendor", "value": "acme"},
+    ]
+    BLOCKLIST = ["io.systemd.Basic.MachineID", "io.systemd.Basic.SMBIOS"]
+
+    def check_blocked(self, stats: dict) -> list:
+        return vit.check_report_stats(
+            stats, self.SOURCE, self.BLOCKED_METRICS, self.BLOCKLIST
+        )
+
+    def test_blocked_metrics_absent_pass(self) -> None:
+        self.assertEqual(self.check_blocked(self.stats()), [])
+
+    def test_blocked_metric_collected_fails(self) -> None:
+        stats = self.stats()
+        stats["monitord.report.io.systemd.Basic.metrics.SMBIOS.SystemVendor"] = "acme"
+        self.assertEqual(len(self.check_blocked(stats)), 1)
+
+    def test_blocklist_unproven_fails(self) -> None:
+        # The source served none of the blocked names: the denylist is untested
+        problems = vit.check_report_stats(
+            self.stats(), self.SOURCE, self.SOURCE_METRICS, self.BLOCKLIST
+        )
+        self.assertEqual(len(problems), 1, problems)
+
+    def test_cgroup_and_signer_must_be_skipped(self) -> None:
+        stats = self.stats()
+        stats["monitord.report.io.systemd.CGroup.up"] = 1
+        stats["monitord.report.io.systemd.Report.SignPlain.up"] = 1
+        self.assertEqual(len(self.check(stats)), 2)
+
+    def test_metric_is_blocked_dot_boundary(self) -> None:
+        self.assertTrue(vit.metric_is_blocked("io.systemd.Basic.SMBIOS.X", self.BLOCKLIST))
+        self.assertTrue(vit.metric_is_blocked("IO.systemd.basic.machineid", self.BLOCKLIST))
+        self.assertFalse(vit.metric_is_blocked("io.systemd.Basic.SMBIOSish", self.BLOCKLIST))
+
+    def test_stock_conf_ships_identifier_denylist(self) -> None:
+        with open("monitord.conf") as conf:
+            entries = vit.stock_metric_blocklist(conf.read())
+        self.assertIn("io.systemd.Basic.MachineID", entries)
+        self.assertIn("io.systemd.Basic.SMBIOS", entries)
+
+    def test_stock_blocklist_missing_fails_loudly(self) -> None:
+        with self.assertRaises(SystemExit):
+            vit.stock_metric_blocklist("[report]\ncollect = false\n")
+
+    def test_no_comparable_metric_fails_loudly(self) -> None:
+        metrics = [{"name": "io.systemd.Basic.Uptime", "value": 69}]
+        self.assertEqual(len(self.check(self.stats(), metrics)), 1)
+
+    def test_skipped_source_collected_fails(self) -> None:
+        stats = self.stats()
+        stats["monitord.report.io.systemd.Manager.up"] = 1
+        self.assertEqual(len(self.check(stats)), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

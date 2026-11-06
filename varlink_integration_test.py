@@ -37,6 +37,23 @@ NETWORK_SOCKET = "/run/systemd/netif/io.systemd.Network"
 MANAGER_SOCKET = "/run/systemd/io.systemd.Manager"
 DBUS_CONF = "/tmp/monitord-ci.conf"
 VARLINK_CONF = "/tmp/monitord-varlink-ci.conf"
+REPORT_COLLECTOR_CONF = "/tmp/monitord-report-collector-ci.conf"
+# An upstream systemd-report source (systemd v260+) for the report collector
+# to pass through; socket-activated, so starting the socket is enough.
+REPORT_SOURCE = "io.systemd.Basic"
+REPORT_SOURCE_SOCKET_UNIT = "systemd-report-basic.socket"
+# Only the report collector: the other collectors are covered above and
+# would only slow this run down.
+REPORT_COLLECTOR_CONF_TEXT = """[monitord]
+output_format = json-flat
+key_prefix = monitord
+
+[varlink]
+enabled = true
+
+[report]
+collect = true
+"""
 
 Stats = dict[str, Any]
 
@@ -840,6 +857,123 @@ def assert_dead_bus_run(container: str) -> None:
     )
 
 
+def stock_metric_blocklist(conf_text: str) -> list[str]:
+    """The `[report.metrics.blocklist]` entries of the stock monitord.conf."""
+    entries, section = [], ""
+    for line in conf_text.splitlines():
+        line = line.strip()
+        if line.startswith("["):
+            section = line
+        elif section == "[report.metrics.blocklist]" and line and not line.startswith("#"):
+            entries.append(line)
+    if not entries:
+        raise SystemExit("FAIL: monitord.conf has no [report.metrics.blocklist] entries")
+    return entries
+
+
+def metric_is_blocked(name: str, blocklist: list[str]) -> bool:
+    """Mirror of report_collector::metric_is_blocked (dot-boundary prefix)."""
+    lowered = name.lower()
+    return any(
+        lowered == entry.lower() or lowered.startswith(entry.lower() + ".")
+        for entry in blocklist
+    )
+
+
+def check_report_stats(
+    stats: Stats,
+    source: str,
+    source_metrics: list[dict[str, Any]],
+    blocklist: list[str] = (),
+) -> list[str]:
+    """Problems with monitord's pass-through of one report source.
+
+    `source_metrics` are the source's own `io.systemd.Metrics.List` replies.
+    Every string-valued metric without object or fields must reach monitord
+    unchanged (strings are the stable ones across the seconds-apart calls),
+    unless `blocklist` names it: then it must be absent, and at least one
+    blocked metric must really be served, so the denylist is proven against
+    real data. Skipped sources must never be passed through.
+    """
+    problems = []
+    base = f"monitord.report.{source}"
+    if stats.get(f"{base}.up") != 1:
+        problems.append(f"{base}.up is {stats.get(f'{base}.up')!r}, not 1")
+    for counter in ("dropped_metrics", "colliding_metrics"):
+        if stats.get(f"{base}.{counter}") != 0:
+            problems.append(f"{base}.{counter} is {stats.get(f'{base}.{counter}')!r}, not 0")
+    if not any(key.startswith(f"{base}.metrics.") for key in stats):
+        problems.append(f"no {base}.metrics.* keys")
+    compared = blocked = 0
+    for metric in source_metrics:
+        value = metric.get("value")
+        if metric.get("object") or metric.get("fields") or not isinstance(value, str):
+            continue
+        key = f"{base}.metrics.{metric['name'].removeprefix(source + '.')}"
+        if metric_is_blocked(metric["name"], blocklist):
+            blocked += 1
+            if key in stats:
+                problems.append(f"{key} is blocklisted but was collected")
+            continue
+        compared += 1
+        if stats.get(key) != value:
+            problems.append(f"{key} is {stats.get(key)!r}, source says {value!r}")
+    if compared == 0:
+        problems.append(f"{source} served no plain string metric to compare")
+    if blocklist and blocked == 0:
+        problems.append(f"{source} served none of the blocklisted metrics {list(blocklist)}")
+    skipped_sources = (
+        "io.systemd.Manager",
+        "io.systemd.Network",
+        "io.monitord",
+        "io.systemd.CGroup",
+        "io.systemd.Report.",
+    )
+    for skipped in skipped_sources:
+        skipped = skipped.removesuffix(".")
+        if any(key.startswith(f"monitord.report.{skipped}.") for key in stats):
+            problems.append(f"skipped source {skipped} was collected")
+    return problems
+
+
+def assert_report_collector(container: str, repo: Path) -> None:
+    step(f"Asserting the report collector passes {REPORT_SOURCE} through")
+    docker_exec(container, "systemctl", "start", REPORT_SOURCE_SOCKET_UNIT)
+    # The stock denylist, so the shipped default is what gets proven
+    blocklist = stock_metric_blocklist((repo / "monitord.conf").read_text())
+    write_container_file(
+        container,
+        REPORT_COLLECTOR_CONF,
+        REPORT_COLLECTOR_CONF_TEXT
+        + "\n[report.metrics.blocklist]\n"
+        + "".join(f"{entry}\n" for entry in blocklist),
+    )
+    raw = docker_exec(
+        container,
+        "varlinkctl",
+        "call",
+        "--more",
+        f"/run/systemd/report/{REPORT_SOURCE}",
+        "io.systemd.Metrics.List",
+        "{}",
+    )
+    decoder = json.JSONDecoder()
+    source_metrics, idx = [], 0
+    raw = raw.strip()
+    while idx < len(raw):
+        metric, end = decoder.raw_decode(raw, idx)
+        source_metrics.append(metric)
+        idx = end
+        while idx < len(raw) and raw[idx].isspace():
+            idx += 1
+    stats, _ = run_monitord(container, REPORT_COLLECTOR_CONF)
+    problems = check_report_stats(stats, REPORT_SOURCE, source_metrics, blocklist)
+    if problems:
+        raise SystemExit("FAIL: report collector\n  " + "\n  ".join(problems))
+    count = sum(key.startswith(f"monitord.report.{REPORT_SOURCE}.metrics.") for key in stats)
+    print(f"PASS: {REPORT_SOURCE} passed through ({count} flat keys)")
+
+
 def run_monitord(container: str, config_path: str) -> tuple[Stats, str]:
     """Run monitord in the container, returning its parsed stats and its log.
 
@@ -1572,6 +1706,7 @@ def main() -> None:
     assert_capability_matrix(args.container, repo)
     assert_connector_caching(args.container)
     assert_report_socket(args.container, repo)
+    assert_report_collector(args.container, repo)
     print(
         f"\nContainer {args.container} left running; --fresh rebuilds the image "
         "without the cache and recreates it."

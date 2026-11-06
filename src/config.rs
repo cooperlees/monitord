@@ -298,12 +298,30 @@ pub struct VarlinkConfig {
 }
 
 /// `[report]` section: serve monitord's own health metrics to
-/// `systemd-report` over `io.systemd.Metrics` (see `crate::report`).
+/// `systemd-report` over `io.systemd.Metrics` (see `crate::report`), and
+/// collect other systemd-report sources (`/run/systemd/report/*`, systemd
+/// v260+; see `crate::report_collector`).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ReportConfig {
     /// Serve `io.systemd.Metrics` on `/run/systemd/report/io.monitord`
     /// (or a socket-activated fd). Daemon mode only; off by default.
     pub enabled: bool,
+    /// Collect every `io.systemd.Metrics` source under `/run/systemd/report/`
+    /// except those monitord already parses into typed stats. Off by default:
+    /// a single source may publish thousands of metrics.
+    pub collect: bool,
+    /// Only collect these sources (socket names, e.g. `io.systemd.Basic`).
+    /// Lowercased by the INI parser, so matched case-insensitively.
+    pub allowlist: HashSet<String>,
+    /// Never collect these sources
+    pub blocklist: HashSet<String>,
+    /// Never collect these metrics, from any source: full metric names
+    /// (e.g. `io.systemd.Basic.MachineID`), each also matching every name
+    /// under it at a dot boundary (`io.systemd.Basic.SMBIOS` covers
+    /// `io.systemd.Basic.SMBIOS.SystemVendor`). Lowercased by the INI
+    /// parser, so matched case-insensitively. The example monitord.conf
+    /// lists host identifiers here; see the README for why.
+    pub metric_blocklist: HashSet<String>,
 }
 
 /// Config struct
@@ -557,6 +575,19 @@ impl TryFrom<Ini> for Config {
                  a one-shot run exits before systemd-report could ask"
             );
         }
+        if let Some(collect) = read_config_optional_bool(&ini_config, "report", "collect")? {
+            config.report.collect = collect;
+        }
+        if let Some(allowlist) = config_map.get("report.sources.allowlist") {
+            config.report.allowlist = allowlist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(blocklist) = config_map.get("report.sources.blocklist") {
+            config.report.blocklist = blocklist.keys().map(|s| s.to_string()).collect();
+        }
+        if let Some(metric_blocklist) = config_map.get("report.metrics.blocklist") {
+            config.report.metric_blocklist =
+                metric_blocklist.keys().map(|s| s.to_string()).collect();
+        }
 
         for entry in unknown_config_entries(&config_map) {
             warn!("Ignoring {entry}; check for a typo'd key or section");
@@ -625,7 +656,7 @@ const KNOWN_SECTION_KEYS: &[(&str, &[&str])] = &[
     ),
     ("verify", &["enabled", "varlink"]),
     ("varlink", &["enabled", "no_fallback"]),
-    ("report", &["enabled"]),
+    ("report", &["enabled", "collect"]),
 ];
 
 /// Sections whose entries are data (unit/machine names), not fixed keys.
@@ -647,6 +678,9 @@ const DATA_SECTIONS: &[&str] = &[
     "boot.blocklist",
     "verify.allowlist",
     "verify.blocklist",
+    "report.sources.allowlist",
+    "report.sources.blocklist",
+    "report.metrics.blocklist",
 ];
 
 /// Unrecognized sections and keys, for warn-on-typo diagnostics.
@@ -833,6 +867,17 @@ no_fallback = true
 
 [report]
 enabled = true
+collect = true
+
+[report.sources.allowlist]
+io.systemd.Basic
+
+[report.sources.blocklist]
+io.systemd.Files
+
+[report.metrics.blocklist]
+io.systemd.Basic.MachineID
+io.systemd.Basic.SMBIOS
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -1134,7 +1179,16 @@ varlink = false
                 enabled: true,
                 no_fallback: true,
             },
-            report: ReportConfig { enabled: true },
+            report: ReportConfig {
+                enabled: true,
+                collect: true,
+                allowlist: HashSet::from([String::from("io.systemd.basic")]),
+                blocklist: HashSet::from([String::from("io.systemd.files")]),
+                metric_blocklist: HashSet::from([
+                    String::from("io.systemd.basic.machineid"),
+                    String::from("io.systemd.basic.smbios"),
+                ]),
+            },
         };
 
         let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
