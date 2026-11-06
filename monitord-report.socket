@@ -1,0 +1,20 @@
+[Unit]
+Description=monitord systemd-report metrics socket
+Documentation=https://github.com/cooperlees/monitord#systemd-report-integration
+# /run/systemd/report only exists on systemd 260+
+ConditionPathIsDirectory=/run/systemd/report
+
+[Socket]
+# The filename is the metrics namespace: systemd-report drops any metric
+# not prefixed with it, so keep it io.monitord.
+ListenStream=/run/systemd/report/io.monitord
+FileDescriptorName=varlink
+# Read-only health data, same mode as systemd's own report sockets
+SocketMode=0666
+RemoveOnStop=yes
+# monitord.service must run in daemon mode with [report] enabled = true;
+# see the README for the drop-in.
+Service=monitord.service
+
+[Install]
+WantedBy=sockets.target

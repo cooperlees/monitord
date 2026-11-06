@@ -297,6 +297,15 @@ pub struct VarlinkConfig {
     pub no_fallback: bool,
 }
 
+/// `[report]` section: serve monitord's own health metrics to
+/// `systemd-report` over `io.systemd.Metrics` (see `crate::report`).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ReportConfig {
+    /// Serve `io.systemd.Metrics` on `/run/systemd/report/io.monitord`
+    /// (or a socket-activated fd). Daemon mode only; off by default.
+    pub enabled: bool,
+}
+
 /// Config struct
 /// Each section represents an ini file section
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -313,6 +322,7 @@ pub struct Config {
     pub boot_blame: BootBlameConfig,
     pub verify: VerifyConfig,
     pub varlink: VarlinkConfig,
+    pub report: ReportConfig,
 }
 
 impl Config {
@@ -537,6 +547,17 @@ impl TryFrom<Ini> for Config {
             );
         }
 
+        // [report] section
+        if let Some(enabled) = read_config_optional_bool(&ini_config, "report", "enabled")? {
+            config.report.enabled = enabled;
+        }
+        if config.report.enabled && !config.monitord.daemon {
+            warn!(
+                "[report] enabled=true has no effect without [monitord] daemon=true; \
+                 a one-shot run exits before systemd-report could ask"
+            );
+        }
+
         for entry in unknown_config_entries(&config_map) {
             warn!("Ignoring {entry}; check for a typo'd key or section");
         }
@@ -604,6 +625,7 @@ const KNOWN_SECTION_KEYS: &[(&str, &[&str])] = &[
     ),
     ("verify", &["enabled", "varlink"]),
     ("varlink", &["enabled", "no_fallback"]),
+    ("report", &["enabled"]),
 ];
 
 /// Sections whose entries are data (unit/machine names), not fixed keys.
@@ -808,6 +830,9 @@ varlink = false
 [varlink]
 enabled = true
 no_fallback = true
+
+[report]
+enabled = true
 "###;
 
     const MINIMAL_CONFIG: &str = r###"
@@ -852,6 +877,8 @@ output_format = json-flat
         assert!(expected_config.boot_blame.cache_enabled);
         // Oneshot inactive services are ignored by default
         assert!(expected_config.units.ignore_inactive_oneshot_services);
+        // The systemd-report server is opt-in
+        assert!(!expected_config.report.enabled);
     }
 
     #[test]
@@ -1107,6 +1134,7 @@ varlink = false
                 enabled: true,
                 no_fallback: true,
             },
+            report: ReportConfig { enabled: true },
         };
 
         let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");

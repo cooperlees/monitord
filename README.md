@@ -34,6 +34,10 @@ monitord ... know how happy your systemd is! 😊
   - machined (`io.systemd.Machine.List` on
     `/run/systemd/machine/io.systemd.Machine`, used today for machine
     enumeration): v257+
+  - systemd-report source (monitord *serves* `io.systemd.Metrics` on
+    `/run/systemd/report/io.monitord` for `systemd-report`, opt-in via
+    `[report] enabled = true`): v260+, the first release with
+    `/run/systemd/report` and `systemd-report`
 
 ## What does monitord monitor?
 
@@ -288,6 +292,13 @@ enabled = false
 [verify.blocklist]
 # noisy.service
 # broken.timer
+
+# Serve monitord's own health (last run healthy, per-collector timings and
+# failure counters) to systemd-report (systemd 260+) on
+# /run/systemd/report/io.monitord. Daemon mode only. Pairs with
+# monitord-report.socket; see "systemd-report integration" in the README.
+[report]
+enabled = false
 ```
 
 When using the provided `monitord.service`, systemd creates `/run/monitord` via
@@ -295,6 +306,67 @@ When using the provided `monitord.service`, systemd creates `/run/monitord` via
 If you run monitord another way and use the default `cache_dir` (`/run/monitord`), ensure the
 directory exists and is writable by the monitord process user so boot cache files can be created.
 Alternatively, set `cache_dir` to a location like `/tmp` that is always writable.
+
+## systemd-report integration
+
+systemd 260+ ships `systemd-report`, which gathers metrics from every
+`io.systemd.Metrics` socket in `/run/systemd/report/`. With
+`[report] enabled = true` in daemon mode, monitord serves its **own** health
+there as the `io.monitord` source, so `systemd-report metrics` shows whether
+monitord is collecting. These metrics are about monitord itself. The stats it
+collects are not re-exported: systemd's own sources already publish them.
+
+| Metric | Type | Object | Value |
+|---|---|---|---|
+| `io.monitord.collectionErrorsTotal` | counter | | runs where at least one collector failed |
+| `io.monitord.collectionRunTimeMs` | gauge | | wall time of the last run |
+| `io.monitord.collectionRunsTotal` | counter | | runs since monitord started |
+| `io.monitord.collectorElapsedMs` | gauge | collector | wall time of each collector in the last run |
+| `io.monitord.collectorFailuresTotal` | counter | collector | failed runs of each collector |
+| `io.monitord.collectorSuccess` | gauge | collector | 1 if the collector succeeded in the last run |
+| `io.monitord.healthy` | gauge | | 1 if the last run had no failures (0 before the first run) |
+| `io.monitord.lastCollectionTimestamp` | gauge | | unix seconds when the last run finished. Use it to spot a stalled daemon |
+| `io.monitord.varlinkUsage` | gauge | collector | 1 if varlink served the collector, 0 for D-Bus |
+| `io.monitord.version` | string | | monitord version |
+
+```console
+$ systemd-report metrics io.monitord
+$ varlinkctl call --more /run/systemd/report/io.monitord io.systemd.Metrics.List '{}'
+```
+
+The socket name is fixed, because `systemd-report` drops any metric whose name
+does not start with the socket's name. monitord gets the socket in one of two ways:
+
+- **Socket activation (recommended).** Install
+  [monitord-report.socket](monitord-report.socket). systemd creates the
+  socket as root, so the stock `monitord.service` (`User=monitord`,
+  `ProtectSystem=strict`) can serve it. That service is a `Type=oneshot` run
+  by a timer, so switch it to daemon mode (`[monitord] daemon = true` and
+  `[report] enabled = true`), disable `monitord.timer`, and add a drop-in:
+
+  ```ini
+  # /etc/systemd/system/monitord.service.d/report.conf
+  [Service]
+  Type=exec
+  Restart=on-failure
+  ```
+
+  Then run `systemctl enable --now monitord-report.socket monitord.service`.
+- **Self-bind.** Without a passed socket, monitord binds
+  `/run/systemd/report/io.monitord` itself (mode 0666). That needs write
+  access to the directory, so in practice root. A socket file someone is
+  still serving (another monitord, or `monitord-report.socket`) is never
+  replaced: monitord logs a warning and keeps collecting. A stale one left by
+  a process that died is replaced. monitord never creates the
+  directory: if it is missing, systemd is older than 260, so monitord logs a
+  warning and keeps collecting.
+
+Do **not** use `RuntimeDirectory=systemd/report` to get write access. systemd
+would delete its own report directory, with the other sources' sockets in it,
+whenever monitord stops.
+
+Library users with their own collection loop (e.g. monitord-exporter) can
+serve the same metrics with `monitord::report::spawn_server`.
 
 ## Machines support
 
