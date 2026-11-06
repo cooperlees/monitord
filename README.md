@@ -38,6 +38,10 @@ monitord ... know how happy your systemd is! 😊
     `/run/systemd/report/io.monitord` for `systemd-report`, opt-in via
     `[report] enabled = true`): v260+, the first release with
     `/run/systemd/report` and `systemd-report`
+  - systemd-report sources (`io.systemd.Metrics.List` on every other socket in
+    `/run/systemd/report/`, used by the opt-in `[report] collect`): v260+.
+    Which sources exist depends on the distro and which `systemd-report-*.socket`
+    units are enabled
 
 ## What does monitord monitor?
 
@@ -53,6 +57,7 @@ monitord collects systemd health metrics via D-Bus (and optionally Varlink) and 
 - **D-Bus daemon stats** — connection counts, match rules, and per-peer/per-cgroup/per-user breakdowns (dbus-broker and dbus-daemon)
 - **Containers** — recursively collects the same metrics from containers registered with `systemd-machined` (e.g. systemd-nspawn; VMs are skipped)
 - **Unit verification** — runs `systemd-analyze verify` and reports failing unit counts by type
+- **systemd-report sources** — opt-in pass-through of every other `io.systemd.Metrics` source in `/run/systemd/report/` (systemd v260+, see [systemd-report sources](#systemd-report-sources))
 
 ## Run Modes
 
@@ -278,6 +283,44 @@ num_slowest_units = 5
 [boot.blocklist]
 # noisy-but-expected.service
 
+# systemd-report (systemd v260+), two independent switches:
+# - enabled: serve monitord's own health (last run healthy, per-collector
+#   timings and failure counters) on /run/systemd/report/io.monitord. Daemon
+#   mode only. Pairs with monitord-report.socket; see "systemd-report
+#   integration" in the README.
+# - collect: pass through metrics from other systemd-report sources:
+#   every io.systemd.Metrics socket in /run/systemd/report/ except
+#   io.systemd.Manager and io.systemd.Network (already parsed by the units and
+#   networkd collectors), io.monitord (monitord itself), io.systemd.CGroup
+#   (too many keys until per-cgroup filtering lands) and systemd-report's
+#   io.systemd.Report.* signers. A source may publish thousands of metrics.
+#   Always varlink: there is no D-Bus fallback, and [varlink] enabled does
+#   not gate it.
+[report]
+enabled = false
+collect = false
+
+# Optional: only collect these sources (if empty, all sources are collected)
+[report.sources.allowlist]
+# io.systemd.Basic
+
+# Optional: never collect these sources (preferred over the allowlist)
+[report.sources.blocklist]
+# io.systemd.Files
+
+# Never collect these metrics from any source. An entry also covers every
+# metric under it (io.systemd.Basic.SMBIOS covers ...SMBIOS.SystemProductName).
+# By default this drops identifiers that would otherwise be shipped with every
+# sample: they identify a host or its hardware but say nothing about health
+# (see "systemd-report sources" in the README). Delete lines you want back.
+[report.metrics.blocklist]
+io.systemd.Basic.BootID
+io.systemd.Basic.Hostname
+io.systemd.Basic.MachineID
+io.systemd.Basic.SMBIOS
+io.systemd.Basic.TPM2
+io.systemd.Journal.HighPriorityMessage
+
 # Unit verification using systemd-analyze verify
 # Disabled by default as it can be slow on large systems
 [verify]
@@ -292,13 +335,6 @@ enabled = false
 [verify.blocklist]
 # noisy.service
 # broken.timer
-
-# Serve monitord's own health (last run healthy, per-collector timings and
-# failure counters) to systemd-report (systemd 260+) on
-# /run/systemd/report/io.monitord. Daemon mode only. Pairs with
-# monitord-report.socket; see "systemd-report integration" in the README.
-[report]
-enabled = false
 ```
 
 When using the provided `monitord.service`, systemd creates `/run/monitord` via
@@ -552,6 +588,16 @@ they are not repeated below.
   "pid1.fd_count": 245,
   "pid1.memory_usage_bytes": 19165184,
   "pid1.tasks": 1,
+  "report.io.systemd.Basic.colliding_metrics": 0,
+  "report.io.systemd.Basic.dropped_metrics": 0,
+  "report.io.systemd.Basic.metrics.CPUUsage.type_system": 177191060000000,
+  "report.io.systemd.Basic.metrics.CPUUsage.type_user": 360232390000000,
+  "report.io.systemd.Basic.metrics.DiskReadBytes./dev/sda": 176618894336,
+  "report.io.systemd.Basic.metrics.KernelVersion": "6.12.4-200.fc41.x86_64",
+  "report.io.systemd.Basic.metrics.LoadAverage1Min": 0.29541015625,
+  "report.io.systemd.Basic.metrics.OSRelease.ID": "fedora",
+  "report.io.systemd.Basic.metrics.PressureAvg10.resource_cpu.type_some": 0.92041015625,
+  "report.io.systemd.Basic.up": 1,
   "services.chronyd.service.active_enter_timestamp": 1683556542382710,
   "services.chronyd.service.active_exit_timestamp": 0,
   "services.chronyd.service.cpuusage_nsec": 328951000,
@@ -633,6 +679,76 @@ they are not repeated below.
 ### json-pretty
 
 Normal `serde_json` pretty representations of each components structs.
+
+### systemd-report sources
+
+systemd v260+ ships `systemd-report`, which reads metrics from every
+`io.systemd.Metrics` varlink socket in `/run/systemd/report/` (systemd's own
+`systemd-report-*.socket` sources such as `io.systemd.Basic` and
+`io.systemd.Journal`, plus any daemon that installs a socket there). With
+`[report] collect = true`, monitord reads the same sources and passes their
+metrics through, so anything a source publishes reaches monitord's output
+without per-source code.
+
+- `io.systemd.Manager` and `io.systemd.Network` are skipped (the units,
+  boot blame, verify and networkd collectors already parse them into typed
+  stats), as is `io.monitord`, monitord's own source
+- `io.systemd.CGroup` is left out for now: it publishes metrics for every
+  cgroup (570 keys on a small test container), and making it usable needs
+  per-cgroup filtering, which is left to a dedicated follow-up PR
+- systemd-report's signers (`io.systemd.Report.SignPlain`, `SignTPM2`,
+  `SignTSM`) share the directory but only publish their public key, so every
+  `io.systemd.Report.*` source is skipped
+- Sources are called concurrently, each bounded by `[monitord] dbus_timeout`.
+  A source that fails reports `up = 0` and never fails the collector
+- The same rules as systemd-report apply: a metric must be named
+  `<source>.<field>`, and at most 16384 metrics per source and 128 sources are
+  read. Anything else is counted in `dropped_metrics`
+- `[report.sources.allowlist]` / `[report.sources.blocklist]` select sources by
+  socket name (case-insensitive, as the INI parser lowercases keys)
+- `[report.metrics.blocklist]` drops individual metrics from any source by full
+  name. An entry also covers every metric under it at a dot boundary, so
+  `io.systemd.Basic.SMBIOS` drops all `io.systemd.Basic.SMBIOS.*`. Blocked
+  metrics are not counted in `dropped_metrics`
+- Host only for now: sources inside machines are not collected
+
+#### Default metric denylist
+
+`io.systemd.Basic` publishes some values that identify a host or its hardware
+and say nothing about its health, and `io.systemd.Journal` publishes log entries. Passed through, they would be copied into
+every sample monitord ships to your metrics pipeline, and they are hard to
+remove from long-retention storage later. The example `monitord.conf` therefore
+lists them in `[report.metrics.blocklist]`:
+
+| Entry | Why it's blocked |
+|---|---|
+| `io.systemd.Basic.MachineID` | `/etc/machine-id` is a stable, unique host ID. systemd documents it as confidential and says it shouldn't be exposed to untrusted environments ([machine-id(5)](https://www.freedesktop.org/software/systemd/man/latest/machine-id.html)) |
+| `io.systemd.Basic.BootID` | Unique per boot, so it's a host ID until the next reboot and tracks the host across restarts in between. It also makes the time series change on every boot |
+| `io.systemd.Basic.Hostname` | Identifies the host and is usually already a label in your pipeline. Duplicated here, it's a string that changes if the host is renamed |
+| `io.systemd.Basic.SMBIOS` | Firmware vendor, version and date, board and product names, SKU and asset tags. Together they fingerprint the hardware, and asset tags are often organization-specific. Covers every `SMBIOS.*` metric, including fields future systemd versions add (such as serial numbers) |
+| `io.systemd.Basic.TPM2` | TPM manufacturer and vendor strings: more hardware fingerprint, no health signal |
+| `io.systemd.Journal.HighPriorityMessage` | The 10 most recent `crit`-or-higher journal entries, each a whole entry object (`MESSAGE`, `_CMDLINE`, `_MACHINE_ID`, `_BOOT_ID`, …), with `object` set to `SYSLOG_IDENTIFIER`. That's log text, not a metric: it would put command lines (which can carry secrets) and the IDs above into metric keys, the keys change with every new message, and two entries from one identifier collide on one key |
+
+The list lives only in the example config, so a config without
+`[report.metrics.blocklist]` blocks nothing. Remove an entry if you want that
+value, for example `Hostname` if your pipeline doesn't label hosts itself.
+
+Flat keys are `report.<source>.up`, `report.<source>.dropped_metrics`,
+`report.<source>.colliding_metrics`, and
+`report.<source>.metrics.<metric>[.<object>][.<field>_<value>...]`. `<metric>`
+is the metric name without the `<source>.` prefix, and fields are sorted by
+name. Booleans become 0/1 at any depth, and object or array values are
+flattened into `.<member>` / `.<index>` keys. `json` and `json-pretty` output the
+same data under `report.<source>.metrics`, keyed the same way.
+
+Keys stay readable, so objects keep their dots (`foo.service`), the same as
+monitord's other per-unit keys. As a result, two different metrics can map to
+the same flat key. For example, fields `{x: "a", y: "b"}` and
+`{x: "a.y_b"}` both render as `Value.x_a.y_b`, and an object value
+`{"a": {"b": 1}}` collides with a member named `"a.b"`. When that happens the
+first metric keeps the key. Each later one is left out, counted in
+`colliding_metrics` and logged as a warning, rather than silently overwriting
+it. A non-zero `colliding_metrics` means a source needs a closer look.
 
 ### Per-collector timing metrics
 
@@ -1062,6 +1178,10 @@ toggle of their own: they ride the units path and follow `[units] varlink`.
 - Enumeration of containers and their leader PIDs, with the `[machines]` allowlist/blocklist
 - Needs no extra privileges (unlike per-container collection, see below)
 - Falls back to machined's D-Bus `ListMachines` if the socket is unavailable
+
+**systemd-report sources** (`io.systemd.Metrics.List` on every other socket in `/run/systemd/report/` — systemd v260+, opt-in with `[report] collect = true`):
+- Generic pass-through of every source's metrics (see [systemd-report sources](#systemd-report-sources))
+- No D-Bus fallback: a source that is missing collects nothing, and one that fails reports `up = 0`
 
 ### Containers
 

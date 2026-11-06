@@ -113,6 +113,8 @@ pub enum MetricFamilyType {
     Gauge,
     /// A string metric family type
     String,
+    /// An object metric family type whose value is an arbitrary JSON object
+    Object,
 }
 
 /// Errors that can occur in this interface.

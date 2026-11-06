@@ -517,6 +517,42 @@ fn flatten_verify_stats(
     flat_stats
 }
 
+fn flatten_report(
+    optional_report: &Option<crate::report_collector::ReportStats>,
+    key_prefix: &str,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut flat_stats: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let report = match optional_report {
+        Some(report) => report,
+        None => return flat_stats,
+    };
+    let base_metric_name = gen_base_metric_key(key_prefix, "report");
+    for (source_name, source) in report {
+        let source_key = format!("{base_metric_name}.{source_name}");
+        flat_stats.insert(format!("{source_key}.up"), u64::from(source.up).into());
+        flat_stats.insert(
+            format!("{source_key}.dropped_metrics"),
+            source.dropped_metrics.into(),
+        );
+        flat_stats.insert(
+            format!("{source_key}.colliding_metrics"),
+            source.colliding_metrics.into(),
+        );
+        // normalize_metrics already rejected anything whose leaves collide,
+        // so every leaf here lands on a key of its own.
+        let mut leaves = Vec::new();
+        for (metric_key, value) in &source.metrics {
+            crate::report_collector::flat_leaves(
+                format!("{source_key}.metrics.{metric_key}"),
+                value,
+                &mut leaves,
+            );
+        }
+        flat_stats.extend(leaves);
+    }
+    flat_stats
+}
+
 /// Emit one `varlink_usage.<collector>` 0/1 gauge per collector that ran.
 ///
 /// Only collectors whose `Option<CollectorTransport>` is `Some` emit a gauge:
@@ -662,6 +698,7 @@ fn flatten_stats(
     flat_stats.extend(flatten_dbus_stats(&stats_struct.dbus_stats, key_prefix));
     flat_stats.extend(flatten_boot_blame(&stats_struct.boot_blame, key_prefix));
     flat_stats.extend(flatten_verify_stats(&stats_struct.verify_stats, key_prefix));
+    flat_stats.extend(flatten_report(&stats_struct.report, key_prefix));
     flat_stats
 }
 
@@ -749,6 +786,16 @@ mod tests {
   "pid1.fd_count": 69,
   "pid1.memory_usage_bytes": 69,
   "pid1.tasks": 1,
+  "report.io.systemd.Basic.colliding_metrics": 0,
+  "report.io.systemd.Basic.dropped_metrics": 0,
+  "report.io.systemd.Basic.metrics.CpuTime.foo.service.mode_user": 69,
+  "report.io.systemd.Basic.metrics.KernelVersion": "unittest",
+  "report.io.systemd.Basic.metrics.OsRelease.ID": "fedora",
+  "report.io.systemd.Basic.metrics.OsRelease.VERSION_ID": "40",
+  "report.io.systemd.Basic.up": 1,
+  "report.io.systemd.DiskSpace.colliding_metrics": 0,
+  "report.io.systemd.DiskSpace.dropped_metrics": 0,
+  "report.io.systemd.DiskSpace.up": 0,
   "services.unittest.service.active_enter_timestamp": 0,
   "services.unittest.service.active_exit_timestamp": 0,
   "services.unittest.service.cpuusage_nsec": 0,
@@ -881,6 +928,31 @@ mod tests {
                 boot_blame: Some(crate::CollectorTransport::Varlink),
                 verify: Some(crate::CollectorTransport::Dbus),
             },
+            report: Some(BTreeMap::from([
+                (
+                    String::from("io.systemd.Basic"),
+                    crate::report_collector::ReportSource {
+                        up: true,
+                        dropped_metrics: 0,
+                        colliding_metrics: 0,
+                        metrics: BTreeMap::from([
+                            (String::from("KernelVersion"), serde_json::json!("unittest")),
+                            (
+                                String::from("CpuTime.foo.service.mode_user"),
+                                serde_json::json!(69),
+                            ),
+                            (
+                                String::from("OsRelease"),
+                                serde_json::json!({"ID": "fedora", "VERSION_ID": "40"}),
+                            ),
+                        ]),
+                    },
+                ),
+                (
+                    String::from("io.systemd.DiskSpace"),
+                    crate::report_collector::ReportSource::default(),
+                ),
+            ])),
         };
         stats.units.collection_timings = units::UnitsCollectionTimings {
             list_units_ms: 5.0,
@@ -961,7 +1033,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(136, json_flat_map.len());
+        assert_eq!(146, json_flat_map.len());
     }
 
     #[test]
