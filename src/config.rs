@@ -147,6 +147,12 @@ pub struct UnitsConfig {
     /// Number of slowest units (by per-unit collection duration) to record in
     /// `UnitsCollectionTimings::slowest_units`. Set to 0 to disable.
     pub slowest_units_count: u64,
+    /// Varlink path only: the longest, in seconds, a `[services]` entry's
+    /// `io.systemd.Unit.List` reply is reused across cycles. Entries are
+    /// refetched sooner when the unit changes state or the manager reloads;
+    /// this bounds fields that can change without either (e.g. a runtime
+    /// `WATCHDOG_USEC=` notify). 0 disables the cache.
+    pub service_details_cache_max_age_secs: u64,
 }
 impl Default for UnitsConfig {
     fn default() -> Self {
@@ -161,6 +167,7 @@ impl Default for UnitsConfig {
             unit_files: true,
             per_unit_concurrency: 8,
             slowest_units_count: 5,
+            service_details_cache_max_age_secs: 300,
         }
     }
 }
@@ -439,6 +446,10 @@ impl TryFrom<Ini> for Config {
         if let Ok(Some(slowest_units_count)) = ini_config.getuint("units", "slowest_units_count") {
             config.units.slowest_units_count = slowest_units_count;
         }
+        if let Ok(Some(max_age)) = ini_config.getuint("units", "service_details_cache_max_age_secs")
+        {
+            config.units.service_details_cache_max_age_secs = max_age;
+        }
 
         // [machines] section
         config.machines.enabled = read_config_bool(&ini_config, "machines", "enabled")?;
@@ -598,6 +609,7 @@ const KNOWN_SECTION_KEYS: &[(&str, &[&str])] = &[
             "unit_files",
             "per_unit_concurrency",
             "slowest_units_count",
+            "service_details_cache_max_age_secs",
         ],
     ),
     ("machines", &["enabled", "varlink"]),
@@ -762,6 +774,7 @@ ignore_inactive_oneshot_services = true
 unit_files = true
 per_unit_concurrency = 16
 slowest_units_count = 3
+service_details_cache_max_age_secs = 600
 
 [units.state_stats.allowlist]
 foo.service
@@ -913,6 +926,7 @@ output_format = json
 [units]
 per_unit_concurrency = 32
 slowest_units_count = 0
+service_details_cache_max_age_secs = 0
 "###;
         let mut monitord_config = NamedTempFile::new().expect("Unable to make named tempfile");
         monitord_config
@@ -927,6 +941,7 @@ slowest_units_count = 0
         let parsed_config: Config = ini_config.try_into().expect("Failed to parse config");
         assert_eq!(parsed_config.units.per_unit_concurrency, 32);
         assert_eq!(parsed_config.units.slowest_units_count, 0);
+        assert_eq!(parsed_config.units.service_details_cache_max_age_secs, 0);
     }
 
     #[test]
@@ -1090,6 +1105,7 @@ varlink = false
                 unit_files: true,
                 per_unit_concurrency: 16,
                 slowest_units_count: 3,
+                service_details_cache_max_age_secs: 600,
             },
             machines: MachinesConfig {
                 enabled: true,

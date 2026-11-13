@@ -19,6 +19,8 @@
 //! have returned. Those defaults are asserted in the tests.
 
 use std::collections::HashMap;
+use std::time::Duration;
+use std::time::Instant;
 
 use tracing::debug;
 
@@ -41,6 +43,9 @@ const UNSET: u64 = u64::MAX;
 pub struct UnitLookup {
     connection: zlink::tokio::unix::Connection,
     cache: HashMap<String, Option<ListOutput>>,
+    fetches: u64,
+    fetch_total: Duration,
+    fetch_max: Duration,
 }
 
 impl UnitLookup {
@@ -50,6 +55,9 @@ impl UnitLookup {
         Ok(Self {
             connection: endpoint.connect().await?,
             cache: HashMap::new(),
+            fetches: 0,
+            fetch_total: Duration::ZERO,
+            fetch_max: Duration::ZERO,
         })
     }
 
@@ -66,7 +74,13 @@ impl UnitLookup {
     /// change within a cycle, and re-asking would cost another round trip.
     pub async fn get(&mut self, name: &str) -> anyhow::Result<Option<&ListOutput>> {
         if !self.cache.contains_key(name) {
-            let fetched = match self.connection.list(Some(name)).await? {
+            let start = Instant::now();
+            let reply = self.connection.list(Some(name)).await;
+            let elapsed = start.elapsed();
+            self.fetches += 1;
+            self.fetch_total += elapsed;
+            self.fetch_max = self.fetch_max.max(elapsed);
+            let fetched = match reply? {
                 Ok(output) => Some(output),
                 Err(err) => {
                     debug!("No unit {} over varlink: {}", name, err);
@@ -78,9 +92,27 @@ impl UnitLookup {
         Ok(self.cache.get(name).and_then(|entry| entry.as_ref()))
     }
 
-    /// Number of units fetched from PID 1 so far, for collection timings.
+    /// Answer later `get`s for `name` with a reply kept from an earlier cycle,
+    /// so other passes this cycle (oneshot types, a timer's triggered unit)
+    /// reuse it rather than asking PID 1 again. Never replaces a fresher reply.
+    pub fn seed(&mut self, name: &str, output: ListOutput) {
+        self.cache.entry(name.to_string()).or_insert(Some(output));
+    }
+
+    /// Number of `Unit.List` calls made to PID 1 so far, for collection
+    /// timings. Seeded replies are not counted.
     pub fn fetches(&self) -> u64 {
-        self.cache.len() as u64
+        self.fetches
+    }
+
+    /// Total time spent waiting on `Unit.List` calls so far.
+    pub fn fetch_total(&self) -> Duration {
+        self.fetch_total
+    }
+
+    /// The slowest single `Unit.List` call so far.
+    pub fn fetch_max(&self) -> Duration {
+        self.fetch_max
     }
 }
 
@@ -171,6 +203,39 @@ pub fn map_service_stats(output: &ListOutput, cgroup: &crate::cgroup::CgroupStat
     }
 }
 
+/// Whether `map_service_stats` would take any cgroup counter from the reply
+/// because cgroupfs had no value for it.
+///
+/// Those reply counters are a snapshot of the moment PID 1 answered, so a
+/// reply that needs them must not be reused on a later cycle: it would report
+/// the same memory and CPU forever while the unit holds its state.
+///
+/// The common case is a unit with no cgroup (e.g. an exited oneshot with
+/// `RemainAfterExit=yes`): PID 1 still answers `MemoryAvailable`, recomputed
+/// live from its ancestors and the host, so such units are asked every cycle.
+pub fn uses_reply_cgroup_fallback(
+    output: &ListOutput,
+    cgroup: &crate::cgroup::CgroupStats,
+) -> bool {
+    let Some(reply) = output
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.cgroup.as_ref())
+    else {
+        return false;
+    };
+    [
+        (cgroup.cpu_usage_nsec, reply.cpu_usage_nsec),
+        (cgroup.io_read_bytes, reply.io_read_bytes),
+        (cgroup.io_read_operations, reply.io_read_operations),
+        (cgroup.memory_available, reply.memory_available),
+        (cgroup.memory_current, reply.memory_current),
+        (cgroup.tasks_current, reply.tasks_current),
+    ]
+    .iter()
+    .any(|(fs, reply)| fs.is_none() && reply.is_some())
+}
+
 /// The unit a timer triggers, e.g. "logrotate.service" for "logrotate.timer".
 pub fn timer_triggered_unit(output: &ListOutput) -> Option<&str> {
     output
@@ -256,6 +321,32 @@ mod tests {
             exec: None,
             timer: None,
         }
+    }
+
+    #[test]
+    fn test_uses_reply_cgroup_fallback() {
+        let reply = |memory_current: Option<u64>| -> ListOutput {
+            serde_json::from_value(serde_json::json!({
+                "runtime": {
+                    "CGroup": {
+                        "Path": "/system.slice/a.service",
+                        "MemoryCurrent": memory_current,
+                    }
+                }
+            }))
+            .expect("valid reply")
+        };
+        let read = crate::cgroup::CgroupStats {
+            memory_current: Some(42),
+            ..Default::default()
+        };
+        let unread = crate::cgroup::CgroupStats::default();
+        // cgroupfs answered, or neither had a value: nothing taken from the reply.
+        assert!(!uses_reply_cgroup_fallback(&reply(Some(7)), &read));
+        assert!(!uses_reply_cgroup_fallback(&reply(None), &unread));
+        assert!(!uses_reply_cgroup_fallback(&output(None, None), &unread));
+        // cgroupfs had nothing but the reply did: a snapshot, not cacheable.
+        assert!(uses_reply_cgroup_fallback(&reply(Some(7)), &unread));
     }
 
     #[test]

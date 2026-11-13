@@ -65,6 +65,15 @@ pub struct UnitsCollectionTimings {
     /// Slowest units (by per-unit collection duration, descending) this run,
     /// truncated to `units.slowest_units_count`. Empty when disabled (count 0).
     pub slowest_units: Vec<(String, f64)>,
+    /// Varlink path: `io.systemd.Unit.List` calls made to PID 1 this run.
+    pub varlink_unit_list_fetches: u64,
+    /// Varlink path: total ms spent waiting on those `Unit.List` calls.
+    pub varlink_unit_list_ms: f64,
+    /// Varlink path: the slowest single `Unit.List` call this run, in ms.
+    pub varlink_unit_list_max_ms: f64,
+    /// Varlink path: `[services]` entries answered from the cross-cycle cache
+    /// instead of a `Unit.List` call.
+    pub varlink_service_cache_hits: u64,
 }
 
 /// Unit file counts for a scope (root or user), broken down by unit type.
