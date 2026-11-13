@@ -443,6 +443,12 @@ pub struct UnitDiscovery {
     /// Realtime `StateChangeTimestamp` of every unit in the stream, which says
     /// whether a cached timer is still current.
     pub state_changes: HashMap<String, u64>,
+    /// `NRestarts` per `[services]` unit, for units the stream carried a
+    /// usable value for. Fresh every cycle, so it wins over a cached reply.
+    pub nrestarts: HashMap<String, u32>,
+    /// `StatusErrno` per `[services]` unit, same rules as `nrestarts`. It can
+    /// move with an sd_notify `ERRNO=` while the unit holds its state.
+    pub status_errno: HashMap<String, i32>,
 }
 
 /// More endpoints than this and a [`ReloadCache`] starts over, so machines
@@ -500,17 +506,16 @@ fn lock_cache<V>(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// The `ReloadCount` to key the timer and service caches on, or None to skip
-/// them.
+/// The `ReloadCount` to key every reload cache on, or None to skip them.
 ///
 /// PID 1 does not serialize `ReloadCount`, so a `daemon-reexec` resets it to 0.
 /// From a nonzero count that is a change like any reload, but from 0 it is
 /// not, and a reexec keeps every unit's StateChangeTimestamp while timers
 /// re-enter waiting with a freshly drawn `RandomizedDelaySec`. A count of 0
 /// therefore can't tell us a cached deadline is still right. The same goes for
-/// a service's config fields (`RestartUSec`, `WatchdogUSec`, ...), which a
-/// reexec re-reads from disk. Hosts leave 0 at their first reload, so this
-/// costs the caches little in practice.
+/// a service's config fields (`RestartUSec`, `WatchdogUSec`, `Type`, ...),
+/// which a reexec re-reads from disk. Hosts leave 0 at their first reload, so
+/// this costs the caches little in practice.
 fn nonzero_reload_count(reload_count: Option<u64>) -> Option<u64> {
     reload_count.filter(|&count| count != 0)
 }
@@ -635,19 +640,34 @@ impl CachedService {
     }
 }
 
+/// Last cycle's entry for `name`, if it is still current.
+fn take_current_service(
+    known: &mut HashMap<String, CachedService>,
+    name: &str,
+    state_changes: &HashMap<String, u64>,
+    max_age: Duration,
+) -> Option<CachedService> {
+    known
+        .remove(name)
+        .filter(|entry| entry.is_current(name, state_changes, max_age))
+}
+
 /// Put the per-cycle `NRestarts` / `StatusErrno` from the metrics stream back
 /// over what a (possibly cached) `Unit.List` reply said.
 ///
-/// systemd v261 emits both metrics for every service, and the varlink detail
-/// pass needs v261, so an entry from the stream always carries both.
+/// Each field is overridden only when the stream carried a usable value for
+/// that unit, so a missing metric falls back to the reply rather than to 0.
 fn merge_service_stats(
     existing: &mut HashMap<String, crate::units::ServiceStats>,
     detailed: HashMap<String, crate::units::ServiceStats>,
+    discovery: &UnitDiscovery,
 ) {
     for (name, mut stats) in detailed {
-        if let Some(from_metrics) = existing.get(&name) {
-            stats.nrestarts = from_metrics.nrestarts;
-            stats.status_errno = from_metrics.status_errno;
+        if let Some(nrestarts) = discovery.nrestarts.get(&name) {
+            stats.nrestarts = *nrestarts;
+        }
+        if let Some(status_errno) = discovery.status_errno.get(&name) {
+            stats.status_errno = *status_errno;
         }
         existing.insert(name, stats);
     }
@@ -728,10 +748,31 @@ pub async fn parse_metrics(
         .filter_map(|metric| Some((metric.object()?.to_string(), metric.value().as_u64()?)))
         .collect();
 
+    // Same conversions parse_one_metric applies, so an out-of-range value is
+    // absent here rather than a 0 that would mask the reply's value.
+    let service_metric = |suffix: &'static str| {
+        metrics
+            .iter()
+            .filter(move |metric| metric.name_suffix() == suffix)
+            .filter_map(|metric| {
+                let object = metric.object()?;
+                services.contains(object).then_some(())?;
+                Some((object.to_string(), metric.value().as_i64()?))
+            })
+    };
+    let nrestarts = service_metric("NRestarts")
+        .filter_map(|(name, value)| Some((name, u32::try_from(value).ok()?)))
+        .collect();
+    let status_errno = service_metric("StatusErrno")
+        .filter_map(|(name, value)| Some((name, i32::try_from(value).ok()?)))
+        .collect();
+
     Ok(UnitDiscovery {
         timer_names: timer_names.into_iter().collect(),
         reload_count,
         state_changes,
+        nrestarts,
+        status_errno,
     })
 }
 
@@ -885,15 +926,21 @@ pub async fn apply_unit_details(
     let mut service_outputs: Vec<(String, crate::varlink::unit::ListOutput, Instant)> = Vec::new();
     let mut services_from_cache: u64 = 0;
     for name in &config.services {
-        if let Some(entry) = known_services
-            .remove(name)
-            .filter(|entry| entry.is_current(name, &discovery.state_changes, service_max_age))
-        {
+        if let Some(entry) = take_current_service(
+            &mut known_services,
+            name,
+            &discovery.state_changes,
+            service_max_age,
+        ) {
             lookup.seed(name, entry.output.clone());
+            // The original fetch time rides along, so a hit never extends
+            // the entry's max age.
             service_outputs.push((name.clone(), entry.output, entry.fetched_at));
             services_from_cache += 1;
             continue;
         }
+        // Taken before the call, so the max age also covers the round trip:
+        // an entry can only expire early, never late.
         let fetched_at = Instant::now();
         let Some(output) = lookup.get(name).await? else {
             continue;
@@ -966,7 +1013,9 @@ pub async fn apply_unit_details(
         cached_services,
     );
 
-    let known_types = lock_cache(&ONESHOT_TYPE_CACHE).take(&cache_key, discovery.reload_count);
+    // Type= is re-read from disk on a reexec too, which leaves a count of 0 at 0.
+    let oneshot_reload_count = nonzero_reload_count(discovery.reload_count);
+    let known_types = lock_cache(&ONESHOT_TYPE_CACHE).take(&cache_key, oneshot_reload_count);
     let mut oneshot_types: HashMap<String, bool> = HashMap::new();
     for name in candidates {
         if let Some(is_oneshot) = known_types.get(&name) {
@@ -979,7 +1028,7 @@ pub async fn apply_unit_details(
     }
     lock_cache(&ONESHOT_TYPE_CACHE).store(
         cache_key.clone(),
-        discovery.reload_count,
+        oneshot_reload_count,
         oneshot_types.clone(),
     );
 
@@ -1059,7 +1108,11 @@ pub async fn apply_unit_details(
         .filter(|timer| timer.remain_after_elapse)
         .count() as u64;
     machine_stats.units.timer_stats = timer_stats;
-    merge_service_stats(&mut machine_stats.units.service_stats, service_stats);
+    merge_service_stats(
+        &mut machine_stats.units.service_stats,
+        service_stats,
+        discovery,
+    );
     apply_oneshot_types(&mut machine_stats.units, &oneshot_types, &config.units);
     // The phase still folds into per_unit_loop_ms like its D-Bus predecessor,
     // but nothing here touches D-Bus, so the *_dbus_fetches counters stay put.
@@ -1391,38 +1444,99 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_service_stats_keeps_metrics_restarts_and_errno() {
-        let mut existing = HashMap::from([(
-            "a.service".to_string(),
-            crate::units::ServiceStats {
-                nrestarts: 5,
-                status_errno: 2,
-                ..Default::default()
-            },
-        )]);
+    fn test_merge_service_stats_prefers_metrics_per_field() {
+        let reply = |nrestarts, status_errno| crate::units::ServiceStats {
+            nrestarts,
+            status_errno,
+            restart_usec: 100,
+            ..Default::default()
+        };
         let detailed = HashMap::from([
-            (
-                "a.service".to_string(),
-                crate::units::ServiceStats {
-                    nrestarts: 1,
-                    status_errno: 0,
-                    restart_usec: 100,
-                    ..Default::default()
-                },
-            ),
-            (
-                "b.service".to_string(),
-                crate::units::ServiceStats {
-                    nrestarts: 3,
-                    ..Default::default()
-                },
-            ),
+            ("both.service".to_string(), reply(1, 9)),
+            ("restarts.service".to_string(), reply(1, 9)),
+            ("neither.service".to_string(), reply(1, 9)),
         ]);
-        merge_service_stats(&mut existing, detailed);
-        let a = &existing["a.service"];
-        assert_eq!((a.nrestarts, a.status_errno, a.restart_usec), (5, 2, 100));
-        // No metrics entry: the reply's own values stand.
-        assert_eq!(existing["b.service"].nrestarts, 3);
+        let discovery = UnitDiscovery {
+            nrestarts: HashMap::from([
+                ("both.service".to_string(), 5),
+                ("restarts.service".to_string(), 0),
+            ]),
+            status_errno: HashMap::from([("both.service".to_string(), 0)]),
+            ..Default::default()
+        };
+        let mut existing = HashMap::new();
+        merge_service_stats(&mut existing, detailed, &discovery);
+        let got = |name: &str| {
+            let stats = &existing[name];
+            (stats.nrestarts, stats.status_errno, stats.restart_usec)
+        };
+        // A metric value wins even at 0; a missing one leaves the reply's.
+        assert_eq!(got("both.service"), (5, 0, 100));
+        assert_eq!(got("restarts.service"), (0, 9, 100));
+        assert_eq!(got("neither.service"), (1, 9, 100));
+    }
+
+    #[test]
+    fn test_service_cache_hit_keeps_original_fetch_time() {
+        let state = changes(&[("a.service", 100)]);
+        let Some(fetched_at) = Instant::now().checked_sub(Duration::from_secs(60)) else {
+            return;
+        };
+        let mut known = HashMap::from([(
+            "a.service".to_string(),
+            CachedService::new("a.service", &state, fetched_at, service_reply())
+                .expect("timestamp"),
+        )]);
+        let hit =
+            take_current_service(&mut known, "a.service", &state, MAX_AGE).expect("still current");
+        assert_eq!(hit.fetched_at, fetched_at);
+        // Stored back the way apply_unit_details does it: same fetch time,
+        // so repeated hits age out at fetched_at + max age.
+        let restored =
+            CachedService::new("a.service", &state, hit.fetched_at, hit.output).expect("timestamp");
+        assert_eq!(restored.fetched_at, fetched_at);
+        assert!(!restored.is_current("a.service", &state, Duration::from_secs(30)));
+        // A miss hands nothing back and leaves nothing behind.
+        assert!(take_current_service(&mut known, "a.service", &state, MAX_AGE).is_none());
+    }
+
+    #[test]
+    fn test_parse_metrics_service_values_for_merge() {
+        let metric = |name: &str, object: &str, value: serde_json::Value| ListOutput {
+            name: format!("io.systemd.Manager.{name}"),
+            value,
+            object: Some(object.to_string()),
+            fields: None,
+        };
+        let metrics = vec![
+            metric("NRestarts", "a.service", int_value(3)),
+            metric("StatusErrno", "a.service", int_value(0)),
+            metric("NRestarts", "b.service", int_value(-1)),
+            metric("StatusErrno", "b.service", empty_value()),
+            metric("NRestarts", "untracked.service", int_value(7)),
+        ];
+        let shared = futures_util::future::ready(Ok(Arc::new(metrics)))
+            .boxed()
+            .shared();
+        let services = HashSet::from(["a.service".to_string(), "b.service".to_string()]);
+        let discovery = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime")
+            .block_on(parse_metrics(
+                &mut SystemdUnitStats::default(),
+                shared,
+                &default_units_config(),
+                &services,
+            ))
+            .expect("parse");
+        assert_eq!(
+            discovery.nrestarts,
+            HashMap::from([("a.service".to_string(), 3)])
+        );
+        assert_eq!(
+            discovery.status_errno,
+            HashMap::from([("a.service".to_string(), 0)])
+        );
     }
 
     #[tokio::test]
@@ -1845,7 +1959,7 @@ mod tests {
         parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("zero timestamp should parse successfully");
 
-        assert!(stats.unit_states.get("test.service").is_none());
+        assert!(!stats.unit_states.contains_key("test.service"));
     }
 
     #[test]
@@ -1863,7 +1977,7 @@ mod tests {
         let mut stats = SystemdUnitStats::default();
         parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("metric should parse successfully");
-        assert!(stats.unit_states.get("test.service").is_none());
+        assert!(!stats.unit_states.contains_key("test.service"));
 
         // Disabled via state_stats.
         let mut config = default_units_config();
@@ -1871,7 +1985,7 @@ mod tests {
         let mut stats = SystemdUnitStats::default();
         parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("metric should parse successfully");
-        assert!(stats.unit_states.get("test.service").is_none());
+        assert!(!stats.unit_states.contains_key("test.service"));
 
         // Excluded via blocklist.
         let mut config = default_units_config();
@@ -1879,7 +1993,7 @@ mod tests {
         let mut stats = SystemdUnitStats::default();
         parse_one_metric(&mut stats, &metric, &config, &HashSet::new(), false)
             .expect("metric should parse successfully");
-        assert!(stats.unit_states.get("test.service").is_none());
+        assert!(!stats.unit_states.contains_key("test.service"));
 
         // Negative and non-integer values are skipped, not stored. Tracking
         // must be enabled here so these calls reach validation instead of
@@ -1903,7 +2017,7 @@ mod tests {
         };
         parse_one_metric(&mut stats, &null_value, &config, &HashSet::new(), false)
             .expect("null timestamp should parse successfully");
-        assert!(stats.unit_states.get("test.service").is_none());
+        assert!(!stats.unit_states.contains_key("test.service"));
     }
 
     #[tokio::test]

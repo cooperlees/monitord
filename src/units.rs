@@ -67,7 +67,9 @@ pub struct UnitsCollectionTimings {
     pub slowest_units: Vec<(String, f64)>,
     /// Varlink path: `io.systemd.Unit.List` calls made to PID 1 this run.
     pub varlink_unit_list_fetches: u64,
-    /// Varlink path: total ms spent waiting on those `Unit.List` calls.
+    /// Varlink path: total ms spent waiting on those `Unit.List` calls. A
+    /// subset of `per_unit_loop_ms`, which also covers cgroupfs reads and
+    /// local parsing.
     pub varlink_unit_list_ms: f64,
     /// Varlink path: the slowest single `Unit.List` call this run, in ms.
     pub varlink_unit_list_max_ms: f64,

@@ -325,28 +325,38 @@ mod tests {
 
     #[test]
     fn test_uses_reply_cgroup_fallback() {
-        let reply = |memory_current: Option<u64>| -> ListOutput {
-            serde_json::from_value(serde_json::json!({
-                "runtime": {
-                    "CGroup": {
-                        "Path": "/system.slice/a.service",
-                        "MemoryCurrent": memory_current,
-                    }
-                }
+        // (reply key, matching CgroupStats setter) for every counter
+        // map_service_stats can take from the reply.
+        type Setter = fn(&mut crate::cgroup::CgroupStats);
+        let counters: [(&str, Setter); 6] = [
+            ("CPUUsageNSec", |c| c.cpu_usage_nsec = Some(1)),
+            ("IOReadBytes", |c| c.io_read_bytes = Some(1)),
+            ("IOReadOperations", |c| c.io_read_operations = Some(1)),
+            ("MemoryAvailable", |c| c.memory_available = Some(1)),
+            ("MemoryCurrent", |c| c.memory_current = Some(1)),
+            ("TasksCurrent", |c| c.tasks_current = Some(1)),
+        ];
+        for (key, set) in counters {
+            let reply: ListOutput = serde_json::from_value(serde_json::json!({
+                "runtime": { "CGroup": { "Path": "/system.slice/a.service", key: 7 } }
             }))
-            .expect("valid reply")
-        };
-        let read = crate::cgroup::CgroupStats {
-            memory_current: Some(42),
-            ..Default::default()
-        };
+            .expect("valid reply");
+            let unread = crate::cgroup::CgroupStats::default();
+            let mut read = crate::cgroup::CgroupStats::default();
+            set(&mut read);
+            // cgroupfs had nothing but the reply did: a snapshot, not cacheable.
+            assert!(uses_reply_cgroup_fallback(&reply, &unread), "{key}");
+            // cgroupfs answered: nothing taken from the reply.
+            assert!(!uses_reply_cgroup_fallback(&reply, &read), "{key}");
+        }
+        // Neither side had a value, or no cgroup section at all.
+        let bare: ListOutput = serde_json::from_value(serde_json::json!({
+            "runtime": { "CGroup": { "Path": "/system.slice/a.service" } }
+        }))
+        .expect("valid reply");
         let unread = crate::cgroup::CgroupStats::default();
-        // cgroupfs answered, or neither had a value: nothing taken from the reply.
-        assert!(!uses_reply_cgroup_fallback(&reply(Some(7)), &read));
-        assert!(!uses_reply_cgroup_fallback(&reply(None), &unread));
+        assert!(!uses_reply_cgroup_fallback(&bare, &unread));
         assert!(!uses_reply_cgroup_fallback(&output(None, None), &unread));
-        // cgroupfs had nothing but the reply did: a snapshot, not cacheable.
-        assert!(uses_reply_cgroup_fallback(&reply(Some(7)), &unread));
     }
 
     #[test]

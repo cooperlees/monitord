@@ -681,7 +681,7 @@ collection reports its own gauges.
 | `collection_timings.service_dbus_fetches` | Count of per-service D-Bus property fetches. |
 | `collection_timings.slowest_units` | The `units.slowest_units_count` slowest units this run (unit name, duration ms), descending. Empty when `slowest_units_count = 0`. D-Bus path only (see parity note below). |
 | `collection_timings.varlink_unit_list_fetches` | Varlink path: count of `io.systemd.Unit.List` calls to PID 1 this run. |
-| `collection_timings.varlink_unit_list_ms` | Varlink path: total ms spent in those `Unit.List` calls. |
+| `collection_timings.varlink_unit_list_ms` | Varlink path: total ms spent in those `Unit.List` calls. Included in `per_unit_loop_ms`, which also covers cgroupfs reads and local parsing. |
 | `collection_timings.varlink_unit_list_max_ms` | Varlink path: slowest single `Unit.List` call this run, in ms. A high value points at a slow PID 1. |
 | `collection_timings.varlink_service_cache_hits` | Varlink path: `[services]` entries served from the cross-cycle cache (see `units.service_details_cache_max_age_secs`) instead of a `Unit.List` call. |
 
