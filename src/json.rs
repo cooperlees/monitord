@@ -601,6 +601,22 @@ fn flatten_units_collection_timings(
         format!("{base_metric_name}.service_dbus_fetches"),
         timings.service_dbus_fetches.into(),
     );
+    flat_stats.insert(
+        format!("{base_metric_name}.varlink_service_cache_hits"),
+        timings.varlink_service_cache_hits.into(),
+    );
+    flat_stats.insert(
+        format!("{base_metric_name}.varlink_unit_list_fetches"),
+        timings.varlink_unit_list_fetches.into(),
+    );
+    flat_stats.insert(
+        format!("{base_metric_name}.varlink_unit_list_max_ms"),
+        timings.varlink_unit_list_max_ms.into(),
+    );
+    flat_stats.insert(
+        format!("{base_metric_name}.varlink_unit_list_ms"),
+        timings.varlink_unit_list_ms.into(),
+    );
     // Rank is encoded in the key (not just the unit name) so ordering survives
     // flattening; the leaf value stays a plain number like every other key here.
     for (idx, (unit_name, duration_ms)) in timings.slowest_units.iter().enumerate() {
@@ -691,6 +707,10 @@ mod tests {
   "collection_timings.slowest_units.1.unittest.timer": 8.25,
   "collection_timings.state_dbus_fetches": 0,
   "collection_timings.timer_dbus_fetches": 4,
+  "collection_timings.varlink_service_cache_hits": 9,
+  "collection_timings.varlink_unit_list_fetches": 3,
+  "collection_timings.varlink_unit_list_max_ms": 1.5,
+  "collection_timings.varlink_unit_list_ms": 2.25,
   "collector_timings.boot_blame.elapsed_ms": 12.5,
   "collector_timings.boot_blame.start_offset_ms": 0.25,
   "collector_timings.boot_blame.success": 0,
@@ -702,6 +722,10 @@ mod tests {
   "machines.foo.collection_timings.service_dbus_fetches": 0,
   "machines.foo.collection_timings.state_dbus_fetches": 0,
   "machines.foo.collection_timings.timer_dbus_fetches": 0,
+  "machines.foo.collection_timings.varlink_service_cache_hits": 0,
+  "machines.foo.collection_timings.varlink_unit_list_fetches": 0,
+  "machines.foo.collection_timings.varlink_unit_list_max_ms": 0.0,
+  "machines.foo.collection_timings.varlink_unit_list_ms": 0.0,
   "machines.foo.networkd.managed_interfaces": 0,
   "machines.foo.system-state": 0,
   "machines.foo.timers.unittest.timer.accuracy_usec": 69,
@@ -893,6 +917,10 @@ mod tests {
                 ("unittest.service".to_string(), 12.5),
                 ("unittest.timer".to_string(), 8.25),
             ],
+            varlink_unit_list_fetches: 3,
+            varlink_unit_list_ms: 2.25,
+            varlink_unit_list_max_ms: 1.5,
+            varlink_service_cache_hits: 9,
         };
         let service_unit_name = String::from("unittest.service");
         stats.units.service_stats.insert(
@@ -961,7 +989,7 @@ mod tests {
     #[test]
     fn test_flatten_map() {
         let json_flat_map = flatten_stats(&return_monitord_stats(), "");
-        assert_eq!(136, json_flat_map.len());
+        assert_eq!(144, json_flat_map.len());
     }
 
     #[test]

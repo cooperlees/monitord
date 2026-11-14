@@ -228,6 +228,10 @@ state_stats = true
 # Also record how long each unit has been in its current state
 state_stats_time_in_state = true
 ignore_inactive_oneshot_services = true
+# Varlink only: reuse each [services] unit's io.systemd.Unit.List reply for up
+# to this many seconds. It is refetched sooner when the unit changes state or
+# systemd reloads; cgroup counters are still read every cycle. 0 disables.
+service_details_cache_max_age_secs = 300
 
 # Filter what services you want collect state stats for
 # If both lists are configured blocklist is preferred
@@ -471,6 +475,10 @@ they are not repeated below.
   "collection_timings.slowest_units.4.sys-module-fuse.device": 0.035106,
   "collection_timings.state_dbus_fetches": 0,
   "collection_timings.timer_dbus_fetches": 24,
+  "collection_timings.varlink_service_cache_hits": 0,
+  "collection_timings.varlink_unit_list_fetches": 0,
+  "collection_timings.varlink_unit_list_max_ms": 0.0,
+  "collection_timings.varlink_unit_list_ms": 0.0,
   "collector_timings.boot_blame.elapsed_ms": 53.36,
   "collector_timings.boot_blame.start_offset_ms": 0.08,
   "collector_timings.boot_blame.success": 1,
@@ -666,12 +674,16 @@ collection reports its own gauges.
 | `collector_timings.<name>.start_offset_ms` | ms from the top of the cycle until the spawned future was first polled. Should be sub-ms when collectors are running in parallel; a non-trivial value means the spawn loop or runtime is delaying first poll. |
 | `collector_timings.<name>.elapsed_ms` | ms from first poll to completion for that collector. |
 | `collector_timings.<name>.success` | 1 if the collector returned Ok, 0 otherwise. |
-| `collection_timings.list_units_ms` | ms for the systemd `ListUnits` D-Bus call (one batched call). |
+| `collection_timings.list_units_ms` | ms for the systemd `ListUnits` D-Bus call (one batched call). On the varlink path, ms for the `io.systemd.Metrics.List` stream. |
 | `collection_timings.per_unit_loop_ms` | ms spent walking each listed unit, including any per-unit D-Bus calls (timer/state/service). |
 | `collection_timings.timer_dbus_fetches` | Count of timer D-Bus property fetches this run. |
 | `collection_timings.state_dbus_fetches` | Count of unit-state D-Bus fetches (only when `state_stats_time_in_state` is enabled). |
 | `collection_timings.service_dbus_fetches` | Count of per-service D-Bus property fetches. |
 | `collection_timings.slowest_units` | The `units.slowest_units_count` slowest units this run (unit name, duration ms), descending. Empty when `slowest_units_count = 0`. D-Bus path only (see parity note below). |
+| `collection_timings.varlink_unit_list_fetches` | Varlink path: count of `io.systemd.Unit.List` calls to PID 1 this run. |
+| `collection_timings.varlink_unit_list_ms` | Varlink path: total ms spent in those `Unit.List` calls. Included in `per_unit_loop_ms`, which also covers cgroupfs reads and local parsing. |
+| `collection_timings.varlink_unit_list_max_ms` | Varlink path: slowest single `Unit.List` call this run, in ms. A high value points at a slow PID 1. |
+| `collection_timings.varlink_service_cache_hits` | Varlink path: `[services]` entries served from the cross-cycle cache (see `units.service_details_cache_max_age_secs`) instead of a `Unit.List` call. |
 
 Comparing `sum(collector_timings.*.elapsed_ms)` against
 `stat_collection_run_time_ms` gives an effective parallelism ratio

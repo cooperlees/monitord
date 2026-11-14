@@ -1175,6 +1175,100 @@ echo "leftover $(helpers | wc -l)"
 """
 
 
+SERVICE_CACHE_CONF = "/tmp/monitord-service-cache-ci.conf"
+UNIT_LIST_KEYS = (
+    "varlink_unit_list_fetches",
+    "varlink_unit_list_ms",
+    "varlink_unit_list_max_ms",
+    "varlink_service_cache_hits",
+)
+
+
+def run_daemon_cycles(container: str, conf: str, seconds: int = 8) -> list[dict[str, float]]:
+    """Run monitord in daemon mode for a few seconds and return the host's
+    per-cycle `collection_timings.varlink_*` values, in cycle order."""
+    write_container_file(container, SERVICE_CACHE_CONF, conf)
+    result = subprocess.run(
+        [
+            "docker", "exec", container, "timeout", str(seconds),
+            f"{CONTAINER_TARGET_DIR}/release/monitord", "-c", SERVICE_CACHE_CONF,
+            "-l", "error",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    columns = {
+        key: [
+            float(value)
+            for value in re.findall(
+                rf'^\s*"monitord\.collection_timings\.{key}": ([0-9.e+-]+)',
+                result.stdout,
+                re.MULTILINE,
+            )
+        ]
+        for key in UNIT_LIST_KEYS
+    }
+    cycles = min(len(values) for values in columns.values())
+    return [{key: columns[key][i] for key in UNIT_LIST_KEYS} for i in range(cycles)]
+
+
+def summarize_cycles(label: str, cycles: list[dict[str, float]]) -> tuple[float, float]:
+    """Print each cycle and return the steady state (cycles 2+) mean
+    Unit.List calls and ms per cycle."""
+    for i, cycle in enumerate(cycles, 1):
+        print(
+            f"  {label} cycle {i}: {cycle['varlink_unit_list_fetches']:.0f} Unit.List "
+            f"in {cycle['varlink_unit_list_ms']:.2f}ms "
+            f"(max {cycle['varlink_unit_list_max_ms']:.2f}ms), "
+            f"{cycle['varlink_service_cache_hits']:.0f} service cache hit(s)"
+        )
+    steady = cycles[1:]
+    calls = sum(c["varlink_unit_list_fetches"] for c in steady) / len(steady)
+    ms = sum(c["varlink_unit_list_ms"] for c in steady) / len(steady)
+    print(f"  {label} steady state: {calls:.2f} Unit.List/cycle, {ms:.2f}ms/cycle")
+    return calls, ms
+
+
+def assert_service_details_cache(container: str) -> None:
+    step("Asserting the [services] Unit.List cache cuts PID 1 calls (#244)")
+    # Daemon mode, cache on (stock max age) against off (max age 0). Cycle 1
+    # fetches everything either way; after that a cached run must answer the
+    # [services] entries from the cache and make fewer Unit.List calls.
+    base = re.sub(r"(?m)^daemon = false$", "daemon = true", docker_exec(container, "cat", VARLINK_CONF))
+    base = re.sub(r"(?m)^daemon_stats_refresh_secs = .*$", "daemon_stats_refresh_secs = 1", base)
+    if "daemon = true" not in base or "service_details_cache_max_age_secs" not in base:
+        raise SystemExit("FAIL: could not derive the service cache daemon config")
+    off_conf = re.sub(
+        r"(?m)^service_details_cache_max_age_secs = .*$",
+        "service_details_cache_max_age_secs = 0",
+        base,
+    )
+
+    cached = run_daemon_cycles(container, base)
+    uncached = run_daemon_cycles(container, off_conf)
+    for label, cycles in (("cache on", cached), ("cache off", uncached)):
+        if len(cycles) < 3:
+            raise SystemExit(f"FAIL: {label}: only {len(cycles)} daemon cycle(s), want 3+")
+    on_calls, on_ms = summarize_cycles("cache on", cached)
+    off_calls, off_ms = summarize_cycles("cache off", uncached)
+
+    if any(c["varlink_service_cache_hits"] for c in uncached):
+        raise SystemExit("FAIL: cache off still served services from the cache")
+    if cached[0]["varlink_service_cache_hits"]:
+        raise SystemExit("FAIL: cache on served a hit on the very first cycle")
+    if not all(c["varlink_service_cache_hits"] for c in cached[1:]):
+        raise SystemExit("FAIL: cache on: a later cycle had no service cache hits")
+    if on_calls >= off_calls:
+        raise SystemExit(
+            f"FAIL: cache on made {on_calls:.2f} Unit.List/cycle, "
+            f"not fewer than cache off ({off_calls:.2f})"
+        )
+    print(
+        f"PASS: steady state Unit.List/cycle {off_calls:.2f} -> {on_calls:.2f}, "
+        f"PID 1 wait {off_ms:.2f}ms -> {on_ms:.2f}ms per cycle"
+    )
+
+
 def assert_connector_caching(container: str) -> None:
     step("Asserting machine connectors are spawned once and run unprivileged")
     # Daemon mode for several cycles: each machine's connector must be spawned
@@ -1571,6 +1665,7 @@ def main() -> None:
     assert_dead_bus_run(args.container)
     assert_capability_matrix(args.container, repo)
     assert_connector_caching(args.container)
+    assert_service_details_cache(args.container)
     assert_report_socket(args.container, repo)
     print(
         f"\nContainer {args.container} left running; --fresh rebuilds the image "
