@@ -44,6 +44,7 @@ pub mod machines;
 pub mod networkd;
 pub mod pid1;
 pub mod report;
+pub mod report_collector;
 pub mod system;
 pub mod timer;
 pub mod unit_constants;
@@ -217,6 +218,10 @@ pub struct MonitordStats {
     pub collector_timings: Vec<CollectorTiming>,
     /// Which transport served each collector on the last run.
     pub varlink_usage: VarlinkUsage,
+    /// Metrics from other systemd-report sources in `/run/systemd/report/`,
+    /// keyed by source. `None` unless `[report] collect = true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub report: Option<report_collector::ReportStats>,
 }
 
 /// Print statistics in the format set in configuration
@@ -695,6 +700,20 @@ pub async fn stat_collector(
                 )
                 .await
             });
+        }
+
+        // Always varlink with no D-Bus fallback, so like pid1 it records no
+        // varlink_usage gauge.
+        if config.report.collect {
+            spawn_timed(
+                &mut join_set,
+                "report",
+                collect_start_time,
+                crate::report_collector::update_report_stats(
+                    Arc::clone(&config),
+                    locked_monitord_stats.clone(),
+                ),
+            );
         }
 
         if join_set.len() == 1 {
