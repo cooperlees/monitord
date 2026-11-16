@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["is_oneshot","map_service_stats","map_timer_stats","timer_triggered_unit"],"struct":["UnitLookup"]};
+window.SIDEBAR_ITEMS = {"fn":["is_oneshot","map_service_stats","map_timer_stats","timer_triggered_unit","uses_reply_cgroup_fallback"],"struct":["UnitLookup"]};
