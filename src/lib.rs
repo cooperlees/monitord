@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::time::Instant;
 
+use futures_util::future::FutureExt;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::debug;
@@ -259,6 +260,11 @@ type TimedCollectorOutput = (String, anyhow::Result<()>, Duration, Duration);
 /// to `collect_start`) and the elapsed wall time until it completes. Both
 /// durations and the collector name are returned alongside the original result.
 ///
+/// A panic in the collector is caught and returned as its `Err`. Left to
+/// surface as a `JoinError` it would reach the drain loop with neither the
+/// collector's name nor its timing, and the collector would be missing from
+/// that run's `collector_timings`.
+///
 /// `tokio::task::JoinSet::spawn` runs the future on a new task, and tracing
 /// spans do not cross task boundaries automatically — without explicitly
 /// capturing and re-attaching the caller's span here, every collector (and
@@ -285,7 +291,17 @@ fn spawn_timed<F>(
         async move {
             let task_first_poll = Instant::now();
             let start_offset = task_first_poll.duration_since(collect_start);
-            let result = fut.await;
+            let result = match std::panic::AssertUnwindSafe(fut).catch_unwind().await {
+                Ok(result) => result,
+                Err(payload) => {
+                    let msg = payload
+                        .downcast_ref::<&str>()
+                        .copied()
+                        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                        .unwrap_or("non-string panic payload");
+                    Err(anyhow::anyhow!("collector panicked: {msg}"))
+                }
+            };
             let elapsed = task_first_poll.elapsed();
             recording_span.record("elapsed_ms", elapsed.as_secs_f64() * 1000.0);
             recording_span.record("success", result.is_ok());
@@ -866,5 +882,36 @@ mod tests {
 
         set_stat_collection_run_time(&mut stats, Duration::from_micros(500));
         assert!((stats.stat_collection_run_time_ms - 0.5).abs() < f64::EPSILON);
+    }
+
+    /// A panicking collector must come back as a named failure: a `JoinError`
+    /// carries no collector name, so the drain loop in `stat_collector` can't
+    /// record a `CollectorTiming` for it.
+    #[tokio::test]
+    async fn test_spawn_timed_panic_is_named_failure() {
+        let mut join_set = tokio::task::JoinSet::new();
+        // A panic message arrives as a `&str` or a `String` payload;
+        // `panic_any` can carry any other type.
+        spawn_timed(&mut join_set, "str", Instant::now(), async {
+            panic!("kaboom")
+        });
+        spawn_timed(&mut join_set, "string", Instant::now(), async {
+            std::panic::panic_any(String::from("kaboom"))
+        });
+        spawn_timed(&mut join_set, "other", Instant::now(), async {
+            std::panic::panic_any(42)
+        });
+        let mut failures = HashMap::new();
+        while let Some(res) = join_set.join_next().await {
+            let (name, result, _, _) = res.expect("collector panic escaped as a JoinError");
+            failures.insert(name, format!("{:#}", result.unwrap_err()));
+        }
+        assert_eq!(failures.len(), 3);
+        assert_eq!(failures["str"], "collector panicked: kaboom");
+        assert_eq!(failures["string"], "collector panicked: kaboom");
+        assert_eq!(
+            failures["other"],
+            "collector panicked: non-string panic payload"
+        );
     }
 }
