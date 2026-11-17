@@ -271,6 +271,10 @@ type TimedCollectorOutput = (String, anyhow::Result<()>, Duration, Duration);
 /// collector's name nor its timing, and the collector would be missing from
 /// that run's `collector_timings`.
 ///
+/// This relies on panics unwinding. Setting `panic = "abort"` in the release
+/// profile would make `catch_unwind` a no-op, so a collector panic would
+/// again take down the whole process, daemon included.
+///
 /// `tokio::task::JoinSet::spawn` runs the future on a new task, and tracing
 /// spans do not cross task boundaries automatically — without explicitly
 /// capturing and re-attaching the caller's span here, every collector (and
@@ -765,6 +769,9 @@ pub async fn stat_collector(
                         success,
                     });
                 }
+                // `spawn_timed` catches collector panics, so this is only
+                // reached by task cancellation or a panic outside the
+                // wrapped future.
                 Err(e) => {
                     had_error = true;
                     error!("Join error: {:?}", e);
@@ -834,6 +841,12 @@ pub async fn stat_collector(
             // so reassigning the local is enough for the next cycle's
             // spawns to pick up the fresh cell.
             dbus_cell = Arc::new(tokio::sync::OnceCell::new());
+        }
+        if elapsed_runtime_ms >= collect_interval_ms {
+            warn!(
+                "stat collection took {}ms, longer than the {}ms refresh interval; starting the next run now",
+                elapsed_runtime_ms, collect_interval_ms
+            );
         }
         let sleep_time_ms = daemon_sleep_time_ms(collect_interval_ms, elapsed_runtime_ms);
         info!("stat collection sleeping for {}s 😴", sleep_time_ms / 1000);

@@ -45,4 +45,6 @@ tempfile = "3.27"
 tokio = { version = "1.53", features = ["test-util"] }
 
 [profile]
+# Keep panics unwinding (no `panic = "abort"`): spawn_timed in src/lib.rs
+# catches collector panics so the daemon survives them and records a failure.
 release = { strip = "symbols", lto = "fat", opt-level = "z", codegen-units = 1 }
