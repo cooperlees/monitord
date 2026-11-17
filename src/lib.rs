@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::time::Instant;
 
+use futures_util::future::FutureExt;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::debug;
@@ -250,6 +251,12 @@ fn set_stat_collection_run_time(stats: &mut MonitordStats, elapsed_runtime: Dura
     stats.stat_collection_run_time_ms = elapsed_runtime.as_secs_f64() * 1000.0;
 }
 
+/// Milliseconds daemon mode sleeps before its next run: what is left of the
+/// refresh interval, or none once a run has overrun it.
+fn daemon_sleep_time_ms(collect_interval_ms: u128, elapsed_runtime_ms: u128) -> u128 {
+    collect_interval_ms.saturating_sub(elapsed_runtime_ms)
+}
+
 /// Output produced by every spawned collector future after wrapping with timing.
 type TimedCollectorOutput = (String, anyhow::Result<()>, Duration, Duration);
 
@@ -258,6 +265,15 @@ type TimedCollectorOutput = (String, anyhow::Result<()>, Duration, Duration);
 /// The wrapping closure records the moment the future is first polled (relative
 /// to `collect_start`) and the elapsed wall time until it completes. Both
 /// durations and the collector name are returned alongside the original result.
+///
+/// A panic in the collector is caught and returned as its `Err`. Left to
+/// surface as a `JoinError` it would reach the drain loop with neither the
+/// collector's name nor its timing, and the collector would be missing from
+/// that run's `collector_timings`.
+///
+/// This relies on panics unwinding. Setting `panic = "abort"` in the release
+/// profile would make `catch_unwind` a no-op, so a collector panic would
+/// again take down the whole process, daemon included.
 ///
 /// `tokio::task::JoinSet::spawn` runs the future on a new task, and tracing
 /// spans do not cross task boundaries automatically — without explicitly
@@ -285,7 +301,17 @@ fn spawn_timed<F>(
         async move {
             let task_first_poll = Instant::now();
             let start_offset = task_first_poll.duration_since(collect_start);
-            let result = fut.await;
+            let result = match std::panic::AssertUnwindSafe(fut).catch_unwind().await {
+                Ok(result) => result,
+                Err(payload) => {
+                    let msg = payload
+                        .downcast_ref::<&str>()
+                        .copied()
+                        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                        .unwrap_or("non-string panic payload");
+                    Err(anyhow::anyhow!("collector panicked: {msg}"))
+                }
+            };
             let elapsed = task_first_poll.elapsed();
             recording_span.record("elapsed_ms", elapsed.as_secs_f64() * 1000.0);
             recording_span.record("success", result.is_ok());
@@ -743,6 +769,9 @@ pub async fn stat_collector(
                         success,
                     });
                 }
+                // `spawn_timed` catches collector panics, so this is only
+                // reached by task cancellation or a panic outside the
+                // wrapped future.
                 Err(e) => {
                     had_error = true;
                     error!("Join error: {:?}", e);
@@ -813,7 +842,13 @@ pub async fn stat_collector(
             // spawns to pick up the fresh cell.
             dbus_cell = Arc::new(tokio::sync::OnceCell::new());
         }
-        let sleep_time_ms = collect_interval_ms - elapsed_runtime_ms;
+        if elapsed_runtime_ms >= collect_interval_ms {
+            warn!(
+                "stat collection took {}ms, longer than the {}ms refresh interval; starting the next run now",
+                elapsed_runtime_ms, collect_interval_ms
+            );
+        }
+        let sleep_time_ms = daemon_sleep_time_ms(collect_interval_ms, elapsed_runtime_ms);
         info!("stat collection sleeping for {}s 😴", sleep_time_ms / 1000);
         tokio::time::sleep(Duration::from_millis(
             sleep_time_ms
@@ -866,5 +901,46 @@ mod tests {
 
         set_stat_collection_run_time(&mut stats, Duration::from_micros(500));
         assert!((stats.stat_collection_run_time_ms - 0.5).abs() < f64::EPSILON);
+    }
+
+    /// A run that takes longer than the refresh interval leaves nothing to
+    /// sleep; the subtraction must not underflow.
+    #[test]
+    fn test_daemon_sleep_time_ms_saturates_on_overrun() {
+        assert_eq!(daemon_sleep_time_ms(30_000, 1_000), 29_000);
+        assert_eq!(daemon_sleep_time_ms(30_000, 30_000), 0);
+        assert_eq!(daemon_sleep_time_ms(30_000, 30_001), 0);
+        assert_eq!(daemon_sleep_time_ms(0, 1), 0);
+    }
+
+    /// A panicking collector must come back as a named failure: a `JoinError`
+    /// carries no collector name, so the drain loop in `stat_collector` can't
+    /// record a `CollectorTiming` for it.
+    #[tokio::test]
+    async fn test_spawn_timed_panic_is_named_failure() {
+        let mut join_set = tokio::task::JoinSet::new();
+        // A panic message arrives as a `&str` or a `String` payload;
+        // `panic_any` can carry any other type.
+        spawn_timed(&mut join_set, "str", Instant::now(), async {
+            panic!("kaboom")
+        });
+        spawn_timed(&mut join_set, "string", Instant::now(), async {
+            std::panic::panic_any(String::from("kaboom"))
+        });
+        spawn_timed(&mut join_set, "other", Instant::now(), async {
+            std::panic::panic_any(42)
+        });
+        let mut failures = HashMap::new();
+        while let Some(res) = join_set.join_next().await {
+            let (name, result, _, _) = res.expect("collector panic escaped as a JoinError");
+            failures.insert(name, format!("{:#}", result.unwrap_err()));
+        }
+        assert_eq!(failures.len(), 3);
+        assert_eq!(failures["str"], "collector panicked: kaboom");
+        assert_eq!(failures["string"], "collector panicked: kaboom");
+        assert_eq!(
+            failures["other"],
+            "collector panicked: non-string panic payload"
+        );
     }
 }
