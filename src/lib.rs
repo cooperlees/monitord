@@ -251,6 +251,12 @@ fn set_stat_collection_run_time(stats: &mut MonitordStats, elapsed_runtime: Dura
     stats.stat_collection_run_time_ms = elapsed_runtime.as_secs_f64() * 1000.0;
 }
 
+/// Milliseconds daemon mode sleeps before its next run: what is left of the
+/// refresh interval, or none once a run has overrun it.
+fn daemon_sleep_time_ms(collect_interval_ms: u128, elapsed_runtime_ms: u128) -> u128 {
+    collect_interval_ms.saturating_sub(elapsed_runtime_ms)
+}
+
 /// Output produced by every spawned collector future after wrapping with timing.
 type TimedCollectorOutput = (String, anyhow::Result<()>, Duration, Duration);
 
@@ -829,7 +835,7 @@ pub async fn stat_collector(
             // spawns to pick up the fresh cell.
             dbus_cell = Arc::new(tokio::sync::OnceCell::new());
         }
-        let sleep_time_ms = collect_interval_ms - elapsed_runtime_ms;
+        let sleep_time_ms = daemon_sleep_time_ms(collect_interval_ms, elapsed_runtime_ms);
         info!("stat collection sleeping for {}s 😴", sleep_time_ms / 1000);
         tokio::time::sleep(Duration::from_millis(
             sleep_time_ms
@@ -882,6 +888,16 @@ mod tests {
 
         set_stat_collection_run_time(&mut stats, Duration::from_micros(500));
         assert!((stats.stat_collection_run_time_ms - 0.5).abs() < f64::EPSILON);
+    }
+
+    /// A run that takes longer than the refresh interval leaves nothing to
+    /// sleep; the subtraction must not underflow.
+    #[test]
+    fn test_daemon_sleep_time_ms_saturates_on_overrun() {
+        assert_eq!(daemon_sleep_time_ms(30_000, 1_000), 29_000);
+        assert_eq!(daemon_sleep_time_ms(30_000, 30_000), 0);
+        assert_eq!(daemon_sleep_time_ms(30_000, 30_001), 0);
+        assert_eq!(daemon_sleep_time_ms(0, 1), 0);
     }
 
     /// A panicking collector must come back as a named failure: a `JoinError`
